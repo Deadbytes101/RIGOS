@@ -4,9 +4,31 @@ set -eu
 state=/var/lib/rigos
 mkdir -p "$state"
 device="$(blkid -L RIGOS_STATE 2>/dev/null || true)"
+if [ -z "$device" ]; then
+    boot_source="${RIGOS_BOOT_SOURCE:-$(findmnt -n -o SOURCE /run/live/medium 2>/dev/null || true)}"
+    case "$boot_source" in
+        /dev/sd[a-z][0-9]*) boot_disk="${boot_source%[0-9]*}" ;;
+        *) boot_disk='' ;;
+    esac
+    if [ -n "$boot_disk" ] \
+        && udevadm info --query=property --name="$boot_disk" 2>/dev/null | grep -qx 'ID_BUS=usb' \
+        && [ "$(blockdev --getsize64 "$boot_disk")" -ge 8000000000 ] \
+        && [ ! -b "${boot_disk}3" ]; then
+        printf ',,L\n' | sfdisk --append "$boot_disk"
+        partx --update "$boot_disk"
+        udevadm settle
+        partition="${boot_disk}3"
+        if [ -b "$partition" ]; then
+            wipefs --all "$partition"
+            mkfs.ext4 -F -L RIGOS_STATE -m 0 "$partition"
+            device="$partition"
+        fi
+    fi
+fi
 if [ -n "$device" ]; then
     mountpoint -q "$state" || mount -o nodev,nosuid,noexec "$device" "$state"
 else
-    echo 'RIGOS_STATE partition not found; state is volatile for this boot.' >&2
+    echo 'RIGOS_STATE unavailable; refusing to modify a non-USB or undersized boot device.' >&2
+    echo 'State is volatile for this boot.' >&2
 fi
 install -d -o rigos -g rigos -m 0750 "$state"
