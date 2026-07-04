@@ -4,7 +4,7 @@ Public Git evidence is sanitized and regression-testable. Complete raw evidence 
 
 ## Collection
 
-The collector is deliberately phased because v0.0.1 must not control XMRig lifecycle. The operator establishes each miner state, then invokes `collect-physical-validation.sh` with the same run ID and output directory. Baseline/finalize phases accept explicit XMRig binary/config paths for zero-mutation hashes. The probe phase uses the repository probe-helper ELF, never production XMRig.
+The collector is deliberately phased because v0.0.1 must not control XMRig lifecycle. The operator establishes each miner state, then invokes the authoritative RC's `validation-tools/collect-physical-validation.sh` with the same run ID and output directory. Baseline/finalize phases accept explicit XMRig binary/config paths for zero-mutation hashes. The probe phase uses the probe-helper ELF packaged in that same RC, never production XMRig and never a locally rebuilt helper.
 
 Raw output must remain outside the repository. Before packaging, the operator reviews `raw-meta/result-input.json` and changes a check from `blocked` only when its raw evidence proves `pass`, `fail`, or `not_applicable`.
 

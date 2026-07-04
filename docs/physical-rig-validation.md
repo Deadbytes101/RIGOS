@@ -11,3 +11,9 @@ Run on at least one Athlon II or Phenom II class Debian machine as an unprivileg
 Containers and VMs do not satisfy this physical acceptance tier.
 
 Use the phased collector described in [physical-validation-evidence.md](physical-validation-evidence.md). Validation is not accepted until the tested binary matches the authoritative RC checksum, public evidence passes secret scanning, and the external age archive passes independent decryptability verification.
+
+The authoritative RC directory is self-contained for collection: use
+`validation-tools/collect-physical-validation.sh` and
+`validation-tools/probe_helper` from that directory. Do not rebuild the helper
+or copy a collector from another commit; verify the complete RC directory with
+`sha256sum -c SHA256SUMS` before collection.
