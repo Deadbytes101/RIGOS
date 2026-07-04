@@ -5,7 +5,7 @@ die() { printf 'build-usb-image: %s\n' "$*" >&2; exit 1; }
 [[ "$(id -u)" -eq 0 ]] || die 'must run as root inside the image builder'
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-[[ -z "$(git status --porcelain)" ]] || die 'source tree must be clean'
+[[ -z "$(git -c safe.directory="$root" status --porcelain)" ]] || die 'source tree must be clean'
 
 work=/work/rigos-live
 rm -rf "$work"
