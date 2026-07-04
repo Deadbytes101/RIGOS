@@ -16,6 +16,8 @@ cp build/usb/hooks/010-rigos.chroot "$work/config/hooks/live/010-rigos.hook.chro
 chmod 0755 "$work/config/hooks/live/"* \
   "$work/config/includes.chroot/usr/local/sbin/rigos-firstboot" \
   "$work/config/includes.chroot/usr/local/sbin/rigos-state-mount"
+find "$work/config/includes.chroot/etc/systemd/system" -type f -name '*.service' \
+  -exec chmod 0644 {} +
 
 cd "$work"
 lb config noauto \
