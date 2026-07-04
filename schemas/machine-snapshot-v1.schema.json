@@ -1,7 +1,52 @@
 {
   "$defs": {
+    "CacheSnapshotV1": {
+      "properties": {
+        "cache_type": {
+          "type": "string"
+        },
+        "coherency_line_size_bytes": {
+          "$ref": "#/$defs/Observation2"
+        },
+        "level": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "shared_cpu_list": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/Observation2"
+        }
+      },
+      "required": [
+        "level",
+        "cache_type",
+        "size_bytes",
+        "coherency_line_size_bytes"
+      ],
+      "type": "object"
+    },
     "CpuSnapshotV1": {
       "properties": {
+        "caches": {
+          "items": {
+            "$ref": "#/$defs/CacheSnapshotV1"
+          },
+          "type": "array"
+        },
+        "families": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "flags": {
           "items": {
             "type": "string"
@@ -18,31 +63,91 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "models": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "physical_cores": {
+          "$ref": "#/$defs/Observation"
+        },
+        "steppings": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "threads_per_core": {
+          "$ref": "#/$defs/Observation"
+        },
+        "vendor_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
         "logical_processors",
         "model_names",
-        "flags"
+        "vendor_ids",
+        "families",
+        "models",
+        "steppings",
+        "physical_cores",
+        "threads_per_core",
+        "flags",
+        "caches"
       ],
+      "type": "object"
+    },
+    "MemoryPressureV1": {
+      "properties": {
+        "full": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PressureWindowV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "some": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PressureWindowV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "type": "object"
     },
     "MemorySnapshotV1": {
       "properties": {
         "huge_page_size_bytes": {
-          "$ref": "#/$defs/Observation"
+          "$ref": "#/$defs/Observation2"
         },
         "huge_pages_free": {
-          "$ref": "#/$defs/Observation"
+          "$ref": "#/$defs/Observation2"
         },
         "huge_pages_total": {
-          "$ref": "#/$defs/Observation"
+          "$ref": "#/$defs/Observation2"
         },
         "memory_available_bytes": {
-          "$ref": "#/$defs/Observation"
+          "$ref": "#/$defs/Observation2"
         },
         "memory_total_bytes": {
-          "$ref": "#/$defs/Observation"
+          "$ref": "#/$defs/Observation2"
         }
       },
       "required": [
@@ -66,7 +171,7 @@
               "type": "string"
             },
             "value": {
-              "format": "uint64",
+              "format": "uint32",
               "minimum": 0,
               "type": "integer"
             }
@@ -136,6 +241,144 @@
               "type": "string"
             },
             "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observation3": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/MemoryPressureV1"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observation4": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
               "format": "int64",
               "type": "integer"
             }
@@ -193,6 +436,28 @@
         }
       ]
     },
+    "PressureWindowV1": {
+      "properties": {
+        "avg10": {
+          "format": "double",
+          "type": "number"
+        },
+        "avg300": {
+          "format": "double",
+          "type": "number"
+        },
+        "avg60": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "avg10",
+        "avg60",
+        "avg300"
+      ],
+      "type": "object"
+    },
     "TemperatureSensorV1": {
       "properties": {
         "label": {
@@ -205,7 +470,7 @@
           "type": "string"
         },
         "temperature_millicelsius": {
-          "$ref": "#/$defs/Observation2"
+          "$ref": "#/$defs/Observation4"
         }
       },
       "required": [
@@ -226,6 +491,9 @@
     "memory": {
       "$ref": "#/$defs/MemorySnapshotV1"
     },
+    "memory_pressure": {
+      "$ref": "#/$defs/Observation3"
+    },
     "temperatures": {
       "items": {
         "$ref": "#/$defs/TemperatureSensorV1"
@@ -237,6 +505,7 @@
     "architecture",
     "cpu",
     "memory",
+    "memory_pressure",
     "temperatures"
   ],
   "title": "MachineSnapshotV1",

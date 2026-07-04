@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const ENVELOPE_SCHEMA: &str = "dbyte.rigos.cli-envelope/v1";
+pub const ENVELOPE_SCHEMA: &str = "rigos.cli-envelope/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -158,7 +158,7 @@ mod tests {
     fn envelope_is_partial_on_warning() {
         let e = CliEnvelope::new(
             "doctor",
-            "dbyte.rigos.doctor-report/v1",
+            "rigos.doctor-report/v1",
             Some(1),
             vec![Diagnostic::warning("test.warning", "test", "warning")],
             false,

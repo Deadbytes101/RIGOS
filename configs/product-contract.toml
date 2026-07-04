@@ -1,0 +1,36 @@
+product = "RIGOS"
+architecture = "x86_64"
+runtime_medium = "usb"
+recommended_capacity_gib = 16
+minimum_usb_interface = "2.0"
+legacy_bios = true
+uefi = true
+internal_disk_install = false
+internal_disk_auto_mount = false
+internal_disk_auto_format = false
+internal_disk_swap = false
+cloud_account_required = false
+subscription_required = false
+activation_required = false
+license_server_required = false
+worker_limit = 0
+rigos_dev_fee_percent = 0
+forced_pool = false
+
+[paths]
+config = "/etc/rigos"
+state = "/var/lib/rigos"
+runtime = "/run/rigos"
+libraries = "/usr/lib/rigos"
+service = "rigosd.service"
+
+[usb]
+temporary_filesystems = ["/tmp", "/run", "/var/tmp"]
+root_slots = ["RIGOS_ROOT_A", "RIGOS_ROOT_B"]
+state_partition = "RIGOS_STATE"
+root_read_only = true
+zram_swap = true
+bounded_journal = true
+bounded_event_log = true
+atomic_policy_writes = true
+checksummed_policy_revisions = true

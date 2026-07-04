@@ -1,4 +1,4 @@
 {
-  "schema": "dbyte.rigos.physical-validation-index/v1",
+  "schema": "rigos.physical-validation-index/v1",
   "runs": []
 }

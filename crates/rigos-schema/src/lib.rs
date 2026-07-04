@@ -2,15 +2,16 @@
 
 use rigos_core::{CliEnvelope, Diagnostic};
 use rigos_machine::MachineSnapshotV1;
+use rigos_pool::PoolProfile;
 use rigos_xmrig::MinerSnapshotV1;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const BUILD_MANIFEST_SCHEMA: &str = "dbyte.rigos.build-manifest/v1";
-pub const VALIDATION_MANIFEST_SCHEMA: &str = "dbyte.rigos.physical-validation-manifest/v1";
-pub const VALIDATION_RESULT_SCHEMA: &str = "dbyte.rigos.physical-validation-result/v1";
-pub const REDACTION_REPORT_SCHEMA: &str = "dbyte.rigos.redaction-report/v1";
+pub const BUILD_MANIFEST_SCHEMA: &str = "rigos.build-manifest/v1";
+pub const VALIDATION_MANIFEST_SCHEMA: &str = "rigos.physical-validation-manifest/v1";
+pub const VALIDATION_RESULT_SCHEMA: &str = "rigos.physical-validation-result/v1";
+pub const REDACTION_REPORT_SCHEMA: &str = "rigos.redaction-report/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BuildManifestV1 {
@@ -107,7 +108,7 @@ pub struct PhysicalValidationManifestV1 {
     pub redaction_policy: String,
 }
 
-pub const DOCTOR_SCHEMA: &str = "dbyte.rigos.doctor-report/v1";
+pub const DOCTOR_SCHEMA: &str = "rigos.doctor-report/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DoctorCheckV1 {
@@ -154,6 +155,10 @@ pub fn schemas() -> BTreeMap<&'static str, serde_json::Value> {
     output.insert(
         "redaction-report-v1.schema.json",
         serde_json::to_value(schema_for!(RedactionReportV1)).unwrap(),
+    );
+    output.insert(
+        "pool-profile-v1.schema.json",
+        serde_json::to_value(schema_for!(PoolProfile)).unwrap(),
     );
     output
 }

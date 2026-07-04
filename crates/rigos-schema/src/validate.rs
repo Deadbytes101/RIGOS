@@ -6,14 +6,10 @@ fn main() -> ExitCode {
         (
             "machine.json",
             "machine.inspect",
-            "dbyte.rigos.machine-snapshot/v1",
+            "rigos.machine-snapshot/v1",
         ),
-        (
-            "miner.json",
-            "miner.inspect",
-            "dbyte.rigos.miner-snapshot/v1",
-        ),
-        ("doctor.json", "doctor", "dbyte.rigos.doctor-report/v1"),
+        ("miner.json", "miner.inspect", "rigos.miner-snapshot/v1"),
+        ("doctor.json", "doctor", "rigos.doctor-report/v1"),
     ];
     let Some(root) = env::args_os().nth(1) else {
         eprintln!("usage: validate-cli-output DIRECTORY");
@@ -58,7 +54,7 @@ fn main() -> ExitCode {
             eprintln!("payload schema failure in {}: {error}", path.display());
             return ExitCode::from(1);
         }
-        if value.get("schema").and_then(Value::as_str) != Some("dbyte.rigos.cli-envelope/v1")
+        if value.get("schema").and_then(Value::as_str) != Some("rigos.cli-envelope/v1")
             || value.get("command").and_then(Value::as_str) != Some(command)
             || value.get("data_schema").and_then(Value::as_str) != Some(data_schema)
             || value.get("data").is_none()

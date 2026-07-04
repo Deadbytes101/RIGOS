@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-pub const MINER_SCHEMA: &str = "dbyte.rigos.miner-snapshot/v1";
+pub const MINER_SCHEMA: &str = "rigos.miner-snapshot/v1";
 const API_TIMEOUT: Duration = Duration::from_millis(750);
 const API_MAX_BYTES: usize = 256 * 1024;
 

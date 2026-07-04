@@ -26,7 +26,7 @@ case "$phase" in
     if [[ -n "$xmrig" && -n "$config" ]]; then sha256sum "$xmrig" "$config" > "$output/mutation/after.sha256"; diff -u "$output/mutation/before.sha256" "$output/mutation/after.sha256" > "$output/mutation/comparison.txt" || die "persistent mutation detected"; fi
     printf '{"run_id":"%s","collected_at":"%s"}\n' "$run_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$output/raw-meta/raw-manifest.json"
     cat > "$output/raw-meta/result-input.json" <<EOF
-{"schema":"dbyte.rigos.physical-validation-result/v1","run_id":"$run_id","overall":"blocked","checks":[
+{"schema":"rigos.physical-validation-result/v1","run_id":"$run_id","overall":"blocked","checks":[
 {"id":"binary.sha256_matches_authoritative_rc","result":"blocked"},{"id":"runtime.no_illegal_instruction","result":"blocked"},
 {"id":"machine.real_hwmon_observed","result":"blocked"},{"id":"machine.huge_pages_observed","result":"blocked"},
 {"id":"miner.stopped_snapshot_valid","result":"blocked"},{"id":"miner.running_without_api_snapshot_valid","result":"blocked"},

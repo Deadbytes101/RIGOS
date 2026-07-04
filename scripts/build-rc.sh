@@ -19,7 +19,7 @@ file "$binary" | grep -q 'ELF 64-bit LSB.*x86-64' || die "unexpected ELF archite
 readelf -l "$binary" | grep -q '/lib64/ld-linux-x86-64.so.2' || die "unexpected ELF interpreter"
 readelf -d "$binary" | grep -E 'NEEDED.*(libcuda|libamdhip64|libstdc\+\+)' >/dev/null && die "unexpected runtime dependency"
 out="dist/$rc"; rm -rf -- "$out"; mkdir -p "$out/schemas" "$out/docs"
-install -m 0755 "$binary" "$out/rigosd"; cp schemas/*.json "$out/schemas/"
+install -m 0755 "$binary" "$out/rigosd"; ln -s rigosd "$out/rigosctl"; cp schemas/*.json "$out/schemas/"
 cp docs/physical-rig-validation.md docs/threat-model.md "$out/docs/"
 build_os="$(. /etc/os-release; printf '%s %s' "$NAME" "$VERSION_ID")"
 cargo run --quiet --locked -p rigos-evidence -- build-manifest --rc "$rc" --commit "$commit" \
@@ -28,6 +28,5 @@ cargo run --quiet --locked -p rigos-evidence -- build-manifest --rc "$rc" --comm
   --build-os "$build_os" --kernel "$(uname -srmo)" >/dev/null
 file "$out/rigosd" > "$out/ELF-REPORT.txt"; readelf -h "$out/rigosd" >> "$out/ELF-REPORT.txt"
 readelf -l "$out/rigosd" >> "$out/ELF-REPORT.txt"; readelf -d "$out/rigosd" >> "$out/ELF-REPORT.txt"; ldd "$out/rigosd" >> "$out/ELF-REPORT.txt"
-(cd "$out" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+(cd "$out" && find . \( -type f -o -type l \) ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 printf 'Authoritative RC created: %s\nCommit: %s\n' "$out" "$commit"
-

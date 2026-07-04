@@ -10,7 +10,7 @@ use std::{
 };
 use thiserror::Error;
 
-pub const REDACTION_POLICY: &str = "dbyte.rigos.validation-redaction/v1";
+pub const REDACTION_POLICY: &str = "rigos.validation-redaction/v1";
 
 #[derive(Debug, Error)]
 pub enum EvidenceError {

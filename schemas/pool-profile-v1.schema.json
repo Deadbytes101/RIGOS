@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "AlgorithmSelection": {
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "const": "auto",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "mode": {
+              "const": "explicit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "algorithm"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MinerBackendId": {
+      "enum": [
+        "xmrig"
+      ],
+      "type": "string"
+    },
+    "PoolAuthentication": {
+      "oneOf": [
+        {
+          "properties": {
+            "credential_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "identity": {
+              "type": "string"
+            },
+            "type": {
+              "const": "mining_identity",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "identity"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PoolEndpoint": {
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host",
+        "port"
+      ],
+      "type": "object"
+    },
+    "PoolProfileId": {
+      "type": "string"
+    },
+    "TlsPolicy": {
+      "enum": [
+        "disabled",
+        "required"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "algorithm": {
+      "$ref": "#/$defs/AlgorithmSelection"
+    },
+    "authentication": {
+      "$ref": "#/$defs/PoolAuthentication"
+    },
+    "backend": {
+      "$ref": "#/$defs/MinerBackendId"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "endpoints": {
+      "items": {
+        "$ref": "#/$defs/PoolEndpoint"
+      },
+      "type": "array"
+    },
+    "id": {
+      "$ref": "#/$defs/PoolProfileId"
+    },
+    "tls": {
+      "$ref": "#/$defs/TlsPolicy"
+    }
+  },
+  "required": [
+    "id",
+    "display_name",
+    "endpoints",
+    "authentication",
+    "algorithm",
+    "tls",
+    "backend"
+  ],
+  "title": "PoolProfile",
+  "type": "object"
+}

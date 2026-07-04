@@ -82,7 +82,7 @@ try {
         $publicChecks += [ordered]@{id=[string]$check.id;result=[string]$check.result}
     }
     if($publicChecks.Count -ne $allowedChecks.Count){throw 'Validation result does not contain every mandatory check.'}
-    $publicResult=[ordered]@{schema='dbyte.rigos.physical-validation-result/v1';run_id=$RunId;overall=[string]$result.overall;checks=$publicChecks}
+    $publicResult=[ordered]@{schema='rigos.physical-validation-result/v1';run_id=$RunId;overall=[string]$result.overall;checks=$publicChecks}
     $publicResult | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $publicPath 'result.json') -Encoding utf8NoBOM
 
     $contractTemp=Join-Path $env:TEMP ("rigos-contract-"+[guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $contractTemp | Out-Null
@@ -122,17 +122,17 @@ try {
         $publicHashes[$relative] = Get-Sha256 $_.FullName
     }
     $manifest = [ordered]@{
-        schema='dbyte.rigos.physical-validation-manifest/v1'; run_id=$RunId; release_candidate=$ReleaseCandidate
+        schema='rigos.physical-validation-manifest/v1'; run_id=$RunId; release_candidate=$ReleaseCandidate
         source_commit=$SourceCommit
         authoritative_binary=[ordered]@{name='rigosd';sha256=$BinarySha256;target='x86_64-unknown-linux-gnu'}
         node=[ordered]@{alias=$NodeAlias;hardware_class=$HardwareClass;architecture='x86_64'}
         runtime=[ordered]@{distribution='Debian GNU/Linux';distribution_major=$DebianMajor;kernel=$kernel}
         started_at=[DateTime]::ParseExact($RunId.Substring($RunId.Length-16,16),'yyyyMMddTHHmmssZ',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); completed_at=[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
         result=if($result.overall -eq 'pass'){'blocked'}else{$result.overall}; public_evidence_sha256=$publicHashes
-        private_archive=[ordered]@{retained=$true;format='tar.zst.age';encryption_schema='dbyte.rigos.private-archive-encryption/age-x25519-v1'
+        private_archive=[ordered]@{retained=$true;format='tar.zst.age';encryption_schema='rigos.private-archive-encryption/age-x25519-v1'
             recipient_set_id=$RecipientSetId;recipient_set_sha256=$recipientSet.recipient_set_sha256;recipient_count=$recipientSet.recipients.Count
             ciphertext_sha256=(Get-Sha256 $archive);ciphertext_size_bytes=$cipher.Length;decryptability_verified=$false;location_disclosed=$false}
-        redaction_policy='dbyte.rigos.validation-redaction/v1'
+        redaction_policy='rigos.validation-redaction/v1'
     }
     $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $publicPath 'manifest.json') -Encoding utf8NoBOM
     $forbiddenPatterns=@(('SENTINEL_'+'SECRET_VALUE'),'Authorization:',('AGE-'+'SECRET-KEY-'),'-----BEGIN PRIVATE KEY-----')
