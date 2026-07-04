@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "CpuSnapshotV1": {
+      "properties": {
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "logical_processors": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "logical_processors",
+        "model_names",
+        "flags"
+      ],
+      "type": "object"
+    },
+    "MemorySnapshotV1": {
+      "properties": {
+        "huge_page_size_bytes": {
+          "$ref": "#/$defs/Observation"
+        },
+        "huge_pages_free": {
+          "$ref": "#/$defs/Observation"
+        },
+        "huge_pages_total": {
+          "$ref": "#/$defs/Observation"
+        },
+        "memory_available_bytes": {
+          "$ref": "#/$defs/Observation"
+        },
+        "memory_total_bytes": {
+          "$ref": "#/$defs/Observation"
+        }
+      },
+      "required": [
+        "memory_total_bytes",
+        "memory_available_bytes",
+        "huge_pages_total",
+        "huge_pages_free",
+        "huge_page_size_bytes"
+      ],
+      "type": "object"
+    },
+    "Observation": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observation2": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TemperatureSensorV1": {
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "temperature_millicelsius": {
+          "$ref": "#/$defs/Observation2"
+        }
+      },
+      "required": [
+        "name",
+        "temperature_millicelsius"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "architecture": {
+      "type": "string"
+    },
+    "cpu": {
+      "$ref": "#/$defs/CpuSnapshotV1"
+    },
+    "memory": {
+      "$ref": "#/$defs/MemorySnapshotV1"
+    },
+    "temperatures": {
+      "items": {
+        "$ref": "#/$defs/TemperatureSensorV1"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "architecture",
+    "cpu",
+    "memory",
+    "temperatures"
+  ],
+  "title": "MachineSnapshotV1",
+  "type": "object"
+}

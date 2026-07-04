@@ -1,0 +1,17 @@
+name: verify
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        image: [rust:1.85.1-bookworm, rust:1.85.1-trixie]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends ripgrep
+      - run: rustup component add rustfmt clippy
+      - run: ./scripts/verify.sh

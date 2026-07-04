@@ -1,0 +1,12 @@
+[package]
+name = "rigos-machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rigos-core = { path = "../rigos-core" }
+schemars.workspace = true
+serde.workspace = true
+

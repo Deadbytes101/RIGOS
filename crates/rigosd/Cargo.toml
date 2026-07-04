@@ -1,0 +1,18 @@
+[package]
+name = "rigosd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[dependencies]
+clap.workspace = true
+rigos-core = { path = "../rigos-core" }
+rigos-machine = { path = "../rigos-machine" }
+rigos-miner = { path = "../rigos-miner" }
+rigos-schema = { path = "../rigos-schema" }
+rigos-xmrig = { path = "../rigos-xmrig" }
+serde.workspace = true
+serde_json.workspace = true
+

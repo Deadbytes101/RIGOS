@@ -1,0 +1,19 @@
+[package]
+name = "rigos-xmrig"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc.workspace = true
+rigos-core = { path = "../rigos-core" }
+rigos-machine = { path = "../rigos-machine" }
+rigos-miner = { path = "../rigos-miner" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["process", "signal"] }
+

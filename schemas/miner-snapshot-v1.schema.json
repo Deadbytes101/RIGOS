@@ -1,0 +1,458 @@
+{
+  "$defs": {
+    "ApiStateV1": {
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "not_configured",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "disabled",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "authentication_configured": {
+              "type": "boolean"
+            },
+            "authentication_result": {
+              "type": "string"
+            },
+            "state": {
+              "const": "reachable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "authentication_configured",
+            "authentication_result"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "authentication_configured": {
+              "type": "boolean"
+            },
+            "authentication_result": {
+              "type": "string"
+            },
+            "state": {
+              "const": "wildcard_reachable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "authentication_configured",
+            "authentication_result"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unsupported_non_loopback_endpoint",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "connection_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "timeout",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "authentication_rejected",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "malformed_response",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConfigInspectionV1": {
+      "properties": {
+        "algorithm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "huge_pages_requested": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "log_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parse_state": {
+          "$ref": "#/$defs/ConfigParseState"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "thread_hint": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "parse_state",
+        "pools"
+      ],
+      "type": "object"
+    },
+    "ConfigParseState": {
+      "enum": [
+        "absent",
+        "valid",
+        "malformed",
+        "unreadable"
+      ],
+      "type": "string"
+    },
+    "Observation": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observation2": {
+      "oneOf": [
+        {
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "state": {
+              "const": "observed",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "state": {
+              "const": "unsupported",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ProcessOwnerV1": {
+      "properties": {
+        "systemd_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "accepted_shares": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "algorithm": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "api": {
+      "$ref": "#/$defs/ApiStateV1"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "config": {
+      "$ref": "#/$defs/ConfigInspectionV1"
+    },
+    "detected": {
+      "type": "boolean"
+    },
+    "executable_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hashrate_hs": {
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "pid": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "pool_endpoint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "process_owner": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProcessOwnerV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rejected_shares": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "running": {
+      "type": "boolean"
+    },
+    "uptime_seconds": {
+      "$ref": "#/$defs/Observation2"
+    },
+    "version": {
+      "$ref": "#/$defs/Observation"
+    }
+  },
+  "required": [
+    "backend",
+    "detected",
+    "running",
+    "version",
+    "uptime_seconds",
+    "config",
+    "api"
+  ],
+  "title": "MinerSnapshotV1",
+  "type": "object"
+}

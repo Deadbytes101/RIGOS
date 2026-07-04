@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "BuildMetadata": {
+      "properties": {
+        "build_commit": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "rigosd_version": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rigosd_version",
+        "build_commit",
+        "target",
+        "profile"
+      ],
+      "type": "object"
+    },
+    "Diagnostic": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "context": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "component",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "ok",
+        "partial",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Severity": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "type": "string"
+    },
+    "data": true,
+    "data_schema": {
+      "type": "string"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/Diagnostic"
+      },
+      "type": "array"
+    },
+    "meta": {
+      "$ref": "#/$defs/BuildMetadata"
+    },
+    "observed_at": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ExecutionStatus"
+    }
+  },
+  "required": [
+    "schema",
+    "command",
+    "status",
+    "observed_at",
+    "data_schema",
+    "diagnostics",
+    "meta"
+  ],
+  "title": "CliEnvelope",
+  "type": "object"
+}
