@@ -23,7 +23,7 @@ lb config noauto \
   --distribution bookworm \
   --architectures amd64 \
   --binary-images iso-hybrid \
-  --bootloaders grub-efi,grub-pc \
+  --bootloaders syslinux,grub-efi \
   --archive-areas 'main contrib non-free-firmware' \
   --apt-recommends false \
   --debian-installer none \
@@ -37,4 +37,5 @@ output="$root/dist/usb"
 mkdir -p "$output"
 install -m 0644 live-image-amd64.hybrid.iso "$output/rigos-usb-amd64.iso"
 (cd "$output" && sha256sum rigos-usb-amd64.iso > rigos-usb-amd64.iso.sha256)
+"$root/scripts/verify-usb-image.sh" "$output/rigos-usb-amd64.iso"
 printf 'USB image: %s\n' "$output/rigos-usb-amd64.iso"

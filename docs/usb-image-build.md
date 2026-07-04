@@ -1,7 +1,8 @@
 # RIGOS USB Image (Bootstrap)
 
-This bootstrap image is a Debian 12 `iso-hybrid` image for Rufus/DD and boots
-through GRUB on Legacy BIOS and UEFI systems. Its SquashFS root is read-only.
+This bootstrap image is a Debian 12 `iso-hybrid` image for Rufus/DD. It uses
+ISOLINUX/SYSLINUX for Legacy BIOS and GRUB for UEFI. Its SquashFS root is
+read-only.
 
 The first boot opens a console TUI, accepts an arbitrary compatible
 `host:port`, validates the mining identity and writes `policy.json` and
