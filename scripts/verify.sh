@@ -21,5 +21,13 @@ if rg -n 'Command::new\(("|r#")?(sh|bash|curl|wget|ps|pgrep|killall|pkill)' crat
   echo "forbidden external command path detected" >&2
   exit 1
 fi
+if git ls-files | rg '(^|/)(raw|private|work)/|\.(raw\.(json|log)|tar\.zst\.age|age\.partial|pem|key)$'; then
+  echo "raw/private validation artifact tracked by Git" >&2
+  exit 1
+fi
+if git grep -n -I -E 'AGE-SECRET-KEY-1[0-9A-Z]{20,}|SENTINEL_SECRET_VALUE' -- ':!scripts/verify.sh'; then
+  echo "forbidden secret material detected" >&2
+  exit 1
+fi
 
 echo "DBYTE RIGOS verification passed"

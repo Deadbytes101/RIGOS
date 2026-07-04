@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifact": {
+      "type": "string"
+    },
+    "binary_sha256": {
+      "type": "string"
+    },
+    "build_os": {
+      "type": "string"
+    },
+    "build_profile": {
+      "type": "string"
+    },
+    "cargo": {
+      "type": "string"
+    },
+    "git_commit": {
+      "type": "string"
+    },
+    "git_tree_clean": {
+      "type": "boolean"
+    },
+    "kernel": {
+      "type": "string"
+    },
+    "release_candidate": {
+      "type": "string"
+    },
+    "rustc": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "schemas_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "target": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "artifact",
+    "release_candidate",
+    "git_commit",
+    "git_tree_clean",
+    "target",
+    "build_os",
+    "kernel",
+    "rustc",
+    "cargo",
+    "build_profile",
+    "binary_sha256",
+    "schemas_sha256"
+  ],
+  "title": "BuildManifestV1",
+  "type": "object"
+}

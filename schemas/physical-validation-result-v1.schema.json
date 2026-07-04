@@ -1,0 +1,45 @@
+{
+  "$defs": {
+    "ValidationCheckV1": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "result"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/ValidationCheckV1"
+      },
+      "type": "array"
+    },
+    "overall": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "run_id",
+    "overall",
+    "checks"
+  ],
+  "title": "PhysicalValidationResultV1",
+  "type": "object"
+}

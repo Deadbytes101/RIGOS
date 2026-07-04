@@ -39,3 +39,4 @@ The API endpoint is never accepted from the CLI. API inspection is derived only 
 
 See [architecture](docs/architecture.md), [JSON contract](docs/json-cli-contract.md), and [threat model](docs/threat-model.md).
 
+Release candidates are produced through the [authoritative release pipeline](docs/release-pipeline.md). Physical evidence follows the [dual-tier evidence policy](docs/physical-validation-evidence.md). No final `v0.0.1` tag is permitted before the documented physical acceptance gate passes.

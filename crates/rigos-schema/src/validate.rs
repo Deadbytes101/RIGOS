@@ -29,6 +29,35 @@ fn main() -> ExitCode {
             eprintln!("invalid JSON in {}", path.display());
             return ExitCode::from(1);
         };
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let envelope_schema: Value = serde_json::from_slice(
+            &fs::read(root.join("schemas/cli-envelope-v1.schema.json"))
+                .expect("read envelope schema"),
+        )
+        .expect("parse envelope schema");
+        if let Err(error) = jsonschema::validator_for(&envelope_schema)
+            .expect("compile envelope schema")
+            .validate(&value)
+        {
+            eprintln!("envelope schema failure in {}: {error}", path.display());
+            return ExitCode::from(1);
+        }
+        let payload_file = match command {
+            "machine.inspect" => "machine-snapshot-v1.schema.json",
+            "miner.inspect" => "miner-snapshot-v1.schema.json",
+            _ => "doctor-report-v1.schema.json",
+        };
+        let payload_schema: Value = serde_json::from_slice(
+            &fs::read(root.join("schemas").join(payload_file)).expect("read payload schema"),
+        )
+        .expect("parse payload schema");
+        if let Err(error) = jsonschema::validator_for(&payload_schema)
+            .expect("compile payload schema")
+            .validate(&value["data"])
+        {
+            eprintln!("payload schema failure in {}: {error}", path.display());
+            return ExitCode::from(1);
+        }
         if value.get("schema").and_then(Value::as_str) != Some("dbyte.rigos.cli-envelope/v1")
             || value.get("command").and_then(Value::as_str) != Some(command)
             || value.get("data_schema").and_then(Value::as_str) != Some(data_schema)

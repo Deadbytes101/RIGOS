@@ -7,6 +7,106 @@ use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub const BUILD_MANIFEST_SCHEMA: &str = "dbyte.rigos.build-manifest/v1";
+pub const VALIDATION_MANIFEST_SCHEMA: &str = "dbyte.rigos.physical-validation-manifest/v1";
+pub const VALIDATION_RESULT_SCHEMA: &str = "dbyte.rigos.physical-validation-result/v1";
+pub const REDACTION_REPORT_SCHEMA: &str = "dbyte.rigos.redaction-report/v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BuildManifestV1 {
+    pub schema: String,
+    pub artifact: String,
+    pub release_candidate: String,
+    pub git_commit: String,
+    pub git_tree_clean: bool,
+    pub target: String,
+    pub build_os: String,
+    pub kernel: String,
+    pub rustc: String,
+    pub cargo: String,
+    pub build_profile: String,
+    pub binary_sha256: String,
+    pub schemas_sha256: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ValidationCheckV1 {
+    pub id: String,
+    pub result: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhysicalValidationResultV1 {
+    pub schema: String,
+    pub run_id: String,
+    pub overall: String,
+    pub checks: Vec<ValidationCheckV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RedactionReportV1 {
+    pub schema: String,
+    pub policy: String,
+    pub input_file_count: u64,
+    pub output_file_count: u64,
+    pub replacements: BTreeMap<String, u64>,
+    pub rejected_file_count: u64,
+    pub json_parse_failures: u64,
+    pub remaining_forbidden_patterns: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AuthoritativeBinaryV1 {
+    pub name: String,
+    pub sha256: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ValidationNodeV1 {
+    pub alias: String,
+    pub hardware_class: String,
+    pub architecture: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ValidationRuntimeV1 {
+    pub distribution: String,
+    pub distribution_major: u32,
+    pub kernel: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PrivateArchiveV1 {
+    pub retained: bool,
+    pub format: String,
+    pub encryption_schema: String,
+    pub recipient_set_id: String,
+    pub recipient_set_sha256: String,
+    pub recipient_count: u32,
+    pub ciphertext_sha256: String,
+    pub ciphertext_size_bytes: u64,
+    pub decryptability_verified: bool,
+    pub location_disclosed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhysicalValidationManifestV1 {
+    pub schema: String,
+    pub run_id: String,
+    pub release_candidate: String,
+    pub source_commit: String,
+    pub authoritative_binary: AuthoritativeBinaryV1,
+    pub node: ValidationNodeV1,
+    pub runtime: ValidationRuntimeV1,
+    pub started_at: String,
+    pub completed_at: String,
+    pub result: String,
+    pub public_evidence_sha256: BTreeMap<String, String>,
+    pub private_archive: PrivateArchiveV1,
+    pub redaction_policy: String,
+}
+
 pub const DOCTOR_SCHEMA: &str = "dbyte.rigos.doctor-report/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -38,6 +138,22 @@ pub fn schemas() -> BTreeMap<&'static str, serde_json::Value> {
     output.insert(
         "doctor-report-v1.schema.json",
         serde_json::to_value(schema_for!(DoctorReportV1)).unwrap(),
+    );
+    output.insert(
+        "build-manifest-v1.schema.json",
+        serde_json::to_value(schema_for!(BuildManifestV1)).unwrap(),
+    );
+    output.insert(
+        "physical-validation-manifest-v1.schema.json",
+        serde_json::to_value(schema_for!(PhysicalValidationManifestV1)).unwrap(),
+    );
+    output.insert(
+        "physical-validation-result-v1.schema.json",
+        serde_json::to_value(schema_for!(PhysicalValidationResultV1)).unwrap(),
+    );
+    output.insert(
+        "redaction-report-v1.schema.json",
+        serde_json::to_value(schema_for!(RedactionReportV1)).unwrap(),
     );
     output
 }

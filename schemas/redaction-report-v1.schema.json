@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "input_file_count": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "json_parse_failures": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "output_file_count": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "rejected_file_count": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remaining_forbidden_patterns": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "replacements": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "policy",
+    "input_file_count",
+    "output_file_count",
+    "replacements",
+    "rejected_file_count",
+    "json_parse_failures",
+    "remaining_forbidden_patterns"
+  ],
+  "title": "RedactionReportV1",
+  "type": "object"
+}

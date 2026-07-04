@@ -1,4 +1,13 @@
 /target/
 /dist/
 *.sha256
-
+/config/private-archive-recipients.local.txt
+/validation/raw/
+/validation/private/
+/validation/work/
+*.raw.json
+*.raw.log
+*.tar.zst.age
+*.age.partial
+*.pem
+*.key

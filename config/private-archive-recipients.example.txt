@@ -1,0 +1,4 @@
+# One native age X25519 public recipient per line.
+# Copy this file to private-archive-recipients.local.txt and replace examples.
+# age1...primary recipient produced by age-keygen -y
+# age1...offline recovery recipient produced by age-keygen -y

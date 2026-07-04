@@ -9,3 +9,5 @@ Run on at least one Athlon II or Phenom II class Debian machine as an unprivileg
 5. Record Debian version, kernel, CPU model, XMRig version and artifact SHA-256.
 
 Containers and VMs do not satisfy this physical acceptance tier.
+
+Use the phased collector described in [physical-validation-evidence.md](physical-validation-evidence.md). Validation is not accepted until the tested binary matches the authoritative RC checksum, public evidence passes secret scanning, and the external age archive passes independent decryptability verification.

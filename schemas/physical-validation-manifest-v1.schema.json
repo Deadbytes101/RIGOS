@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "AuthoritativeBinaryV1": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sha256",
+        "target"
+      ],
+      "type": "object"
+    },
+    "PrivateArchiveV1": {
+      "properties": {
+        "ciphertext_sha256": {
+          "type": "string"
+        },
+        "ciphertext_size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "decryptability_verified": {
+          "type": "boolean"
+        },
+        "encryption_schema": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "location_disclosed": {
+          "type": "boolean"
+        },
+        "recipient_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "recipient_set_id": {
+          "type": "string"
+        },
+        "recipient_set_sha256": {
+          "type": "string"
+        },
+        "retained": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "retained",
+        "format",
+        "encryption_schema",
+        "recipient_set_id",
+        "recipient_set_sha256",
+        "recipient_count",
+        "ciphertext_sha256",
+        "ciphertext_size_bytes",
+        "decryptability_verified",
+        "location_disclosed"
+      ],
+      "type": "object"
+    },
+    "ValidationNodeV1": {
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "architecture": {
+          "type": "string"
+        },
+        "hardware_class": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "alias",
+        "hardware_class",
+        "architecture"
+      ],
+      "type": "object"
+    },
+    "ValidationRuntimeV1": {
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "distribution_major": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kernel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "distribution",
+        "distribution_major",
+        "kernel"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "authoritative_binary": {
+      "$ref": "#/$defs/AuthoritativeBinaryV1"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "node": {
+      "$ref": "#/$defs/ValidationNodeV1"
+    },
+    "private_archive": {
+      "$ref": "#/$defs/PrivateArchiveV1"
+    },
+    "public_evidence_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "redaction_policy": {
+      "type": "string"
+    },
+    "release_candidate": {
+      "type": "string"
+    },
+    "result": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "runtime": {
+      "$ref": "#/$defs/ValidationRuntimeV1"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "source_commit": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "run_id",
+    "release_candidate",
+    "source_commit",
+    "authoritative_binary",
+    "node",
+    "runtime",
+    "started_at",
+    "completed_at",
+    "result",
+    "public_evidence_sha256",
+    "private_archive",
+    "redaction_policy"
+  ],
+  "title": "PhysicalValidationManifestV1",
+  "type": "object"
+}
