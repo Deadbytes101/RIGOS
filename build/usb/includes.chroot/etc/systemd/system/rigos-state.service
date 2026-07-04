@@ -1,0 +1,13 @@
+[Unit]
+Description=Mount RIGOS persistent state
+DefaultDependencies=no
+After=systemd-udev-settle.service local-fs-pre.target
+Before=local-fs.target rigos-firstboot.service rigos-miner.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rigos-state-mount
+RemainAfterExit=yes
+
+[Install]
+WantedBy=local-fs.target

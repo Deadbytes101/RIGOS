@@ -66,3 +66,5 @@ Product boundaries are defined by the [product contract](docs/product-contract.m
 Marketing and comparison statements are governed by [release evidence gates](docs/release-claims.md).
 
 Release candidates are produced through the [authoritative release pipeline](docs/release-pipeline.md). Physical evidence follows the [dual-tier evidence policy](docs/physical-validation-evidence.md). No final `v0.0.1` tag is permitted before the documented physical acceptance gate passes.
+
+The first flashable bootstrap image is documented in [USB image build](docs/usb-image-build.md). It provides a read-only Debian live root and local first-boot mining configuration; it is not yet the final signed A/B updater.

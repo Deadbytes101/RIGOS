@@ -1,5 +1,6 @@
 /target/
 /dist/
+/.build-usb/
 *.sha256
 /config/private-archive-recipients.local.txt
 /validation/raw/

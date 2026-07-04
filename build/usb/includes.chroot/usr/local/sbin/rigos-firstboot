@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+import json
+import math
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+STATE = Path("/var/lib/rigos")
+HOST_RE = re.compile(r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$")
+
+
+def dialog(*args: str) -> str:
+    result = subprocess.run(
+        ["whiptail", "--title", "RIGOS FIRST BOOT", *args],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise SystemExit("Configuration cancelled; reboot to try again.")
+    return result.stderr.strip()
+
+
+def prompt(label: str, default: str = "") -> str:
+    return dialog("--inputbox", label, "10", "72", default)
+
+
+def atomic_json(path: Path, value: object, mode: int = 0o640) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def main() -> None:
+    dialog("--msgbox", "Set the local administrator password next. It remains on this machine and is never sent to RIGOS.", "10", "72")
+    subprocess.run(["passwd", "rigosadmin"], check=True)
+    dialog("--msgbox", "Configure a compatible Stratum pool. RIGOS has no account and no forced pool.", "10", "72")
+    node = prompt("Node name", "rig01").strip()
+    endpoint = prompt("Pool endpoint (host:port)", "gulf.moneroocean.stream:10128").strip()
+    identity = prompt("Mining identity (wallet or pool username)").strip()
+    tls = dialog("--menu", "TLS policy", "12", "60", "2", "required", "TLS enabled", "disabled", "Plain Stratum")
+    threads_text = prompt("CPU threads (0 = automatic)", "0").strip()
+
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,62}", node):
+        raise SystemExit("Invalid node name.")
+    if endpoint.count(":") != 1:
+        raise SystemExit("Endpoint must use host:port syntax.")
+    host, port_text = endpoint.rsplit(":", 1)
+    if not HOST_RE.fullmatch(host) or not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+        raise SystemExit("Invalid pool endpoint.")
+    if not identity or any(character.isspace() for character in identity):
+        raise SystemExit("Mining identity cannot be empty or contain whitespace.")
+    if not threads_text.isdigit() or int(threads_text) > 1024:
+        raise SystemExit("CPU threads must be between 0 and 1024.")
+
+    policy = {
+        "schema": "rigos.policy/v1",
+        "node_name": node,
+        "pool": {
+            "profile": "custom-stratum",
+            "endpoints": [{"host": host.lower(), "port": int(port_text)}],
+            "tls": tls,
+            "authentication": {"type": "mining_identity", "identity": identity},
+            "backend": "xmrig",
+            "algorithm": "auto",
+        },
+        "cpu": {"threads": int(threads_text), "huge_pages": True},
+    }
+    pool_url = f"{host}:{port_text}"
+    xmrig = {
+        "autosave": False,
+        "background": False,
+        "cpu": {"enabled": True, "huge-pages": True},
+        "pools": [{"url": pool_url, "user": identity, "pass": node, "tls": tls == "required", "keepalive": True}],
+        "api": {"worker-id": node},
+        "http": {"enabled": False},
+    }
+    if int(threads_text) > 0:
+        logical_cpus = os.cpu_count() or 1
+        xmrig["cpu"]["max-threads-hint"] = min(100, max(1, math.ceil(int(threads_text) * 100 / logical_cpus)))
+
+    atomic_json(STATE / "policy.json", policy)
+    atomic_json(STATE / "xmrig.json", xmrig)
+    subprocess.run(["chown", "rigos:rigos", STATE / "policy.json", STATE / "xmrig.json"], check=True)
+    subprocess.run(["systemctl", "enable", "--now", "rigos-miner.service"], check=True)
+    dialog("--msgbox", "Configuration saved atomically. XMRig has been started.", "9", "64")
+
+
+if __name__ == "__main__":
+    main()

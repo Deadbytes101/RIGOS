@@ -1,0 +1,12 @@
+ca-certificates
+curl
+live-boot
+live-config
+linux-image-amd64
+network-manager
+python3
+systemd-sysv
+sudo
+util-linux
+whiptail
+zram-tools

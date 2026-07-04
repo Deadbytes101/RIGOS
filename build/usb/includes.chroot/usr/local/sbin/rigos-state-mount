@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+state=/var/lib/rigos
+mkdir -p "$state"
+device="$(blkid -L RIGOS_STATE 2>/dev/null || true)"
+if [ -n "$device" ]; then
+    mountpoint -q "$state" || mount -o nodev,nosuid,noexec "$device" "$state"
+else
+    echo 'RIGOS_STATE partition not found; state is volatile for this boot.' >&2
+fi
+install -d -o rigos -g rigos -m 0750 "$state"

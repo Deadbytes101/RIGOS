@@ -1,0 +1,21 @@
+[Unit]
+Description=RIGOS first-boot configuration
+After=network-online.target rigos-state.service
+Wants=network-online.target
+Requires=rigos-state.service
+ConditionPathExists=!/var/lib/rigos/policy.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rigos-firstboot
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

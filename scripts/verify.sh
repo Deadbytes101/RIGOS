@@ -10,6 +10,9 @@ cargo test --workspace --locked
 cargo run --locked -p rigos-schema --bin generate-schemas -- --check
 cargo build --workspace --release --locked
 
+bash -n scripts/*.sh build/usb/hooks/*.chroot \
+  build/usb/includes.chroot/usr/local/sbin/rigos-state-mount
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cargo run --quiet --locked -p rigosd -- machine inspect --json >"$tmp/machine.json"
