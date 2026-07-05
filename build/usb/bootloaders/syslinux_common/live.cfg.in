@@ -1,12 +1,12 @@
 label rigos-@FLAVOUR@
-	menu label ^RIGOS Recovery 0.0.4-alpha.3
+	menu label ^RIGOS Recovery 0.0.4-alpha.4
 	menu default
 	linux @LINUX@
 	initrd @INITRD@
 	append @APPEND_LIVE@
 
 label rigos-@FLAVOUR@-failsafe
-	menu label RIGOS Recovery 0.0.4-alpha.3 -- ^safe mode
+	menu label RIGOS Recovery 0.0.4-alpha.4 -- ^safe mode
 	linux @LINUX@
 	initrd @INITRD@
 	append @APPEND_LIVE_FAILSAFE@
