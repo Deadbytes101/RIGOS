@@ -12,6 +12,9 @@
       "pool_ssl": [true, false],
       "wal_id": "fixture-wallet-ref",
       "miner_config": {
+        "cpu": 1,
+        "fork": "xmrig",
+        "hugepages": 1280,
         "algo": "rx/0",
         "url": "%URL%",
         "template": "%WAL%",
