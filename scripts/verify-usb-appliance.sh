@@ -79,8 +79,10 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
-grep -Fq -- '"--output-fd", "1"' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot output fd contract missing'
-if grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot hides whiptail UI'; fi
+if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
+grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
+if grep -Fq 'stdout=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot hides the whiptail screen'; fi
+grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot value stream mismatch'
 [[ "$(jq -r .modified "$temporary/root/usr/share/rigos/components/xmrig.json")" == false ]]
 [[ "$(jq -r .upstream_donation_behavior "$temporary/root/usr/share/rigos/components/xmrig.json")" == applies ]]
 [[ "$(jq -r .rigos_fee_percent "$temporary/root/usr/share/rigos/components/xmrig.json")" == 0 ]]
