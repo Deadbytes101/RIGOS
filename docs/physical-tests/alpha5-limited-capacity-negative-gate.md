@@ -12,6 +12,7 @@ This is a required negative physical test, not evidence that persistent state or
 ## Expected result
 
 - firstboot displays the state outcome and blocks configuration
+- `rigosadmin` has a locally established password so the operator can collect Issue 3 diagnostics
 - no config source is mounted or parsed
 - no revision, policy, XMRig config, identity or mapping is written
 - timezone is unchanged

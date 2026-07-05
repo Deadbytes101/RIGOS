@@ -501,6 +501,7 @@ pub fn import_hive_style(
         )
     })?;
     let workload = hive_workload(object, filename)?;
+    let (miner_config, nested_miner_config) = hive_miner_config(object, workload, filename)?;
     for forbidden in [
         "hive_host_url",
         "api_host_url",
@@ -514,6 +515,7 @@ pub fn import_hive_style(
         if object
             .keys()
             .chain(workload.keys())
+            .chain(miner_config.keys())
             .any(|key| key.eq_ignore_ascii_case(forbidden))
         {
             return Err(error(
@@ -544,10 +546,40 @@ pub fn import_hive_style(
         .or_else(|| string_field(object, &["coin"]))
         .unwrap_or("XMR")
         .to_owned();
-    let algorithm = string_field(workload, &["algo", "algorithm"])
-        .unwrap_or("auto")
+    let algorithm = string_field(miner_config, &["algo", "algorithm"])
+        .filter(|value| !value.is_empty())
+        .or_else(|| (!nested_miner_config).then_some("auto"))
+        .ok_or_else(|| {
+            error(
+                "RIGOS_FLIGHT_SHEET_INVALID",
+                Some(filename),
+                None,
+                Some("algo"),
+                "miner_config algo is required",
+            )
+        })?
         .to_owned();
-    if let Some(pass) = string_field(workload, &["pass"]) {
+    if nested_miner_config {
+        if string_field(miner_config, &["url"]) != Some("%URL%") {
+            return Err(error(
+                "RIGOS_FLIGHT_SHEET_INVALID",
+                Some(filename),
+                None,
+                Some("url"),
+                "miner_config url must be %URL%",
+            ));
+        }
+        if string_field(miner_config, &["template"]) != Some("%WAL%") {
+            return Err(error(
+                "RIGOS_FLIGHT_SHEET_INVALID",
+                Some(filename),
+                None,
+                Some("template"),
+                "miner_config template must be %WAL%",
+            ));
+        }
+    }
+    if let Some(pass) = string_field(miner_config, &["pass"]) {
         if !matches!(pass, "x" | "%WORKER_NAME%" | "{node_name}") {
             return Err(error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
@@ -558,15 +590,24 @@ pub fn import_hive_style(
             ));
         }
     }
-    let worker_template = match string_field(workload, &["template"]) {
-        None | Some("%WORKER_NAME%") | Some("{node_name}") => "{node_name}",
+    let worker_source = if nested_miner_config {
+        string_field(miner_config, &["pass"])
+    } else {
+        string_field(miner_config, &["template"])
+    };
+    let worker_template = match worker_source {
+        None | Some("x") | Some("%WORKER_NAME%") | Some("{node_name}") => "{node_name}",
         Some("%WORKER_NAME%.rig") | Some("{node_name}.rig") => "{node_name}.rig",
         Some(_) => {
             return Err(error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
                 Some(filename),
                 None,
-                Some("template"),
+                Some(if nested_miner_config {
+                    "pass"
+                } else {
+                    "template"
+                }),
                 "unsupported worker placeholder",
             ));
         }
@@ -627,7 +668,7 @@ pub fn import_hive_style(
     let mut huge_pages = true;
     let mut max_threads_hint = 100;
     for key in ["cpu_config", "user_config"] {
-        if let Some(value) = workload.get(key) {
+        if let Some(value) = miner_config.get(key) {
             let fragment = if let Some(text) = value.as_str() {
                 Value::Object(parse_json_member_fragment(text, filename, key)?)
             } else {
@@ -1090,6 +1131,46 @@ fn hive_workload<'a>(
             "the Hive workload item must be an object",
         )
     })
+}
+
+fn hive_miner_config<'a>(
+    envelope: &Map<String, Value>,
+    workload: &'a Map<String, Value>,
+    filename: &str,
+) -> Result<(&'a Map<String, Value>, bool), ConfigError> {
+    if !envelope.contains_key("items") {
+        return Ok((workload, false));
+    }
+    let config = workload
+        .get("miner_config")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            error(
+                "RIGOS_FLIGHT_SHEET_INVALID",
+                Some(filename),
+                None,
+                Some("miner_config"),
+                "the Hive workload requires exactly one miner_config object",
+            )
+        })?;
+    let allowed = [
+        "algo",
+        "url",
+        "pass",
+        "template",
+        "cpu_config",
+        "user_config",
+    ];
+    if let Some(unknown) = config.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some(unknown),
+            "unsupported miner_config field",
+        ));
+    }
+    Ok((config, true))
 }
 
 fn strict_string_list(

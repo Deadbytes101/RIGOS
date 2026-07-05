@@ -139,15 +139,35 @@ def resolve_identity(proposal: dict) -> dict:
                     candidates.append(record)
             except (OSError, json.JSONDecodeError):
                 continue
+    external = (proposal.get("provenance") or {}).get("external_reference")
+    mapping_path = STATE / "external-identity-map.json"
+    if external and mapping_path.is_file():
+        try:
+            mapping_document = json.loads(mapping_path.read_text(encoding="utf-8"))
+            mappings = mapping_document.get("mappings", []) if mapping_document.get("schema") == "rigos.external-identity-map/v1" else []
+        except (OSError, json.JSONDecodeError):
+            mappings = []
+        mapping = next((item for item in mappings if item.get("source") == external.get("source") and item.get("external_type") == external.get("external_type") and item.get("external_value") == external.get("external_value")), None)
+        mapped_identity = next((item for item in candidates if mapping and item.get("alias") == mapping.get("identity_ref")), None)
+        if mapped_identity:
+            source_status = "same source hash" if mapping.get("confirmed_source_sha256") == proposal.get("source_sha256") else "source hash changed"
+            if confirm(f"Reuse confirmed external identity mapping\n\nLocal alias {mapped_identity['alias']}\n{source_status}\nValue suffix ****{mapped_identity['value'][-4:]}"):
+                proposal["flight_sheet"]["identity_ref"] = mapped_identity["alias"]
+                return mapped_identity
     exact = next((item for item in candidates if item.get("alias") == requested), None)
     if exact and confirm(f"Reuse local identity alias {requested}\n\nValue suffix {exact['value'][-6:].rjust(len(exact['value'][-6:]) + 4, '*')}"):
+        proposal["flight_sheet"]["identity_ref"] = exact["alias"]
         return exact
     aliases = [(f"existing:{item['alias']}", f"Use {item['alias']} suffix ****{item['value'][-4:]}") for item in candidates]
     choices = aliases + [("new", "Add a new local identity"), ("none", "Leave mining unconfigured"), ("reboot", "Cancel and reboot")]
     selected = dialog("--menu", "Mining identity is unresolved", "18", "76", str(min(12, len(choices))), *[value for pair in choices for value in pair])
     if selected.startswith("existing:"):
         alias = selected.split(":", 1)[1]
-        return next(item for item in candidates if item["alias"] == alias)
+        selected_identity = next(item for item in candidates if item["alias"] == alias)
+        if not confirm(f"Use local identity alias {alias} for this Flight Sheet\n\nValue suffix ****{selected_identity['value'][-4:]}"):
+            return resolve_identity(proposal)
+        proposal["flight_sheet"]["identity_ref"] = alias
+        return selected_identity
     if selected == "none":
         subprocess.run(["systemctl", "stop", "rigos-miner.service"], check=False)
         raise SystemExit("Mining remains unconfigured and stopped.")
@@ -162,7 +182,21 @@ def resolve_identity(proposal: dict) -> dict:
     return {"schema": "rigos.identity/v1", "alias": alias, "kind": "mining_identity", "value": value, "created_locally": True}
 
 
+def ensure_administrator_password() -> None:
+    status = subprocess.run(["passwd", "--status", "rigosadmin"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    fields = status.stdout.split()
+    if status.returncode == 0 and len(fields) >= 2 and fields[1] == "P":
+        return
+    dialog("--msgbox", "Set the local administrator password next. It remains on this machine and enables local recovery diagnostics.", "11", "72")
+    subprocess.run(["passwd", "rigosadmin"], check=True)
+    verified = subprocess.run(["passwd", "--status", "rigosadmin"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    verified_fields = verified.stdout.split()
+    if verified.returncode != 0 or len(verified_fields) < 2 or verified_fields[1] != "P":
+        raise SystemExit("Local administrator password was not established.")
+
+
 def main() -> None:
+    ensure_administrator_password()
     status_path = Path("/run/rigos/state-status.json")
     try:
         state_outcome = json.loads(status_path.read_text(encoding="utf-8"))["outcome"]
@@ -190,8 +224,6 @@ def main() -> None:
         )
         if not confirm(summary + "\n\nCommit this configuration locally?"):
             raise SystemExit("Configuration not confirmed; no changes were written.")
-        dialog("--msgbox", "Set the local administrator password next. It remains on this machine.", "10", "72")
-        subprocess.run(["passwd", "rigosadmin"], check=True)
         ok, result = engine("transact", stdin={"proposal": proposal, "identity": identity})
         if not ok:
             dialog("--msgbox", f"Configuration transaction failed\n{diagnostic_text(result)}\n\nPrevious runtime state was restored or mining was left stopped for recovery.", "18", "76")
