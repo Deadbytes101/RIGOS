@@ -168,17 +168,17 @@ insmod part_gpt
 insmod ext2
 
 menuentry 'RIGOS 0.0.4-alpha.1' {
-    search --no-floppy --part-label RIGOS_ROOT_A --set=root
+    search --no-floppy --label RIGOS_ROOT_A --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-partlabel/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin console=tty0 console=ttyS0,115200n8
     initrd /live/initrd.img
 }
 menuentry 'RIGOS 0.0.4-alpha.1 -- safe mode' {
-    search --no-floppy --part-label RIGOS_ROOT_A --set=root
+    search --no-floppy --label RIGOS_ROOT_A --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-partlabel/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin nomodeset noapic noacpi console=tty0 console=ttyS0,115200n8
     initrd /live/initrd.img
 }
 menuentry 'RIGOS ROOT_B fallback' {
-    search --no-floppy --part-label RIGOS_ROOT_B --set=root
+    search --no-floppy --label RIGOS_ROOT_B --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-partlabel/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin console=tty0 console=ttyS0,115200n8
     initrd /live/initrd.img
 }
