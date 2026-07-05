@@ -10,10 +10,40 @@ cargo test --workspace --locked
 cargo run --locked -p rigos-schema --bin generate-schemas -- --check
 cargo build --workspace --release --locked
 
-bash -n scripts/*.sh build/usb/hooks/*.chroot \
-  build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+bash -n scripts/*.sh build/usb/hooks/*.chroot
+python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 
-tmp="$(mktemp -d)"
+firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+if ! grep -Fq -- '"--output-fd", "1"' "$firstboot"; then
+  echo "first boot output fd contract missing" >&2
+  exit 1
+fi
+if grep -Fq 'stderr=subprocess.PIPE' "$firstboot"; then
+  echo "first boot hides whiptail UI" >&2
+  exit 1
+fi
+if ! grep -Fq 'return result.stdout.strip()' "$firstboot"; then
+  echo "first boot does not read the selected value from stdout" >&2
+  exit 1
+fi
+if ! rg -q 'label: dos' scripts/build-usb-image.sh; then
+  echo "MBR appliance table declaration missing" >&2
+  exit 1
+fi
+if ! rg -q 'console=ttyS0,115200n8 console=tty0' scripts/build-usb-image.sh; then
+  echo "local console is not the final console" >&2
+  exit 1
+fi
+if rg -q 'noapic|noacpi' scripts/build-usb-image.sh; then
+  echo "destructive safe mode firmware switches detected" >&2
+  exit 1
+fi
+if ! rg -q 'EFI/BOOT/BOOTX64.EFI' scripts/verify-usb-appliance.sh; then
+  echo "removable UEFI verification missing" >&2
+  exit 1
+fi
+
+ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cargo run --quiet --locked -p rigosd -- machine inspect --json >"$tmp/machine.json"
 cargo run --quiet --locked -p rigosd -- miner inspect --json >"$tmp/miner.json"
