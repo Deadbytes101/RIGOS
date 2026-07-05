@@ -1,50 +1,39 @@
-# Local rig configuration
+# Local Rig Profile and Flight Sheets
 
-RIGOS accepts a local data file named `rigos.conf` from the FAT32 `EFI_SYSTEM` partition of the exact verified boot USB.
+RIGOS reads portable configuration only from partition one of the exact USB proven by the state verifier. The attestation records the boot ID, disk and partition major/minor identities, MBR PTUUID, partition PARTUUID, root identity and verification outcome. The config engine reruns the verifier and compares those stable identities before every read-only mount; `/dev/sdX` paths are advisory only.
 
-The file exists to make repeated appliance setup fast without adding a cloud account or remote control plane.
+It stages bounded regular files in tmpfs before parsing and never sources configuration as shell.
 
-## Contract
-
-- local data only
-- never executed as shell
-- exact verified boot USB only
-- unknown keys rejected
-- duplicate keys rejected
-- malformed quoting rejected
-- command substitution rejected
-- administrator passwords rejected
-- cloud account credentials rejected
-- remote access endpoints rejected
-- canonical policy written atomically
-- normalized copy stored with restrictive permissions
-
-## Version one fields
+## USB layout
 
 ```text
-RIGOS_CONFIG_VERSION=1
-NODE_NAME=rig01
-TIMEZONE=Asia/Bangkok
-POOL_HOST=gulf.moneroocean.stream
-POOL_PORT=10128
-POOL_TLS=required
-MINING_IDENTITY=
-CPU_THREADS=0
-HUGE_PAGES=1
-WATCHDOG_ENABLED=0
-AUTO_START=1
+/rigos/rig.conf
+/rigos/flight-sheets/*.json
+/rigos/import/*.json
 ```
 
-## Import flow
+`rig.conf` controls machine identity, timezone, deterministic Flight Sheet selection and miner start policy. See `configs/rigos.conf.example`.
 
-1. The state verifier proves the boot parent and MBR layout.
-2. RIGOS reads `rigos.conf` from partition one of that exact disk.
-3. The file is copied into tmpfs before parsing.
-4. Valid values prefill the visible first boot UI.
-5. The operator confirms the values locally.
-6. RIGOS writes `policy.json` and `xmrig.json` atomically.
-7. A normalized local copy is stored under `/var/lib/rigos`.
+`FLIGHT_SOURCE` is `native`, `import` or `interactive`. Native and import modes require one safe `FLIGHT_REF`; interactive mode forbids it and never auto-selects a file. `MINER_START_MODE` is `manual` or `on_boot`. Legacy `AUTO_START`, watchdog and split active/import selection keys are rejected.
 
-A missing file falls back to the normal interactive setup.
+Flight Sheets describe only an XMRig workload: algorithm, ordered pools, TLS, a local identity reference, worker template and CPU policy. They cannot start services or contain a wallet, pool username, password or cloud credential. See `configs/flight-sheets/xmr-ssl.json`.
 
-The format is RIGOS owned. External appliance files are reference input only and are not copied into the implementation.
+## Local identities
+
+The operator resolves `identity_ref` on the local TTY. Values are stored only in the verified persistent state under `/var/lib/rigos/identities`, protected from normal diagnostics, and copied only into the restricted runtime `xmrig.json`. Canonical policy stores the alias, not the value.
+
+External `wal_id` values remain external references. They are never sent to XMRig. Confirmed mappings are local state and are not copied back to EFI_SYSTEM.
+
+## Offline Hive-style import
+
+The importer is a one-way compatibility boundary, not a Hive runtime. It accepts XMRig workload fields, ordered pool URLs, TLS, algorithm, placeholders and whitelisted CPU JSON fragments. `%URL%`, `%WAL%` and `%WORKER_NAME%` become RIGOS proposal inputs resolved locally before confirmation.
+
+Hive API endpoints, rig and farm IDs, rig passwords, remote access fields, tokens, unsupported miners and dangerous unknown fields are rejected. Lifecycle fields are reported but cannot alter machine start policy. Import provenance contains only a source filename, SHA-256, timestamp and redacted warnings.
+
+## Failure and recovery
+
+Parsing and validation finish before persistent or service mutation. Invalid input displays a stable code, safe location and redacted explanation. The operator may retry, inspect diagnostics, explicitly discard the import for the current boot and configure manually, or reboot. RIGOS never edits the source file.
+
+Configuration commits capture the current timezone and miner enabled/running state, stop XMRig, create a complete revision and atomically switch the current pointer. Timezone, unit policy and miner start are then applied in order. Failure restores the previous pointer and runtime snapshot; if restoration is incomplete XMRig remains stopped and the pending transaction is retained for boot recovery. `rigos.nomine=1` blocks mining for one boot without changing persistent policy.
+
+State outcomes `ready` and `grown` permit import. `limited_capacity` and every blocked outcome are negative gates with zero config, timezone or miner mutation. Positive physical Alpha.5 validation depends on the separate state issue reaching a persistent ready state.

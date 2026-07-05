@@ -2,7 +2,7 @@
 
 Local-first CPU appliance delivered as a bootable USB image.
 
-Current preview is `RIGOS 0.0.4-alpha.4`.
+Current development preview is `RIGOS 0.0.4-alpha.5`.
 
 The persistent appliance uses a raw MBR disk image for Legacy BIOS and removable-media UEFI boot.
 
@@ -22,9 +22,10 @@ The recovery ISO is stateless and does not grow the state partition.
 0.0.4-alpha.2  MBR image reached GRUB ROOT_A systemd and password setup
 0.0.4-alpha.3  fixed console order but kept the first boot screen hidden
 0.0.4-alpha.4  keeps the first boot screen on tty and captures answers separately
+0.0.4-alpha.5  adds local rig profiles and portable XMRig Flight Sheets
 ```
 
-Alpha four still requires a new image build, checksum, QEMU boot matrix and physical first-boot completion.
+Alpha five is isolated on its development branch. Alpha four physical state validation remains separate.
 
 ## Verification
 
