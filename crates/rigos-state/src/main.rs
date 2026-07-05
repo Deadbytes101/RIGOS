@@ -5,8 +5,8 @@ use clap::Parser;
 use fs2::FileExt;
 use rigos_schema::{ImageLayoutV1, STATE_LAYOUT_SCHEMA, StateLayoutV1};
 use rigos_state::{
-    LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, validate_layout,
-    validate_layout_for_attestation,
+    LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, boot_parent_disk,
+    validate_layout, validate_layout_for_attestation,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -120,16 +120,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .clone();
 
     let observed = read_lsblk()?;
-    let boot_disk_path = observed
-        .blockdevices
-        .iter()
-        .find(|device| {
-            device.device_type == "disk"
-                && device
-                    .children
-                    .iter()
-                    .any(|child| child.major_minor == boot_major_minor)
-        })
+    let boot_disk_path = boot_parent_disk(&observed, &boot_major_minor)
         .map(|device| device.path.clone())
         .ok_or_else(|| InitError::Discovery("boot parent disk was not found".into()))?;
     let table = read_sfdisk(&boot_disk_path)?;
@@ -287,11 +278,13 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
 
 fn read_lsblk() -> Result<LsblkDocument, InitError> {
     let raw = run(
-        "lsblk",
+        "/usr/bin/python3",
         &[
+            "/usr/lib/rigos/lsblk-compat",
             "--json",
             "--bytes",
             "--paths",
+            "--tree",
             "--output",
             "MAJ:MIN,PATH,TYPE,SIZE,RO,TRAN,PARTN,PARTTYPE,PARTUUID,PARTLABEL,START,PTTYPE,PTUUID,MOUNTPOINTS,FSTYPE,LABEL",
         ],

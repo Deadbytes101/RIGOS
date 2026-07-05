@@ -107,6 +107,19 @@ pub enum LayoutError {
     UnexpectedWritableMount,
 }
 
+pub fn boot_parent_disk<'a>(
+    observed: &'a LsblkDocument,
+    boot_major_minor: &str,
+) -> Option<&'a BlockDevice> {
+    observed.blockdevices.iter().find(|device| {
+        device.device_type == "disk"
+            && device
+                .children
+                .iter()
+                .any(|child| child.major_minor == boot_major_minor)
+    })
+}
+
 pub fn validate_layout(
     manifest: &ImageLayoutV1,
     observed: &LsblkDocument,
@@ -148,17 +161,8 @@ fn validate_layout_with_state_mount(
         return Err(LayoutError::PartitionTableMismatch);
     }
 
-    let disk = observed
-        .blockdevices
-        .iter()
-        .find(|device| {
-            device.device_type == "disk"
-                && device
-                    .children
-                    .iter()
-                    .any(|child| child.major_minor == boot_major_minor)
-        })
-        .ok_or(LayoutError::AmbiguousBootDevice)?;
+    let disk =
+        boot_parent_disk(observed, boot_major_minor).ok_or(LayoutError::AmbiguousBootDevice)?;
 
     if disk.tran.as_deref() != Some("usb") || disk.ro {
         return Err(LayoutError::NotWritableUsb);
