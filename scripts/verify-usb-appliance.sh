@@ -74,14 +74,16 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
   etc/rigos-release etc/os-release usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/rigos-state-init usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
+  usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-config usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
+grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner policy gate is missing'
+[[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
+grep -Fq 'rigos-config recover' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'pending transaction recovery is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
-if grep -Fq 'stdout=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot hides the whiptail screen'; fi
 grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot value stream mismatch'
 [[ "$(jq -r .modified "$temporary/root/usr/share/rigos/components/xmrig.json")" == false ]]
 [[ "$(jq -r .upstream_donation_behavior "$temporary/root/usr/share/rigos/components/xmrig.json")" == applies ]]

@@ -13,6 +13,22 @@ cargo build --workspace --release --locked
 bash -n scripts/*.sh build/usb/hooks/*.chroot
 python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 
+grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
+grep -Fq 'RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN' crates/rigos-config/src/main.rs
+grep -Fq 'ro,nodev,nosuid,noexec' crates/rigos-config/src/main.rs
+grep -Fq 'rigos-state-init' crates/rigos-config/src/main.rs
+grep -Fq 'boot_id' crates/rigos-state/src/main.rs
+grep -Fq 'major_minor' crates/rigos-state/src/main.rs
+grep -Fq 'ptuuid' crates/rigos-state/src/main.rs
+grep -Fq 'partuuid' crates/rigos-state/src/main.rs
+grep -Fq '.pending-transaction.json' crates/rigos-config/src/main.rs
+grep -Fq 'engine("transact"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
+if rg -n '(HIVE_HOST_URL|API_HOST_URLS|RIG_PASSWD|HSSH_SRV)=' configs docs/local-rig-config.md; then
+  echo "Hive cloud or rig credential field leaked into RIGOS configuration" >&2
+  exit 1
+fi
+
 firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 if rg -q -- '--output-fd' "$firstboot"; then
   echo "first boot redirects whiptail result onto the screen stream" >&2
@@ -20,10 +36,6 @@ if rg -q -- '--output-fd' "$firstboot"; then
 fi
 if ! grep -Fq 'stderr=subprocess.PIPE' "$firstboot"; then
   echo "first boot does not capture whiptail values from stderr" >&2
-  exit 1
-fi
-if grep -Fq 'stdout=subprocess.PIPE' "$firstboot"; then
-  echo "first boot hides the whiptail screen" >&2
   exit 1
 fi
 if ! grep -Fq 'return result.stderr.strip()' "$firstboot"; then

@@ -1,0 +1,17 @@
+{
+  "name": "Synthetic XMR SSL",
+  "coin": "XMR",
+  "miner": "xmrig-new",
+  "algo": "rx/0",
+  "pool_urls": [
+    "stratum+ssl://pool-one.invalid:443",
+    "pool-two.invalid:10001"
+  ],
+  "pool_ssl": [true, false],
+  "wal_id": "fixture-wallet-ref",
+  "template": "%WORKER_NAME%",
+  "pass": "x",
+  "cpu_config": "\"huge-pages\": true,\n\"max-threads-hint\": 75",
+  "user_config": "\"cpu\": {\"huge-pages\": true}\n\"api\": {\"worker-id\": \"fixture-worker\"}",
+  "autostart": true
+}
