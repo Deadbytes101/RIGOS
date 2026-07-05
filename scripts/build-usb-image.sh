@@ -164,7 +164,7 @@ done
 grub-install --target=i386-pc --boot-directory="$work/mnt/a/boot" --no-floppy "$loop"
 grub-install --target=x86_64-efi --efi-directory="$work/mnt/efi" --boot-directory="$work/mnt/a/boot" --removable --no-nvram
 cp -a "$work/mnt/a/boot/grub/." "$work/mnt/b/boot/grub/"
-cat >"$work/grub.cfg" <<'EOF'
+cat >"$work/grub.cfg" <<EOF
 set timeout=5
 set default=0
 insmod all_video
@@ -172,19 +172,19 @@ insmod part_msdos
 insmod fat
 insmod ext2
 
-menuentry 'RIGOS 0.0.4-alpha.2' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin console=tty0 console=ttyS0,115200n8
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
-menuentry 'RIGOS 0.0.4-alpha.2 -- safe mode' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} -- safe mode' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin nomodeset noapic noacpi console=tty0 console=ttyS0,115200n8
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin nomodeset console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
 menuentry 'RIGOS ROOT_B fallback' {
     search --no-floppy --label RIGOS_ROOT_B --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin console=tty0 console=ttyS0,115200n8
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
 EOF
