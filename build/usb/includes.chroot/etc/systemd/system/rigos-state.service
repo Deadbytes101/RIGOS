@@ -6,6 +6,10 @@ Before=local-fs.target rigos-firstboot.service rigos-miner.service
 
 [Service]
 Type=oneshot
+RuntimeDirectory=rigos
+RuntimeDirectoryMode=0755
+ExecStartPre=/usr/bin/install -D -m 0755 /usr/lib/rigos/lsblk-compat /run/rigos/compat-bin/lsblk
+Environment=PATH=/run/rigos/compat-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/lib/rigos/rigos-state-init
 RemainAfterExit=yes
 
