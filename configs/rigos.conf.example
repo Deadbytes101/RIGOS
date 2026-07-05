@@ -1,14 +1,10 @@
-# RIGOS local appliance configuration
+# RIGOS machine profile version one
+# Copy to /rigos/rig.conf on the EFI_SYSTEM partition.
 # Data only. Never sourced as shell.
 
 RIGOS_CONFIG_VERSION=1
 NODE_NAME=rig01
 TIMEZONE=Asia/Bangkok
-POOL_HOST=gulf.moneroocean.stream
-POOL_PORT=10128
-POOL_TLS=required
-MINING_IDENTITY=
-CPU_THREADS=0
-HUGE_PAGES=1
-WATCHDOG_ENABLED=0
-AUTO_START=1
+FLIGHT_SOURCE=native
+FLIGHT_REF=xmr-ssl
+MINER_START_MODE=on_boot

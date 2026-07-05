@@ -10,6 +10,7 @@ rigos-core = { path = "../rigos-core" }
 rigos-machine = { path = "../rigos-machine" }
 rigos-xmrig = { path = "../rigos-xmrig" }
 rigos-pool = { path = "../rigos-pool" }
+rigos-config = { path = "../rigos-config" }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

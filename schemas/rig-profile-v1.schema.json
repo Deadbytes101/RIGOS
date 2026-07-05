@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "FlightSource": {
+      "enum": [
+        "native",
+        "import",
+        "interactive"
+      ],
+      "type": "string"
+    },
+    "MinerStartMode": {
+      "enum": [
+        "manual",
+        "on_boot"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "flight_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flight_source": {
+      "$ref": "#/$defs/FlightSource"
+    },
+    "miner_start_mode": {
+      "$ref": "#/$defs/MinerStartMode"
+    },
+    "node_name": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node_name",
+    "timezone",
+    "flight_source",
+    "miner_start_mode"
+  ],
+  "title": "RigProfile",
+  "type": "object"
+}

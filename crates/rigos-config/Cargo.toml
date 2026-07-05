@@ -1,0 +1,24 @@
+[package]
+name = "rigos-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[lib]
+name = "rigos_config"
+
+[[bin]]
+name = "rigos-config"
+path = "src/main.rs"

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use rigos_config::{FlightSheet, IdentityRecord, RigProfile};
 use rigos_core::{CliEnvelope, Diagnostic};
 use rigos_machine::MachineSnapshotV1;
 use rigos_pool::PoolProfile;
@@ -311,6 +312,18 @@ pub fn schemas() -> BTreeMap<&'static str, serde_json::Value> {
     output.insert(
         "state-layout-v1.schema.json",
         serde_json::to_value(schema_for!(StateLayoutV1)).unwrap(),
+    );
+    output.insert(
+        "rig-profile-v1.schema.json",
+        serde_json::to_value(schema_for!(RigProfile)).unwrap(),
+    );
+    output.insert(
+        "flight-sheet-v1.schema.json",
+        serde_json::to_value(schema_for!(FlightSheet)).unwrap(),
+    );
+    output.insert(
+        "identity-v1.schema.json",
+        serde_json::to_value(schema_for!(IdentityRecord)).unwrap(),
     );
     output
 }

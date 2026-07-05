@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "CpuPolicy": {
+      "properties": {
+        "huge_pages": {
+          "type": "boolean"
+        },
+        "max_threads_hint": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threads": {
+          "$ref": "#/$defs/Threads"
+        }
+      },
+      "required": [
+        "threads",
+        "huge_pages",
+        "max_threads_hint"
+      ],
+      "type": "object"
+    },
+    "Pool": {
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "priority": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tls": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "tls",
+        "priority"
+      ],
+      "type": "object"
+    },
+    "Threads": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "type": "string"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "coin": {
+      "type": "string"
+    },
+    "cpu": {
+      "$ref": "#/$defs/CpuPolicy"
+    },
+    "identity_ref": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "pools": {
+      "items": {
+        "$ref": "#/$defs/Pool"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "worker_template": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "coin",
+    "backend",
+    "algorithm",
+    "pools",
+    "identity_ref",
+    "worker_template",
+    "cpu"
+  ],
+  "title": "FlightSheet",
+  "type": "object"
+}

@@ -10,6 +10,7 @@ members = [
   "crates/rigos-contract",
   "crates/rigos-pool",
   "crates/rigos-state",
+  "crates/rigos-config",
 ]
 resolver = "2"
 

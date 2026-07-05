@@ -1,0 +1,22 @@
+{
+  "schema": "rigos.flight-sheet/v1",
+  "name": "xmr-ssl",
+  "coin": "XMR",
+  "backend": "xmrig",
+  "algorithm": "rx/0",
+  "pools": [
+    {
+      "host": "gulf.moneroocean.stream",
+      "port": 10001,
+      "tls": true,
+      "priority": 0
+    }
+  ],
+  "identity_ref": "main-xmr",
+  "worker_template": "{node_name}",
+  "cpu": {
+    "threads": "auto",
+    "huge_pages": true,
+    "max_threads_hint": 100
+  }
+}
