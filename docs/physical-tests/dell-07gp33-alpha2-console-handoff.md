@@ -1,4 +1,4 @@
-# Dell 07GP33 alpha two console handoff
+# Dell 07GP33 alpha two physical result
 
 Board
 
@@ -14,38 +14,62 @@ rigos-usb-amd64-0.0.4-alpha.2.img
 4028775aafdae00cb6b9a124ecd96db8ecc9dea16a29d655e920f01e6c14ead4
 ```
 
-Observed
+Confirmed
 
 - firmware accepted the MBR USB
 - GRUB menu displayed
-- default entry launched the kernel
-- safe mode launched the kernel
+- default ROOT_A entry launched the kernel
 - USB mass storage was detected as a removable SCSI disk
-- no kernel panic was visible in the captured frames
-- safe mode continued to about 70.9 seconds
-- the last visible lines were HDA audio codec and input device registration
-- no first boot dialog appeared after those lines
+- kernel initialization completed without a visible panic
+- zram swap was created
+- systemd reached `multi-user.target`
+- systemd reached `graphical.target`
+- `rigos-firstboot.service` started
+- the local administrator password step completed
 
-Current boot arguments place the serial console after the local console
+The normal entry only showed the local userspace console after reversing console order
 
 ```text
-console=tty0 console=ttyS0,115200n8
+console=ttyS0,115200n8 console=tty0
 ```
 
-The first boot service is bound to `/dev/tty1` and waits for network online before starting.
-
-The safe mode entry also disables APIC and ACPI
+The original safe mode entry used
 
 ```text
 nomodeset noapic noacpi
 ```
 
-The next physical diagnostic must use the normal first entry, not safe mode, and only reverse the console order while enabling status output
+That path was not a valid baseline on this board. Alpha three keeps `nomodeset` but removes `noapic` and `noacpi`.
+
+First boot failure
+
+The next whiptail dialog after password completion was invisible. The firstboot helper captured both stdout and stderr while whiptail renders its UI on stderr. The service remained blocked waiting for input on an unseen dialog.
+
+Alpha three repair
 
 ```text
-console=ttyS0,115200n8 console=tty0 systemd.show_status=yes loglevel=7 debug=1
+whiptail --output-fd 1
+stdout captured for selected values
+stderr inherited by tty1 for UI rendering
 ```
 
-Do not add `noapic` or `noacpi` for that test.
+Accepted from alpha two
 
-This test does not prove ROOT_A mount state initialization miner start or internal disk safety.
+```text
+physical MBR firmware boot
+GRUB
+ROOT_A kernel launch
+ROOT_A userspace
+systemd multi-user
+firstboot password step
+```
+
+Not accepted from alpha two
+
+```text
+visible complete firstboot flow
+policy persistence
+miner start
+state growth result
+internal disk unchanged proof
+```
