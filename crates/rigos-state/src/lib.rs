@@ -185,7 +185,10 @@ pub fn validate_layout(
             .ok_or(LayoutError::PartitionSetMismatch)?;
         if observed_partition.start != contract.start_lba
             || observed_partition.size < contract.minimum_size_lba
-            || !eq_mbr_type(Some(&observed_partition.partition_type), &contract.type_guid)
+            || !eq_mbr_type(
+                Some(&observed_partition.partition_type),
+                &contract.type_guid,
+            )
             || observed_partition.bootable != (number == 1)
         {
             return Err(LayoutError::PartitionMismatch(number));
@@ -282,7 +285,14 @@ mod tests {
                 partition(1, "EFI_SYSTEM", "0x0c", "5249474f-01", 2048, 524288),
                 partition(2, "RIGOS_ROOT_A", "0x83", "5249474f-02", 526336, 2097152),
                 partition(3, "RIGOS_ROOT_B", "0x83", "5249474f-03", 2623488, 2097152),
-                partition(4, "RIGOS_STATE_SEED", "0x83", "5249474f-04", 4720640, 524288),
+                partition(
+                    4,
+                    "RIGOS_STATE_SEED",
+                    "0x83",
+                    "5249474f-04",
+                    4720640,
+                    524288,
+                ),
             ],
         }
     }
