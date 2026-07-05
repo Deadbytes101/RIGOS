@@ -1,10 +1,10 @@
 # RIGOS
 
-CPU-only USB appliance for local Linux mining rigs.
+Local-first CPU appliance delivered as a bootable USB image.
 
-Current preview is `RIGOS 0.0.4-alpha.3`.
+Current preview is `RIGOS 0.0.4-alpha.4`.
 
-The persistent appliance is a raw MBR disk image. It supports Legacy BIOS through GRUB boot code in LBA0 and removable-media UEFI through `EFI/BOOT/BOOTX64.EFI`.
+The persistent appliance uses a raw MBR disk image for Legacy BIOS and removable-media UEFI boot.
 
 ```text
 partition 1  EFI_SYSTEM FAT32 active
@@ -18,20 +18,21 @@ The recovery ISO is stateless and does not grow the state partition.
 ## Alpha history
 
 ```text
-0.0.4-alpha.1  GPT image passed QEMU and failed Dell Legacy BIOS before GRUB
+0.0.4-alpha.1  GPT image failed Dell Legacy BIOS before GRUB
 0.0.4-alpha.2  MBR image reached GRUB ROOT_A systemd and password setup
-0.0.4-alpha.3  repairs first boot terminal rendering and console order
+0.0.4-alpha.3  fixed console order but kept the first boot screen hidden
+0.0.4-alpha.4  keeps the first boot screen on tty and captures answers separately
 ```
 
-Alpha three still requires a new image build, checksum, QEMU boot matrix and physical first-boot completion.
+Alpha four still requires a new image build, checksum, QEMU boot matrix and physical first-boot completion.
 
-## Build checks
+## Verification
 
 ```bash
 ./scripts/verify.sh
 ```
 
-## Local inspection commands
+## Local inspection
 
 ```bash
 cargo run -p rigosd -- machine inspect
@@ -39,14 +40,5 @@ cargo run -p rigosd -- machine inspect --json
 cargo run -p rigosd -- miner inspect --json
 cargo run -p rigosd -- doctor --json
 ```
-
-## Product boundaries
-
-- local-first operation
-- pool-neutral configuration
-- generic x86-64 release target
-- no automatic internal disk installation
-- exact USB parent verification before state growth
-- official pinned XMRig binary with recorded provenance
 
 See [architecture](docs/architecture.md), [USB image build](docs/usb-image-build.md), [product contract](docs/product-contract.md), [pool contract](docs/pool-contract.md), [release claims](docs/release-claims.md), and [physical evidence policy](docs/physical-validation-evidence.md).
