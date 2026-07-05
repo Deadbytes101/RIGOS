@@ -1,9 +1,12 @@
 #![forbid(unsafe_code)]
 
+#[path = "lib_entry.rs"]
+mod compatibility;
+
 use clap::{Parser, Subcommand};
 use rigos_config::{
     ConfigDiagnostic, ConfigError, FlightSource, IdentityRecord, MinerStartMode, Proposal,
-    commit_revision, import_hive_style, parse_flight_sheet, parse_rig_profile, safe_join,
+    commit_revision, parse_flight_sheet, parse_rig_profile, safe_join,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -368,7 +371,7 @@ fn prepare_from_root(
             let filename = profile.flight_ref.as_deref().unwrap();
             let path = safe_join(&root.join("rigos/import"), filename)?;
             let bytes = read_regular_bounded(&path, rigos_config::MAX_SHEET_BYTES)?;
-            let (sheet, provenance) = import_hive_style(&bytes, filename)?;
+            let (sheet, provenance) = compatibility::import_hive_style(&bytes, filename)?;
             (sheet, Some(provenance), bytes)
         }
         FlightSource::Interactive => {
