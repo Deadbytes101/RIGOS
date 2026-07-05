@@ -1,6 +1,6 @@
 [Unit]
 Description=RIGOS first-boot configuration
-After=network-online.target rigos-state.service
+After=network-online.target rigos-state.service rigos-profile-apply.service
 Wants=network-online.target
 Requires=rigos-state.service
 Conflicts=getty@tty1.service

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json
-import math
 import os
 import re
 import subprocess
@@ -8,108 +7,201 @@ import tempfile
 from pathlib import Path
 
 STATE = Path("/var/lib/rigos")
+ENGINE = "/usr/lib/rigos/rigos-config"
 HOST_RE = re.compile(r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$")
+SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
 
 
 def dialog(*args: str) -> str:
     result = subprocess.run(
         ["whiptail", "--title", "RIGOS FIRST BOOT", *args],
-        check=False,
-        text=True,
-        stderr=subprocess.PIPE,
+        check=False, text=True, stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
         raise SystemExit("Configuration cancelled; reboot to try again.")
     return result.stderr.strip()
 
 
-def prompt(label: str, default: str = "") -> str:
-    return dialog("--inputbox", label, "10", "72", default)
+def prompt(label: str, default: str = "", password: bool = False) -> str:
+    kind = "--passwordbox" if password else "--inputbox"
+    return dialog(kind, label, "10", "72", default)
 
 
-def atomic_json(path: Path, value: object, mode: int = 0o640) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+def confirm(message: str) -> bool:
+    result = subprocess.run(["whiptail", "--title", "RIGOS FIRST BOOT", "--yesno", message, "14", "72"], check=False)
+    return result.returncode == 0
+
+
+def engine(*args: str, stdin: object | None = None) -> tuple[bool, dict]:
+    raw = None if stdin is None else (json.dumps(stdin) + "\n")
+    result = subprocess.run([ENGINE, *args], input=raw, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    source = result.stdout if result.returncode == 0 else result.stderr
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, indent=2, sort_keys=True)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, mode)
-        os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        value = json.loads(source.strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        value = {"code": "RIGOS_CONFIG_INVALID_VALUE", "message": "configuration engine failed without a diagnostic"}
+    return result.returncode == 0, value
 
 
-def main() -> None:
-    status_path = Path("/run/rigos/state-status.json")
-    state_outcome = "stateless"
-    if status_path.exists():
-        try:
-            state_outcome = json.loads(status_path.read_text(encoding="utf-8"))["outcome"]
-        except (OSError, KeyError, json.JSONDecodeError):
-            state_outcome = "stateless"
-    dialog("--msgbox", f"Persistent state status: {state_outcome}\n\nNo disk override is available when layout verification fails.", "12", "72")
-    dialog("--msgbox", "Set the local administrator password next. It remains on this machine and is never sent to RIGOS.", "10", "72")
-    subprocess.run(["passwd", "rigosadmin"], check=True)
-    dialog("--msgbox", "MINER\nXMRig 6.26.0 — official upstream binary\n\nRIGOS fee: 0%\nUpstream XMRig donation behavior applies.\nRIGOS does not receive or redirect it.", "14", "72")
-    dialog("--msgbox", "Configure a compatible Stratum pool. RIGOS has no account and no forced pool.", "10", "72")
+def diagnostic_text(error: dict) -> str:
+    parts = [error.get("code", "RIGOS_CONFIG_INVALID_VALUE")]
+    location = error.get("file") or "rig.conf"
+    if error.get("line"):
+        location += f" line {error['line']}"
+    parts.append(location)
+    if error.get("key"):
+        parts.append(f"Key {error['key']}")
+    parts.append(error.get("message", "Invalid configuration"))
+    return "\n".join(parts)
+
+
+def manual_proposal() -> tuple[dict, str, str]:
     node = prompt("Node name", "rig01").strip()
-    endpoint = prompt("Pool endpoint (host:port)", "gulf.moneroocean.stream:10128").strip()
-    identity = prompt("Mining identity (wallet or pool username)").strip()
+    timezone = prompt("IANA timezone", "UTC").strip()
+    if not Path("/usr/share/zoneinfo", timezone).is_file():
+        raise SystemExit("Timezone is not installed or is invalid.")
+    endpoint = prompt("Pool endpoint host:port", "gulf.moneroocean.stream:10128").strip()
+    algorithm = prompt("XMRig algorithm", "rx/0").strip()
     tls = dialog("--menu", "TLS policy", "12", "60", "2", "required", "TLS enabled", "disabled", "Plain Stratum")
-    threads_text = prompt("CPU threads (0 = automatic)", "0").strip()
-
-    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,62}", node):
-        raise SystemExit("Invalid node name.")
+    threads = prompt("CPU threads auto or 1 to 1024", "auto").strip()
+    huge_pages = dialog("--menu", "Huge pages", "12", "60", "2", "enabled", "Enable huge pages", "disabled", "Disable huge pages")
+    start = dialog("--menu", "Miner start policy", "12", "64", "2", "on_boot", "Start automatically on boot", "manual", "Manual start only")
+    alias = prompt("Local mining identity alias", "main-xmr").strip()
+    if not SLUG_RE.fullmatch(node) or not SLUG_RE.fullmatch(alias):
+        raise SystemExit("Invalid node name or identity alias.")
     if endpoint.count(":") != 1:
         raise SystemExit("Endpoint must use host:port syntax.")
     host, port_text = endpoint.rsplit(":", 1)
     if not HOST_RE.fullmatch(host) or not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
         raise SystemExit("Invalid pool endpoint.")
-    if not identity or any(character.isspace() for character in identity):
-        raise SystemExit("Mining identity cannot be empty or contain whitespace.")
-    if not threads_text.isdigit() or int(threads_text) > 1024:
-        raise SystemExit("CPU threads must be between 0 and 1024.")
-
-    policy = {
-        "schema": "rigos.policy/v1",
-        "node_name": node,
-        "pool": {
-            "profile": "custom-stratum",
-            "endpoints": [{"host": host.lower(), "port": int(port_text)}],
-            "tls": tls,
-            "authentication": {"type": "mining_identity", "identity": identity},
-            "backend": "xmrig",
-            "algorithm": "auto",
+    if threads != "auto" and (not threads.isdigit() or not 1 <= int(threads) <= 1024):
+        raise SystemExit("Invalid CPU thread count.")
+    proposal = {
+        "schema": "rigos.config-proposal/v1",
+        "profile": {"node_name": node, "timezone": timezone, "flight_source": "interactive", "flight_ref": None, "miner_start_mode": start},
+        "flight_sheet": {
+            "schema": "rigos.flight-sheet/v1", "name": "manual-xmrig", "coin": "XMR", "backend": "xmrig", "algorithm": algorithm,
+            "pools": [{"host": host.lower(), "port": int(port_text), "tls": tls == "required", "priority": 0}],
+            "identity_ref": alias, "worker_template": "{node_name}",
+            "cpu": {"threads": threads if threads == "auto" else int(threads), "huge_pages": huge_pages == "enabled", "max_threads_hint": 100},
         },
-        "cpu": {"threads": int(threads_text), "huge_pages": True},
+        "provenance": None, "source_sha256": "manual",
     }
-    pool_url = f"{host}:{port_text}"
-    xmrig = {
-        "autosave": False,
-        "background": False,
-        "cpu": {"enabled": True, "huge-pages": True},
-        "pools": [{"url": pool_url, "user": identity, "pass": node, "tls": tls == "required", "keepalive": True}],
-        "api": {"worker-id": node},
-        "http": {"enabled": False},
-    }
-    if int(threads_text) > 0:
-        logical_cpus = os.cpu_count() or 1
-        xmrig["cpu"]["max-threads-hint"] = min(100, max(1, math.ceil(int(threads_text) * 100 / logical_cpus)))
+    return proposal, alias, ""
 
-    atomic_json(STATE / "policy.json", policy)
-    atomic_json(STATE / "xmrig.json", xmrig)
-    subprocess.run(["chown", "rigos:rigos", STATE / "policy.json", STATE / "xmrig.json"], check=True)
-    subprocess.run(["systemctl", "enable", "--now", "rigos-miner.service"], check=True)
-    dialog("--msgbox", "Configuration saved atomically. XMRig has been started.", "9", "64")
+
+def prepare_import(path: str) -> tuple[dict, bool]:
+    while True:
+        ok, result = engine("prepare", "--output", path)
+        if ok:
+            return json.loads(Path(path).read_text(encoding="utf-8")), False
+        if result.get("code") == "RIGOS_CONFIG_FILE_MISSING":
+            return manual_proposal()[0], True
+        if result.get("code") == "RIGOS_FLIGHT_SHEET_MISSING" and "interactive" in result.get("message", ""):
+            found, choices = engine("discover")
+            if found:
+                items = [("manual", "Configure manually"), ("none", "Do not configure mining now")]
+                items += [(f"native:{name}", f"Native {name}") for name in choices.get("native", [])]
+                items += [(f"import:{name}", f"Import {name}") for name in choices.get("import", [])]
+                flat = [value for pair in items for value in pair]
+                selected = dialog("--menu", "Select Flight Sheet", "20", "76", str(min(12, len(items))), *flat)
+                if selected == "manual":
+                    return manual_proposal()[0], True
+                if selected == "none":
+                    raise SystemExit("Mining left unconfigured. Reboot to configure later.")
+                source, reference = selected.split(":", 1)
+                ok, prepared = engine("prepare", "--output", path, "--flight-source", source, "--flight-ref", reference)
+                if ok:
+                    return json.loads(Path(path).read_text(encoding="utf-8")), False
+                result = prepared
+        action = dialog("--menu", diagnostic_text(result), "20", "76", "4", "retry", "Retry import", "manual", "Continue with manual setup", "diagnostics", "Show diagnostics", "reboot", "Reboot")
+        if action == "retry":
+            continue
+        if action == "diagnostics":
+            dialog("--msgbox", diagnostic_text(result), "18", "76")
+            continue
+        if action == "reboot":
+            subprocess.run(["systemctl", "reboot"], check=False)
+            raise SystemExit(0)
+        if confirm("Discard invalid rigos.conf for this boot and continue manually\n\nThe source file will not be changed or deleted."):
+            return manual_proposal()[0], True
+
+
+def resolve_identity(proposal: dict) -> dict:
+    requested = proposal["flight_sheet"]["identity_ref"]
+    identity_dir = STATE / "identities"
+    candidates = []
+    if identity_dir.is_dir():
+        for path in sorted(identity_dir.glob("*.json"))[:64]:
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                if record.get("schema") == "rigos.identity/v1":
+                    candidates.append(record)
+            except (OSError, json.JSONDecodeError):
+                continue
+    exact = next((item for item in candidates if item.get("alias") == requested), None)
+    if exact and confirm(f"Reuse local identity alias {requested}\n\nValue suffix {exact['value'][-6:].rjust(len(exact['value'][-6:]) + 4, '*')}"):
+        return exact
+    aliases = [(f"existing:{item['alias']}", f"Use {item['alias']} suffix ****{item['value'][-4:]}") for item in candidates]
+    choices = aliases + [("new", "Add a new local identity"), ("none", "Leave mining unconfigured"), ("reboot", "Cancel and reboot")]
+    selected = dialog("--menu", "Mining identity is unresolved", "18", "76", str(min(12, len(choices))), *[value for pair in choices for value in pair])
+    if selected.startswith("existing:"):
+        alias = selected.split(":", 1)[1]
+        return next(item for item in candidates if item["alias"] == alias)
+    if selected == "none":
+        subprocess.run(["systemctl", "stop", "rigos-miner.service"], check=False)
+        raise SystemExit("Mining remains unconfigured and stopped.")
+    if selected == "reboot":
+        subprocess.run(["systemctl", "reboot"], check=False)
+        raise SystemExit(0)
+    alias = prompt("Local identity alias", requested if SLUG_RE.fullmatch(requested) else "main-xmr").strip()
+    value = prompt("Mining identity value", password=True).strip()
+    if not SLUG_RE.fullmatch(alias) or not value or len(value) > 512 or any(character.isspace() or ord(character) < 32 for character in value):
+        raise SystemExit("Invalid local mining identity.")
+    proposal["flight_sheet"]["identity_ref"] = alias
+    return {"schema": "rigos.identity/v1", "alias": alias, "kind": "mining_identity", "value": value, "created_locally": True}
+
+
+def main() -> None:
+    status_path = Path("/run/rigos/state-status.json")
+    try:
+        state_outcome = json.loads(status_path.read_text(encoding="utf-8"))["outcome"]
+    except (OSError, KeyError, json.JSONDecodeError):
+        state_outcome = "unavailable"
+    if state_outcome not in {"ready", "grown"}:
+        dialog("--msgbox", f"Persistent state status: {state_outcome}\n\nConfiguration and mining are blocked until the verified USB state is ready.", "13", "72")
+        raise SystemExit(1)
+
+    with tempfile.NamedTemporaryFile(prefix="rigos-proposal-", dir="/run/rigos", delete=False) as stream:
+        proposal_path = stream.name
+    os.unlink(proposal_path)
+    try:
+        proposal, _manual = prepare_import(proposal_path)
+        identity = resolve_identity(proposal)
+        sheet = proposal["flight_sheet"]
+        profile = proposal["profile"]
+        primary = sheet["pools"][0]
+        summary = (
+            f"Node {profile['node_name']}\nFlight Sheet {sheet['name']}\n"
+            f"Pool {primary['host']}:{primary['port']}\nFallback pools {len(sheet['pools']) - 1}\n"
+            f"Algorithm {sheet['algorithm']}\nTLS {'enabled' if primary['tls'] else 'disabled'}\n"
+            f"Identity {identity['alias']} suffix ****{identity['value'][-4:]}\n"
+            f"Start policy {profile['miner_start_mode']}\nHuge pages {sheet['cpu']['huge_pages']}"
+        )
+        if not confirm(summary + "\n\nCommit this configuration locally?"):
+            raise SystemExit("Configuration not confirmed; no changes were written.")
+        dialog("--msgbox", "Set the local administrator password next. It remains on this machine.", "10", "72")
+        subprocess.run(["passwd", "rigosadmin"], check=True)
+        ok, result = engine("transact", stdin={"proposal": proposal, "identity": identity})
+        if not ok:
+            dialog("--msgbox", f"Configuration transaction failed\n{diagnostic_text(result)}\n\nPrevious runtime state was restored or mining was left stopped for recovery.", "18", "76")
+            raise SystemExit(1)
+        dialog("--msgbox", f"Configuration saved atomically.\nMiner started: {result.get('miner_started', False)}", "10", "64")
+    finally:
+        try:
+            os.unlink(proposal_path)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
