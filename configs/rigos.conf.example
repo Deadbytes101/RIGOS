@@ -1,0 +1,14 @@
+# RIGOS local appliance configuration
+# Data only. Never sourced as shell.
+
+RIGOS_CONFIG_VERSION=1
+NODE_NAME=rig01
+TIMEZONE=Asia/Bangkok
+POOL_HOST=gulf.moneroocean.stream
+POOL_PORT=10128
+POOL_TLS=required
+MINING_IDENTITY=
+CPU_THREADS=0
+HUGE_PAGES=1
+WATCHDOG_ENABLED=0
+AUTO_START=1
