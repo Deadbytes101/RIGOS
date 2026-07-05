@@ -14,18 +14,58 @@ bash -n scripts/*.sh build/usb/hooks/*.chroot
 python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 
 firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-if ! grep -Fq -- '"--output-fd", "1"' "$firstboot"; then
-  echo "first boot output fd contract missing" >&2
+if rg -q -- '--output-fd' "$firstboot"; then
+  echo "first boot redirects whiptail result onto the screen stream" >&2
   exit 1
 fi
-if grep -Fq 'stderr=subprocess.PIPE' "$firstboot"; then
-  echo "first boot hides whiptail UI" >&2
+if ! grep -Fq 'stderr=subprocess.PIPE' "$firstboot"; then
+  echo "first boot does not capture whiptail values from stderr" >&2
   exit 1
 fi
-if ! grep -Fq 'return result.stdout.strip()' "$firstboot"; then
-  echo "first boot does not read the selected value from stdout" >&2
+if grep -Fq 'stdout=subprocess.PIPE' "$firstboot"; then
+  echo "first boot hides the whiptail screen" >&2
   exit 1
 fi
+if ! grep -Fq 'return result.stderr.strip()' "$firstboot"; then
+  echo "first boot does not read the selected value from stderr" >&2
+  exit 1
+fi
+python3 - "$firstboot" <<'PY'
+import runpy
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="rigos_firstboot_verify")
+subprocess_module = namespace["subprocess"]
+real_run = subprocess_module.run
+seen = {}
+
+class Result:
+    returncode = 0
+    stderr = "selected\n"
+
+
+def fake_run(argv, **kwargs):
+    seen["argv"] = argv
+    seen["kwargs"] = kwargs
+    return Result()
+
+
+subprocess_module.run = fake_run
+try:
+    value = namespace["dialog"]("--inputbox", "test", "1", "1")
+finally:
+    subprocess_module.run = real_run
+
+if value != "selected":
+    raise SystemExit("first boot dialog did not return the selected value")
+if "--output-fd" in seen["argv"]:
+    raise SystemExit("first boot dialog rewired the whiptail output stream")
+if seen["kwargs"].get("stderr") is not subprocess_module.PIPE:
+    raise SystemExit("first boot dialog does not capture stderr")
+if "stdout" in seen["kwargs"]:
+    raise SystemExit("first boot dialog does not leave stdout on tty")
+PY
+
 if ! rg -q 'label: dos' scripts/build-usb-image.sh; then
   echo "MBR appliance table declaration missing" >&2
   exit 1
@@ -43,7 +83,7 @@ if ! rg -q 'EFI/BOOT/BOOTX64.EFI' scripts/verify-usb-appliance.sh; then
   exit 1
 fi
 
- tmp="$(mktemp -d)"
+tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cargo run --quiet --locked -p rigosd -- machine inspect --json >"$tmp/machine.json"
 cargo run --quiet --locked -p rigosd -- miner inspect --json >"$tmp/miner.json"
