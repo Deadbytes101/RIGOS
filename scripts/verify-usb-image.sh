@@ -17,6 +17,8 @@ temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 xorriso -osirrox on -indev "$iso" \
   -extract /live/filesystem.squashfs "$temporary/filesystem.squashfs" >/dev/null 2>&1
+xorriso -osirrox on -indev "$iso" \
+  -extract /isolinux/live.cfg "$temporary/live.cfg" >/dev/null 2>&1
 unsquashfs -no-progress -d "$temporary/root" "$temporary/filesystem.squashfs" \
   usr/lib/rigos/xmrig \
   usr/local/sbin/rigos-firstboot \
@@ -27,7 +29,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/filesystem.squashfs" \
 
 [[ -x "$temporary/root/usr/lib/rigos/xmrig" ]] || die 'XMRig is missing or not executable'
 [[ -x "$temporary/root/usr/local/sbin/rigos-firstboot" ]] || die 'first-boot TUI is missing'
-grep -q 'rigos.stateless=1' <(xorriso -osirrox on -indev "$iso" -cat /isolinux/live.cfg 2>/dev/null) \
+grep -q 'rigos.stateless=1' "$temporary/live.cfg" \
   || die 'recovery image is not explicitly stateless'
 "$temporary/root/usr/lib/rigos/xmrig" --version | grep -q '^XMRig 6\.26\.0$' \
   || die 'unexpected XMRig version'
