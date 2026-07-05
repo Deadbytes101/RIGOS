@@ -10,19 +10,22 @@ sgdisk --verify "$image" | grep -q 'No problems found' || die 'GPT verification 
 [[ "$(jq -r .artifact_sha256 "$manifest")" == "$(sha256sum "$image" | cut -d' ' -f1)" ]] || die 'image hash mismatch'
 [[ "$(jq -r .source_commit "$manifest")" =~ ^[0-9a-f]{40}$ ]] || die 'invalid source commit'
 
-loop="$(losetup --find --show --partscan --read-only "$image")"
+p2="$(losetup --find --show --read-only --offset $((6144 * 512)) --sizelimit $((524288 * 512)) "$image")"
+p3="$(losetup --find --show --read-only --offset $((530432 * 512)) --sizelimit $((2097152 * 512)) "$image")"
+p4="$(losetup --find --show --read-only --offset $((2627584 * 512)) --sizelimit $((2097152 * 512)) "$image")"
+p5="$(losetup --find --show --read-only --offset $((4724736 * 512)) --sizelimit $((524288 * 512)) "$image")"
 temporary="$(mktemp -d)"
-cleanup(){ set +e; mountpoint -q "$temporary/a" && umount "$temporary/a"; mountpoint -q "$temporary/b" && umount "$temporary/b"; losetup -d "$loop" 2>/dev/null; rm -rf "$temporary"; }
+cleanup(){ set +e; mountpoint -q "$temporary/a" && umount "$temporary/a"; mountpoint -q "$temporary/b" && umount "$temporary/b"; losetup -d "$p5" "$p4" "$p3" "$p2" 2>/dev/null; rm -rf "$temporary"; }
 trap cleanup EXIT
-partprobe "$loop"; udevadm settle
 mkdir -p "$temporary/a" "$temporary/b" "$temporary/root"
-mount -o ro "${loop}p3" "$temporary/a"; mount -o ro "${loop}p4" "$temporary/b"
-[[ "$(blkid -s PARTLABEL -o value "${loop}p1")" == BIOS_BOOT ]]
-[[ "$(blkid -s PARTLABEL -o value "${loop}p2")" == EFI_SYSTEM ]]
-[[ "$(blkid -s PARTLABEL -o value "${loop}p3")" == RIGOS_ROOT_A ]]
-[[ "$(blkid -s PARTLABEL -o value "${loop}p4")" == RIGOS_ROOT_B ]]
-[[ "$(blkid -s PARTLABEL -o value "${loop}p5")" == RIGOS_STATE_SEED ]]
-[[ "$(blkid -s LABEL -o value "${loop}p5")" == RIGOS_STATE_SEED ]]
+mount -o ro "$p3" "$temporary/a"; mount -o ro "$p4" "$temporary/b"
+for partition in '1 BIOS_BOOT' '2 EFI_SYSTEM' '3 RIGOS_ROOT_A' '4 RIGOS_ROOT_B' '5 RIGOS_STATE_SEED'; do
+  number="${partition%% *}"; label="${partition#* }"
+  sgdisk --info="$number" "$image" | grep -Fq "Partition name: '$label'" || die "partition $number label mismatch"
+done
+[[ "$(blkid -s LABEL -o value "$p5")" == RIGOS_STATE_SEED ]]
+[[ "$(sha256sum "$p3" | cut -d' ' -f1)" == "$(jq -r .root_a_sha256 "$manifest")" ]] || die 'ROOT_A hash mismatch'
+[[ "$(sha256sum "$p4" | cut -d' ' -f1)" == "$(jq -r .root_b_sha256 "$manifest")" ]] || die 'ROOT_B hash mismatch'
 cmp "$temporary/a/live/filesystem.squashfs" "$temporary/b/live/filesystem.squashfs"
 cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(sha256sum "$temporary/a/live/filesystem.squashfs"|cut -d' ' -f1)" == "$(jq -r .root_payload_sha256 "$manifest")" ]]

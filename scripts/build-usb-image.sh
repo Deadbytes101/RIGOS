@@ -182,8 +182,8 @@ EOF
 install -m 0644 "$work/grub.cfg" "$work/mnt/a/boot/grub/grub.cfg"
 install -m 0644 "$work/grub.cfg" "$work/mnt/b/boot/grub/grub.cfg"
 sync
-root_a_sha="$(sha256sum "$p3" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p4" | cut -d' ' -f1)"
 umount "$work/mnt/state" "$work/mnt/b" "$work/mnt/a" "$work/mnt/efi"
+root_a_sha="$(sha256sum "$p3" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p4" | cut -d' ' -f1)"
 sgdisk --attributes=3:set:60 --attributes=4:set:60 "$image"
 sync; losetup -d "$p5" "$p4" "$p3" "$p2" "$loop"; trap - EXIT
 
