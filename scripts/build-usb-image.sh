@@ -133,12 +133,16 @@ sgdisk --clear --set-alignment=2048 --disk-guid=f578604e-1f8c-5543-a2d0-c16fe17e
   --new=4:2627584:4724735 --typecode=4:0b331da4-7c84-55c3-a328-a764d4641d1d --change-name=4:RIGOS_ROOT_B --partition-guid=4:97e3cb3a-0f93-5f4b-8e68-5f95f3734b46 \
   --new=5:4724736:5249023 --typecode=5:7ad8daed-eb61-5fbc-8fbd-d82f9e0b81ee --change-name=5:RIGOS_STATE_SEED --partition-guid=5:56cb8d9e-20f8-5502-bfcd-3e457fe92bfe "$image"
 
-loop="$(losetup --find --show "$image")"
-p2="$(losetup --find --show --offset $((6144 * 512)) --sizelimit $((524288 * 512)) "$image")"
-p3="$(losetup --find --show --offset $((530432 * 512)) --sizelimit $((2097152 * 512)) "$image")"
-p4="$(losetup --find --show --offset $((2627584 * 512)) --sizelimit $((2097152 * 512)) "$image")"
-p5="$(losetup --find --show --offset $((4724736 * 512)) --sizelimit $((524288 * 512)) "$image")"
-cleanup(){ set +e; mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"; mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"; mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"; mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"; losetup -d "$p5" "$p4" "$p3" "$p2" "$loop" 2>/dev/null; }
+loop="$(losetup --find --show --partscan "$image")"
+loop_name="$(basename "$loop")"
+for number in 1 2 3 4 5; do
+  node="${loop}p${number}"
+  device_number="$(cat "/sys/class/block/${loop_name}p${number}/dev")"
+  [[ ! -e "$node" ]] || die "partition node already exists: $node"
+  mknod "$node" b "${device_number%:*}" "${device_number#*:}"
+done
+p2="${loop}p2"; p3="${loop}p3"; p4="${loop}p4"; p5="${loop}p5"
+cleanup(){ set +e; mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"; mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"; mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"; mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"; losetup -d "$loop" 2>/dev/null; rm -f "${loop}p"{1,2,3,4,5}; }
 trap cleanup EXIT
 mkfs.vfat -F 32 -n EFI_SYSTEM "$p2"
 mkfs.ext4 -q -F -L RIGOS_ROOT_A -U 065b5c7f-076a-50dd-92e4-a600a5c6682f -m 0 "$p3"
@@ -185,7 +189,7 @@ sync
 umount "$work/mnt/state" "$work/mnt/b" "$work/mnt/a" "$work/mnt/efi"
 root_a_sha="$(sha256sum "$p3" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p4" | cut -d' ' -f1)"
 sgdisk --attributes=3:set:60 --attributes=4:set:60 "$image"
-sync; losetup -d "$p5" "$p4" "$p3" "$p2" "$loop"; trap - EXIT
+sync; losetup -d "$loop"; rm -f "${loop}p"{1,2,3,4,5}; trap - EXIT
 
 output="$repo/dist/usb"
 rm -rf "$output"; mkdir -p "$output"
