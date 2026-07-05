@@ -6,6 +6,8 @@ Before=local-fs.target rigos-firstboot.service rigos-miner.service
 
 [Service]
 Type=oneshot
+RuntimeDirectory=rigos
+RuntimeDirectoryMode=0755
 ExecStart=/usr/lib/rigos/rigos-state-init
 RemainAfterExit=yes
 

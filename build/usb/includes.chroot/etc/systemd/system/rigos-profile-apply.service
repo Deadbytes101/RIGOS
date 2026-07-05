@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply RIGOS persistent machine profile
+After=rigos-state.service
+Requires=rigos-state.service
+Before=rigos-firstboot.service rigos-miner.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/lib/rigos/rigos-config recover
+ExecStart=/usr/lib/rigos/rigos-config timezone
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

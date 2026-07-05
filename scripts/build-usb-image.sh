@@ -26,7 +26,7 @@ export RUSTFLAGS='-C target-cpu=x86-64'
 export SOURCE_DATE_EPOCH="$source_epoch"
 export CARGO_TARGET_DIR="$work/target"
 cd "$source_root"
-cargo build --release --locked -p rigosd -p rigos-state
+cargo build --release --locked -p rigosd -p rigos-state -p rigos-config
 
 mkdir -p "$live/config/package-lists" "$live/config/includes.chroot" \
   "$live/config/hooks/live" "$live/config/bootloaders"
@@ -37,6 +37,7 @@ cp -a build/usb/bootloaders/. "$live/config/bootloaders/"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigosd" "$live/config/includes.chroot/usr/lib/rigos/rigosd"
 ln -s rigosd "$live/config/includes.chroot/usr/lib/rigos/rigosctl"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigos-state-init" "$live/config/includes.chroot/usr/lib/rigos/rigos-state-init"
+install -D -m 0755 "$CARGO_TARGET_DIR/release/rigos-config" "$live/config/includes.chroot/usr/lib/rigos/rigos-config"
 ln -s /run/live/medium/image-layout.json "$live/config/includes.chroot/usr/lib/rigos/image-layout.json"
 
 xmrig_archive="xmrig-${RIGOS_XMRIG_VERSION}-linux-static-x64.tar.gz"

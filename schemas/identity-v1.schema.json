@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "alias": {
+      "type": "string"
+    },
+    "created_locally": {
+      "type": "boolean"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "alias",
+    "kind",
+    "value",
+    "created_locally"
+  ],
+  "title": "IdentityRecord",
+  "type": "object"
+}

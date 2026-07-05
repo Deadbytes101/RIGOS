@@ -1,6 +1,6 @@
 [Unit]
 Description=RIGOS managed XMRig
-After=network-online.target rigos-state.service
+After=network-online.target rigos-state.service rigos-profile-apply.service
 Wants=network-online.target
 Requires=rigos-state.service
 ConditionPathExists=/var/lib/rigos/xmrig.json
@@ -9,6 +9,7 @@ ConditionPathExists=/var/lib/rigos/xmrig.json
 Type=simple
 User=rigos
 Group=rigos
+ExecCondition=/usr/lib/rigos/rigos-config gate
 ExecStart=/usr/lib/rigos/xmrig --config=/var/lib/rigos/xmrig.json
 Restart=on-failure
 RestartSec=5s

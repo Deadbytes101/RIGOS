@@ -1,4 +1,4 @@
-FROM rust:1.85.1-bookworm
+FROM docker.io/library/rust:1.85.1-bookworm
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

@@ -60,7 +60,13 @@ pub struct SfdiskPartition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedLayout {
     pub disk_path: String,
+    pub disk_major_minor: String,
+    pub disk_ptuuid: String,
     pub disk_size_bytes: u64,
+    pub efi_path: String,
+    pub efi_major_minor: String,
+    pub efi_partuuid: String,
+    pub root_major_minor: String,
     pub state_path: String,
     pub state_start_lba: u64,
     pub state_size_lba: u64,
@@ -101,11 +107,50 @@ pub enum LayoutError {
     UnexpectedWritableMount,
 }
 
+pub fn boot_parent_disk<'a>(
+    observed: &'a LsblkDocument,
+    boot_major_minor: &str,
+) -> Option<&'a BlockDevice> {
+    observed.blockdevices.iter().find(|device| {
+        device.device_type == "disk"
+            && device
+                .children
+                .iter()
+                .any(|child| child.major_minor == boot_major_minor)
+    })
+}
+
 pub fn validate_layout(
     manifest: &ImageLayoutV1,
     observed: &LsblkDocument,
     sfdisk: &SfdiskDocument,
     boot_major_minor: &str,
+) -> Result<VerifiedLayout, LayoutError> {
+    validate_layout_with_state_mount(manifest, observed, sfdisk, boot_major_minor, None)
+}
+
+pub fn validate_layout_for_attestation(
+    manifest: &ImageLayoutV1,
+    observed: &LsblkDocument,
+    sfdisk: &SfdiskDocument,
+    boot_major_minor: &str,
+    verified_state_mountpoint: &str,
+) -> Result<VerifiedLayout, LayoutError> {
+    validate_layout_with_state_mount(
+        manifest,
+        observed,
+        sfdisk,
+        boot_major_minor,
+        Some(verified_state_mountpoint),
+    )
+}
+
+fn validate_layout_with_state_mount(
+    manifest: &ImageLayoutV1,
+    observed: &LsblkDocument,
+    sfdisk: &SfdiskDocument,
+    boot_major_minor: &str,
+    verified_state_mountpoint: Option<&str>,
 ) -> Result<VerifiedLayout, LayoutError> {
     if manifest.schema != "rigos.image-layout/v2" || manifest.partition_table != "mbr" {
         return Err(LayoutError::PartitionTableMismatch);
@@ -116,17 +161,8 @@ pub fn validate_layout(
         return Err(LayoutError::PartitionTableMismatch);
     }
 
-    let disk = observed
-        .blockdevices
-        .iter()
-        .find(|device| {
-            device.device_type == "disk"
-                && device
-                    .children
-                    .iter()
-                    .any(|child| child.major_minor == boot_major_minor)
-        })
-        .ok_or(LayoutError::AmbiguousBootDevice)?;
+    let disk =
+        boot_parent_disk(observed, boot_major_minor).ok_or(LayoutError::AmbiguousBootDevice)?;
 
     if disk.tran.as_deref() != Some("usb") || disk.ro {
         return Err(LayoutError::NotWritableUsb);
@@ -211,6 +247,11 @@ pub fn validate_layout(
         .iter()
         .find(|child| child.partn == Some(manifest.final_state_partition))
         .ok_or(LayoutError::StateNotFinal)?;
+    let efi = disk
+        .children
+        .iter()
+        .find(|child| child.partn == Some(1))
+        .ok_or(LayoutError::PartitionSetMismatch)?;
     let max_start = disk.children.iter().filter_map(|child| child.start).max();
     let state_label_matches = matches!(
         state.label.as_deref(),
@@ -220,19 +261,29 @@ pub fn validate_layout(
         return Err(LayoutError::StateNotFinal);
     }
     if disk.children.iter().any(|child| {
-        child.major_minor != boot_major_minor
-            && child
-                .mountpoints
-                .iter()
-                .flatten()
-                .any(|mount| !mount.is_empty())
+        if child.major_minor == boot_major_minor {
+            return false;
+        }
+        child.mountpoints.iter().flatten().any(|mount| {
+            if mount.is_empty() {
+                return false;
+            }
+            !(child.partn == Some(manifest.final_state_partition)
+                && verified_state_mountpoint == Some(mount.as_str()))
+        })
     }) {
         return Err(LayoutError::UnexpectedWritableMount);
     }
 
     Ok(VerifiedLayout {
         disk_path: disk.path.clone(),
+        disk_major_minor: disk.major_minor.clone(),
+        disk_ptuuid: disk.ptuuid.clone().unwrap_or_default(),
         disk_size_bytes: disk.size,
+        efi_path: efi.path.clone(),
+        efi_major_minor: efi.major_minor.clone(),
+        efi_partuuid: efi.partuuid.clone().unwrap_or_default(),
+        root_major_minor: boot_major_minor.to_owned(),
         state_path: state.path.clone(),
         state_start_lba: state.start.unwrap_or_default(),
         state_size_lba: state.size / u64::from(manifest.logical_sector_size),
@@ -447,6 +498,44 @@ mod tests {
         assert_eq!(
             validate_layout(&manifest(), &observed(), &table, "8:2"),
             Err(LayoutError::PartitionMismatch(1))
+        );
+    }
+
+    #[test]
+    fn attestation_allows_only_the_exact_verified_state_mount() {
+        let mut devices = observed();
+        let state_index = devices.blockdevices[0]
+            .children
+            .iter()
+            .position(|child| child.partn == Some(4))
+            .unwrap();
+        devices.blockdevices[0].children[state_index].mountpoints =
+            vec![Some("/var/lib/rigos".into())];
+        assert_eq!(
+            validate_layout(&manifest(), &devices, &sfdisk(), "8:2"),
+            Err(LayoutError::UnexpectedWritableMount)
+        );
+        assert!(
+            validate_layout_for_attestation(
+                &manifest(),
+                &devices,
+                &sfdisk(),
+                "8:2",
+                "/var/lib/rigos"
+            )
+            .is_ok()
+        );
+        devices.blockdevices[0].children[state_index].mountpoints =
+            vec![Some("/mnt/unexpected".into())];
+        assert_eq!(
+            validate_layout_for_attestation(
+                &manifest(),
+                &devices,
+                &sfdisk(),
+                "8:2",
+                "/var/lib/rigos"
+            ),
+            Err(LayoutError::UnexpectedWritableMount)
         );
     }
 

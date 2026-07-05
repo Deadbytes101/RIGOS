@@ -5,7 +5,8 @@ use clap::Parser;
 use fs2::FileExt;
 use rigos_schema::{ImageLayoutV1, STATE_LAYOUT_SCHEMA, StateLayoutV1};
 use rigos_state::{
-    LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, validate_layout,
+    LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, boot_parent_disk,
+    validate_layout, validate_layout_for_attestation,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -29,8 +30,12 @@ struct Args {
     mountpoint: PathBuf,
     #[arg(long, default_value = "/run/rigos/state-status.json")]
     status: PathBuf,
+    #[arg(long, default_value = "/run/rigos/boot-device.json")]
+    attestation: PathBuf,
     #[arg(long)]
     dry_run: bool,
+    #[arg(long)]
+    attestation_only: bool,
 }
 
 #[derive(Deserialize)]
@@ -46,6 +51,7 @@ struct FindmntEntry {
 
 fn main() -> ExitCode {
     let args = Args::parse();
+    let _ = fs::remove_file(&args.attestation);
     let (outcome, message) = match execute(&args) {
         Ok(outcome) => (outcome, None),
         Err(
@@ -114,20 +120,21 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .clone();
 
     let observed = read_lsblk()?;
-    let boot_disk_path = observed
-        .blockdevices
-        .iter()
-        .find(|device| {
-            device.device_type == "disk"
-                && device
-                    .children
-                    .iter()
-                    .any(|child| child.major_minor == boot_major_minor)
-        })
+    let boot_disk_path = boot_parent_disk(&observed, &boot_major_minor)
         .map(|device| device.path.clone())
         .ok_or_else(|| InitError::Discovery("boot parent disk was not found".into()))?;
     let table = read_sfdisk(&boot_disk_path)?;
-    let verified = validate_layout(&manifest, &observed, &table, &boot_major_minor)?;
+    let verified = if args.attestation_only {
+        validate_layout_for_attestation(
+            &manifest,
+            &observed,
+            &table,
+            &boot_major_minor,
+            path_str(&args.mountpoint)?,
+        )?
+    } else {
+        validate_layout(&manifest, &observed, &table, &boot_major_minor)?
+    };
 
     let udev = String::from_utf8_lossy(&run(
         "udevadm",
@@ -138,6 +145,30 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     .into_owned();
     if !udev.lines().any(|line| line == "ID_BUS=usb") {
         return Err(LayoutError::NotWritableUsb.into());
+    }
+    write_atomic(
+        &args.attestation,
+        &json!({
+            "schema":"rigos.boot-device/v1",
+            "boot_id":fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim(),
+            "verification_outcome":"verified",
+            "disk":{
+                "path":verified.disk_path,
+                "major_minor":verified.disk_major_minor,
+                "ptuuid":verified.disk_ptuuid,
+            },
+            "partition1":{
+                "path":verified.efi_path,
+                "major_minor":verified.efi_major_minor,
+                "partuuid":verified.efi_partuuid,
+            },
+            "root":{"major_minor":verified.root_major_minor},
+        }),
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&args.attestation, fs::Permissions::from_mode(0o600))?;
     }
     if args.dry_run {
         return Ok(StateOutcome::Ready);
@@ -247,11 +278,13 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
 
 fn read_lsblk() -> Result<LsblkDocument, InitError> {
     let raw = run(
-        "lsblk",
+        "/usr/bin/python3",
         &[
+            "/usr/lib/rigos/lsblk-compat",
             "--json",
             "--bytes",
             "--paths",
+            "--tree",
             "--output",
             "MAJ:MIN,PATH,TYPE,SIZE,RO,TRAN,PARTN,PARTTYPE,PARTUUID,PARTLABEL,START,PTTYPE,PTUUID,MOUNTPOINTS,FSTYPE,LABEL",
         ],

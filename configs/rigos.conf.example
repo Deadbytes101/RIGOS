@@ -1,0 +1,10 @@
+# RIGOS machine profile version one
+# Copy to /rigos/rig.conf on the EFI_SYSTEM partition.
+# Data only. Never sourced as shell.
+
+RIGOS_CONFIG_VERSION=1
+NODE_NAME=rig01
+TIMEZONE=Asia/Bangkok
+FLIGHT_SOURCE=native
+FLIGHT_REF=xmr-ssl
+MINER_START_MODE=on_boot

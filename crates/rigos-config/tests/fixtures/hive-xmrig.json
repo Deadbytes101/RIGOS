@@ -1,0 +1,28 @@
+{
+  "schema": "synthetic.hive-flight-sheet/v1",
+  "items": [
+    {
+      "name": "Synthetic XMR SSL",
+      "coin": "XMR",
+      "miner": "xmrig-new",
+      "pool_urls": [
+        "stratum+ssl://pool-one.invalid:443",
+        "pool-two.invalid:10001"
+      ],
+      "pool_ssl": [true, false],
+      "wal_id": "fixture-wallet-ref",
+      "miner_config": {
+        "cpu": 1,
+        "fork": "xmrig",
+        "hugepages": 1280,
+        "algo": "rx/0",
+        "url": "%URL%",
+        "template": "%WAL%",
+        "pass": "%WORKER_NAME%",
+        "cpu_config": "\"huge-pages\": true,\n\"max-threads-hint\": 75",
+        "user_config": "\"cpu\": {\"huge-pages\": true}\n\"api\": {\"worker-id\": \"fixture-worker\"}"
+      },
+      "autostart": true
+    }
+  ]
+}

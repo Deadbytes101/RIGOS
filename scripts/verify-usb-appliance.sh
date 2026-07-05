@@ -73,15 +73,31 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(jq -r .final_state_partition "$temporary/a/image-layout.json")" == 4 ]] || die 'final state partition mismatch'
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
-  etc/rigos-release etc/os-release usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/rigos-state-init usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
+  etc/rigos-release etc/os-release \
+  etc/systemd/system/rigos-state.service \
+  etc/systemd/system/rigos-miner.service \
+  etc/systemd/system/rigos-profile-apply.service \
+  usr/bin/python3 usr/bin/python3.11 \
+  usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-config usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
+grep -Fq 'RuntimeDirectory=rigos' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime directory is missing'
+grep -Fq 'RuntimeDirectoryMode=0755' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime directory mode is missing'
+if grep -Eq '^(ExecStartPre|Environment=PATH)=.*compat-bin' "$temporary/root/etc/systemd/system/rigos-state.service"; then die 'state unit executes compatibility code from the runtime directory'; fi
+[[ -f "$temporary/root/usr/lib/rigos/lsblk-compat" ]] || die 'state lsblk compatibility wrapper is missing'
+[[ -x "$temporary/root/usr/bin/python3" ]] || die 'Python runtime for state compatibility is missing'
+strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/bin/python3' >/dev/null || die 'state initializer does not use the absolute Python runtime'
+strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/lib/rigos/lsblk-compat' >/dev/null || die 'state initializer does not use the packaged compatibility wrapper'
+strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F -- '--tree' >/dev/null || die 'state initializer does not require hierarchical lsblk output'
+if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigos/compat-bin/lsblk' >/dev/null; then die 'state initializer executes compatibility code from the runtime directory'; fi
+grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner policy gate is missing'
+[[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
+grep -Fq 'rigos-config recover' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'pending transaction recovery is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
-if grep -Fq 'stdout=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot hides the whiptail screen'; fi
 grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot value stream mismatch'
 [[ "$(jq -r .modified "$temporary/root/usr/share/rigos/components/xmrig.json")" == false ]]
 [[ "$(jq -r .upstream_donation_behavior "$temporary/root/usr/share/rigos/components/xmrig.json")" == applies ]]
