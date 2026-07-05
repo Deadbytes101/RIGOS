@@ -159,8 +159,16 @@ pub fn validate_layout(
         let contract = expected
             .get(&number)
             .ok_or(LayoutError::PartitionSetMismatch)?;
+        let label_matches = if number == manifest.final_state_partition {
+            matches!(
+                child.label.as_deref(),
+                Some("RIGOS_STATE_SEED" | "RIGOS_STATE")
+            )
+        } else {
+            child.label.as_deref() == Some(contract.label.as_str())
+        };
         if child.device_type != "part"
-            || child.label.as_deref() != Some(contract.label.as_str())
+            || !label_matches
             || !eq_mbr_type(child.parttype.as_deref(), &contract.type_guid)
             || !eq_id(child.partuuid.as_deref(), &contract.unique_guid)
             || child.start != Some(contract.start_lba)
@@ -201,7 +209,11 @@ pub fn validate_layout(
         .find(|child| child.partn == Some(manifest.final_state_partition))
         .ok_or(LayoutError::StateNotFinal)?;
     let max_start = disk.children.iter().filter_map(|child| child.start).max();
-    if state.start != max_start || state.label.as_deref() != Some("RIGOS_STATE_SEED") {
+    let state_label_matches = matches!(
+        state.label.as_deref(),
+        Some("RIGOS_STATE_SEED" | "RIGOS_STATE")
+    );
+    if state.start != max_start || !state_label_matches {
         return Err(LayoutError::StateNotFinal);
     }
     if disk.children.iter().any(|child| {
@@ -230,15 +242,20 @@ fn eq_id(observed: Option<&str>, expected: &str) -> bool {
     observed.is_some_and(|value| value.eq_ignore_ascii_case(expected))
 }
 
+fn strip_hex_prefix(value: &str) -> &str {
+    value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value)
+}
+
 fn eq_disk_id(observed: &str, expected: &str) -> bool {
-    observed
-        .trim_start_matches("0x")
-        .eq_ignore_ascii_case(expected.trim_start_matches("0x"))
+    strip_hex_prefix(observed).eq_ignore_ascii_case(strip_hex_prefix(expected))
 }
 
 fn eq_mbr_type(observed: Option<&str>, expected: &str) -> bool {
     fn parse(value: &str) -> Option<u8> {
-        u8::from_str_radix(value.trim_start_matches("0x"), 16).ok()
+        u8::from_str_radix(strip_hex_prefix(value), 16).ok()
     }
     observed.and_then(parse) == parse(expected)
 }
@@ -363,6 +380,13 @@ mod tests {
     #[test]
     fn exact_layout_passes() {
         assert!(validate_layout(&manifest(), &observed(), &sfdisk(), "8:2").is_ok());
+    }
+
+    #[test]
+    fn initialized_state_label_passes() {
+        let mut devices = observed();
+        devices.blockdevices[0].children[3].label = Some("RIGOS_STATE".into());
+        assert!(validate_layout(&manifest(), &devices, &sfdisk(), "8:2").is_ok());
     }
 
     #[test]
