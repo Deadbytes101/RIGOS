@@ -3,7 +3,6 @@ Description=RIGOS first-boot configuration
 After=network-online.target rigos-state.service rigos-profile-apply.service
 Wants=network-online.target
 Requires=rigos-state.service
-Conflicts=getty@tty1.service
 Before=getty@tty1.service
 ConditionPathExists=!/var/lib/rigos/policy.json
 
@@ -17,7 +16,6 @@ TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
-RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
