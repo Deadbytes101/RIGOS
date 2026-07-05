@@ -21,6 +21,7 @@ source "$source_root/build/usb/version.env"
 
 export RIGOS_BUILD_COMMIT="$commit"
 export RIGOS_PRODUCT_VERSION RIGOS_IMAGE_ID RIGOS_IMAGE_VERSION RIGOS_IMAGE_CHANNEL
+export RUSTUP_TOOLCHAIN=1.85.1-x86_64-unknown-linux-gnu
 export RUSTFLAGS='-C target-cpu=x86-64'
 export SOURCE_DATE_EPOCH="$source_epoch"
 export CARGO_TARGET_DIR="$work/target"
