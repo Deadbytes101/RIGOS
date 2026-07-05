@@ -2,14 +2,15 @@ use std::fs;
 use std::path::PathBuf;
 
 fn repo_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(relative)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
 }
 
 #[test]
 fn state_service_wires_debian_lsblk_compatibility() {
-    let service_path = repo_path(
-        "build/usb/includes.chroot/etc/systemd/system/rigos-state.service",
-    );
+    let service_path =
+        repo_path("build/usb/includes.chroot/etc/systemd/system/rigos-state.service");
     let wrapper_path = repo_path("build/usb/includes.chroot/usr/lib/rigos/lsblk-compat");
     let service = fs::read_to_string(&service_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", service_path.display()));
