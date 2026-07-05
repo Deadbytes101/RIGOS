@@ -14,8 +14,11 @@ image="$(readlink -f "$1")"; manifest="$(readlink -f "$2")"
 
 signature="$(od -An -tx1 -j510 -N2 "$image" | tr -d ' \n')"
 [[ "$signature" == 55aa ]] || die 'MBR signature is missing'
-dd if="$image" bs=1 count=446 status=none | tr -d '\000' | grep -q . || die 'MBR boot code is empty'
-dd if="$image" bs=512 skip=1 count=2047 status=none | tr -d '\000' | grep -q . || die 'GRUB embedding gap is empty'
+contains_nonzero(){
+  od -An -v -tu1 | awk '{ for (i = 1; i <= NF; i++) if ($i != 0) found = 1 } END { exit found ? 0 : 1 }'
+}
+dd if="$image" bs=1 count=446 status=none | contains_nonzero || die 'MBR boot code is empty'
+dd if="$image" bs=512 skip=1 count=2047 status=none | contains_nonzero || die 'GRUB embedding gap is empty'
 
 partition_json="$(sfdisk --json "$image")"
 [[ "$(jq -r .partitiontable.label <<<"$partition_json")" == dos ]] || die 'DOS partition table is missing'
@@ -23,8 +26,8 @@ partition_json="$(sfdisk --json "$image")"
 [[ "$(jq '.partitiontable.partitions | length' <<<"$partition_json")" -eq 4 ]] || die 'unexpected partition count'
 
 check_partition(){
-  local index="$1" start="$2" size="$3" type="$4" bootable="$5"
-  local base=".partitiontable.partitions[$((index - 1))]"
+  local index="$1" start="$2" size="$3" type="$4" bootable="$5" base observed_type
+  base=".partitiontable.partitions[$((index - 1))]"
   [[ "$(jq -r "$base.start" <<<"$partition_json")" -eq "$start" ]] || die "partition $index start mismatch"
   [[ "$(jq -r "$base.size" <<<"$partition_json")" -eq "$size" ]] || die "partition $index size mismatch"
   observed_type="$(jq -r "$base.type" <<<"$partition_json" | tr '[:upper:]' '[:lower:]')"
