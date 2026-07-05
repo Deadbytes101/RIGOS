@@ -68,12 +68,36 @@ fn real_shape(cpu: Value, fork: Value, hugepages: Value, huge_pages: bool) -> Ve
 
 #[test]
 fn cpu_and_fork_markers_are_strict() {
-    assert!(import_hive_style(&real_shape(json!(1), json!("xmrig"), json!(1280), true), "fixture.json").is_ok());
-    assert!(import_hive_style(&real_shape(json!(true), json!("xmrig"), json!(1280), true), "fixture.json").is_ok());
+    assert!(
+        import_hive_style(
+            &real_shape(json!(1), json!("xmrig"), json!(1280), true),
+            "fixture.json"
+        )
+        .is_ok()
+    );
+    assert!(
+        import_hive_style(
+            &real_shape(json!(true), json!("xmrig"), json!(1280), true),
+            "fixture.json"
+        )
+        .is_ok()
+    );
     for cpu in [json!(0), json!(false), json!(2), json!("1")] {
-        assert!(import_hive_style(&real_shape(cpu, json!("xmrig"), json!(1280), true), "fixture.json").is_err());
+        assert!(
+            import_hive_style(
+                &real_shape(cpu, json!("xmrig"), json!(1280), true),
+                "fixture.json"
+            )
+            .is_err()
+        );
     }
-    assert!(import_hive_style(&real_shape(json!(1), json!("other"), json!(1280), true), "fixture.json").is_err());
+    assert!(
+        import_hive_style(
+            &real_shape(json!(1), json!("other"), json!(1280), true),
+            "fixture.json"
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -84,18 +108,19 @@ fn hugepages_maps_and_conflicts_fail() {
     )
     .unwrap();
     assert!(!disabled.cpu.huge_pages);
-    assert!(import_hive_style(&real_shape(json!(1), json!("xmrig"), json!(1280), false), "fixture.json").is_err());
+    assert!(
+        import_hive_style(
+            &real_shape(json!(1), json!("xmrig"), json!(1280), false),
+            "fixture.json"
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn unknown_nested_field_remains_rejected() {
-    let mut value: Value = serde_json::from_slice(&real_shape(
-        json!(1),
-        json!("xmrig"),
-        json!(1280),
-        true,
-    ))
-    .unwrap();
+    let mut value: Value =
+        serde_json::from_slice(&real_shape(json!(1), json!("xmrig"), json!(1280), true)).unwrap();
     value["items"][0]["miner_config"]["unknown"] = json!(true);
     assert!(import_hive_style(&serde_json::to_vec(&value).unwrap(), "fixture.json").is_err());
 }
