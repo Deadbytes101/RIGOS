@@ -4,7 +4,9 @@ use chrono::{SecondsFormat, Utc};
 use clap::Parser;
 use fs2::FileExt;
 use rigos_schema::{ImageLayoutV1, STATE_LAYOUT_SCHEMA, StateLayoutV1};
-use rigos_state::{LayoutError, LsblkDocument, StateOutcome, VerifiedLayout, validate_layout};
+use rigos_state::{
+    LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, validate_layout,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -35,6 +37,7 @@ struct Args {
 struct FindmntDocument {
     filesystems: Vec<FindmntEntry>,
 }
+
 #[derive(Deserialize)]
 struct FindmntEntry {
     #[serde(rename = "maj:min")]
@@ -89,6 +92,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     {
         return Ok(StateOutcome::Stateless);
     }
+
     let manifest: ImageLayoutV1 = serde_json::from_str(&fs::read_to_string(&args.manifest)?)?;
     let findmnt: FindmntDocument = serde_json::from_slice(&run(
         "findmnt",
@@ -108,20 +112,23 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .ok_or_else(|| InitError::Discovery("live medium has no block identity".into()))?
         .major_minor
         .clone();
-    let lsblk_raw = run(
-        "lsblk",
-        &[
-            "--json",
-            "--bytes",
-            "--paths",
-            "--output",
-            "MAJ:MIN,PATH,TYPE,SIZE,RO,TRAN,PARTN,PARTTYPE,PARTUUID,PARTLABEL,START,MOUNTPOINTS,FSTYPE,LABEL",
-        ],
-        None,
-        &[0],
-    )?;
-    let observed: LsblkDocument = serde_json::from_slice(&lsblk_raw)?;
-    let verified = validate_layout(&manifest, &observed, &boot_major_minor)?;
+
+    let observed = read_lsblk()?;
+    let boot_disk_path = observed
+        .blockdevices
+        .iter()
+        .find(|device| {
+            device.device_type == "disk"
+                && device
+                    .children
+                    .iter()
+                    .any(|child| child.major_minor == boot_major_minor)
+        })
+        .map(|device| device.path.clone())
+        .ok_or_else(|| InitError::Discovery("boot parent disk was not found".into()))?;
+    let table = read_sfdisk(&boot_disk_path)?;
+    let verified = validate_layout(&manifest, &observed, &table, &boot_major_minor)?;
+
     let udev = String::from_utf8_lossy(&run(
         "udevadm",
         &["info", "--query=property", "--name", &verified.disk_path],
@@ -141,59 +148,48 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .write(true)
         .open(&verified.disk_path)?;
     disk.try_lock_exclusive()
-        .map_err(|e| InitError::Discovery(format!("exclusive disk lock failed: {e}")))?;
+        .map_err(|error| InitError::Discovery(format!("exclusive disk lock failed: {error}")))?;
+
     let sector_size = u64::from(manifest.logical_sector_size);
     let disk_sectors = verified.disk_size_bytes / sector_size;
-    let last_usable = disk_sectors
-        .checked_sub(34)
+    let aligned_sector_count = (disk_sectors / manifest.alignment_lba) * manifest.alignment_lba;
+    let aligned_end = aligned_sector_count
+        .checked_sub(1)
         .ok_or_else(|| InitError::Discovery("invalid disk geometry".into()))?;
-    let aligned_end = ((last_usable + 1) / manifest.alignment_lba) * manifest.alignment_lba - 1;
     let intended_size = aligned_end
         .checked_sub(verified.state_start_lba)
-        .and_then(|v| v.checked_add(1))
+        .and_then(|value| value.checked_add(1))
         .ok_or_else(|| InitError::Discovery("invalid state geometry".into()))?;
+
     let mut grown = false;
     if intended_size > verified.state_size_lba {
-        run("sgdisk", &["--verify", &verified.disk_path], None, &[0])?;
-        run(
-            "sgdisk",
-            &["--move-second-header", &verified.disk_path],
-            None,
-            &[0],
-        )?;
+        let partition_type = verified.state_type_guid.trim_start_matches("0x");
         let line = format!(
-            "start={}, size={}, type={}, uuid={}, name=RIGOS_STATE_SEED\n",
-            verified.state_start_lba,
-            intended_size,
-            verified.state_type_guid,
-            verified.state_unique_guid
+            "start={}, size={}, type={}\n",
+            verified.state_start_lba, intended_size, partition_type
         );
         run(
             "sfdisk",
-            &["--no-reread", "--force", "-N", "5", &verified.disk_path],
+            &["--no-reread", "--force", "-N", "4", &verified.disk_path],
             Some(line.as_bytes()),
             &[0],
         )?;
         run(
             "partx",
-            &["--update", "--nr", "5", &verified.disk_path],
+            &["--update", "--nr", "4", &verified.disk_path],
             None,
             &[0],
         )?;
         run("udevadm", &["settle", "--timeout=10"], None, &[0])?;
-        let refreshed: LsblkDocument = serde_json::from_slice(&run(
-            "lsblk",
-            &[
-                "--json",
-                "--bytes",
-                "--paths",
-                "--output",
-                "MAJ:MIN,PATH,TYPE,SIZE,RO,TRAN,PARTN,PARTTYPE,PARTUUID,PARTLABEL,START,MOUNTPOINTS,FSTYPE,LABEL",
-            ],
-            None,
-            &[0],
-        )?)?;
-        let refreshed = validate_layout(&manifest, &refreshed, &boot_major_minor)?;
+
+        let refreshed_devices = read_lsblk()?;
+        let refreshed_table = read_sfdisk(&verified.disk_path)?;
+        let refreshed = validate_layout(
+            &manifest,
+            &refreshed_devices,
+            &refreshed_table,
+            &boot_major_minor,
+        )?;
         if refreshed.state_start_lba != verified.state_start_lba
             || refreshed.state_size_lba != intended_size
             || !refreshed
@@ -206,6 +202,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         }
         grown = true;
     }
+
     run("e2fsck", &["-p", &verified.state_path], None, &[0, 1])?;
     run("resize2fs", &[&verified.state_path], None, &[0])?;
     let blkid = String::from_utf8_lossy(&run(
@@ -224,6 +221,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
             &[0],
         )?;
     }
+
     fs::create_dir_all(&args.mountpoint)?;
     if !mountpoint(&args.mountpoint)? {
         run(
@@ -245,6 +243,27 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     } else {
         StateOutcome::Ready
     })
+}
+
+fn read_lsblk() -> Result<LsblkDocument, InitError> {
+    let raw = run(
+        "lsblk",
+        &[
+            "--json",
+            "--bytes",
+            "--paths",
+            "--output",
+            "MAJ:MIN,PATH,TYPE,SIZE,RO,TRAN,PARTN,PARTTYPE,PARTUUID,PARTLABEL,START,PTTYPE,PTUUID,MOUNTPOINTS,FSTYPE,LABEL",
+        ],
+        None,
+        &[0],
+    )?;
+    Ok(serde_json::from_slice(&raw)?)
+}
+
+fn read_sfdisk(disk_path: &str) -> Result<SfdiskDocument, InitError> {
+    let raw = run("sfdisk", &["--json", disk_path], None, &[0])?;
+    Ok(serde_json::from_slice(&raw)?)
 }
 
 fn initialize_state(
@@ -293,6 +312,7 @@ fn mountpoint(path: &Path) -> Result<bool, InitError> {
         .status()?
         .success())
 }
+
 fn path_str(path: &Path) -> Result<&str, InitError> {
     path.to_str()
         .ok_or_else(|| InitError::Discovery("non-UTF-8 path".into()))
@@ -349,6 +369,7 @@ fn run(
     }
     Ok(stdout)
 }
+
 fn read_bounded(path: &Path) -> Result<Vec<u8>, InitError> {
     let data = fs::read(path)?;
     if data.len() > 1_048_576 {
@@ -356,6 +377,7 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, InitError> {
     }
     Ok(data)
 }
+
 fn write_atomic<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), InitError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
