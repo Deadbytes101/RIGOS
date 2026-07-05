@@ -13,15 +13,14 @@ HOST_RE = re.compile(r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Z
 
 def dialog(*args: str) -> str:
     result = subprocess.run(
-        ["whiptail", "--title", "RIGOS FIRST BOOT", *args],
+        ["whiptail", "--output-fd", "1", "--title", "RIGOS FIRST BOOT", *args],
         check=False,
         text=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
         raise SystemExit("Configuration cancelled; reboot to try again.")
-    return result.stderr.strip()
+    return result.stdout.strip()
 
 
 def prompt(label: str, default: str = "") -> str:
