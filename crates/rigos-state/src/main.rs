@@ -6,6 +6,7 @@ use fs2::FileExt;
 use rigos_schema::{ImageLayoutV1, STATE_LAYOUT_SCHEMA, StateLayoutV1};
 use rigos_state::{
     LayoutError, LsblkDocument, SfdiskDocument, StateOutcome, VerifiedLayout, validate_layout,
+    validate_layout_for_attestation,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -33,6 +34,8 @@ struct Args {
     attestation: PathBuf,
     #[arg(long)]
     dry_run: bool,
+    #[arg(long)]
+    attestation_only: bool,
 }
 
 #[derive(Deserialize)]
@@ -130,7 +133,17 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .map(|device| device.path.clone())
         .ok_or_else(|| InitError::Discovery("boot parent disk was not found".into()))?;
     let table = read_sfdisk(&boot_disk_path)?;
-    let verified = validate_layout(&manifest, &observed, &table, &boot_major_minor)?;
+    let verified = if args.attestation_only {
+        validate_layout_for_attestation(
+            &manifest,
+            &observed,
+            &table,
+            &boot_major_minor,
+            path_str(&args.mountpoint)?,
+        )?
+    } else {
+        validate_layout(&manifest, &observed, &table, &boot_major_minor)?
+    };
 
     let udev = String::from_utf8_lossy(&run(
         "udevadm",

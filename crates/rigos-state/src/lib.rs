@@ -113,6 +113,32 @@ pub fn validate_layout(
     sfdisk: &SfdiskDocument,
     boot_major_minor: &str,
 ) -> Result<VerifiedLayout, LayoutError> {
+    validate_layout_with_state_mount(manifest, observed, sfdisk, boot_major_minor, None)
+}
+
+pub fn validate_layout_for_attestation(
+    manifest: &ImageLayoutV1,
+    observed: &LsblkDocument,
+    sfdisk: &SfdiskDocument,
+    boot_major_minor: &str,
+    verified_state_mountpoint: &str,
+) -> Result<VerifiedLayout, LayoutError> {
+    validate_layout_with_state_mount(
+        manifest,
+        observed,
+        sfdisk,
+        boot_major_minor,
+        Some(verified_state_mountpoint),
+    )
+}
+
+fn validate_layout_with_state_mount(
+    manifest: &ImageLayoutV1,
+    observed: &LsblkDocument,
+    sfdisk: &SfdiskDocument,
+    boot_major_minor: &str,
+    verified_state_mountpoint: Option<&str>,
+) -> Result<VerifiedLayout, LayoutError> {
     if manifest.schema != "rigos.image-layout/v2" || manifest.partition_table != "mbr" {
         return Err(LayoutError::PartitionTableMismatch);
     }
@@ -231,12 +257,16 @@ pub fn validate_layout(
         return Err(LayoutError::StateNotFinal);
     }
     if disk.children.iter().any(|child| {
-        child.major_minor != boot_major_minor
-            && child
-                .mountpoints
-                .iter()
-                .flatten()
-                .any(|mount| !mount.is_empty())
+        if child.major_minor == boot_major_minor {
+            return false;
+        }
+        child.mountpoints.iter().flatten().any(|mount| {
+            if mount.is_empty() {
+                return false;
+            }
+            !(child.partn == Some(manifest.final_state_partition)
+                && verified_state_mountpoint == Some(mount.as_str()))
+        })
     }) {
         return Err(LayoutError::UnexpectedWritableMount);
     }
@@ -464,6 +494,44 @@ mod tests {
         assert_eq!(
             validate_layout(&manifest(), &observed(), &table, "8:2"),
             Err(LayoutError::PartitionMismatch(1))
+        );
+    }
+
+    #[test]
+    fn attestation_allows_only_the_exact_verified_state_mount() {
+        let mut devices = observed();
+        let state_index = devices.blockdevices[0]
+            .children
+            .iter()
+            .position(|child| child.partn == Some(4))
+            .unwrap();
+        devices.blockdevices[0].children[state_index].mountpoints =
+            vec![Some("/var/lib/rigos".into())];
+        assert_eq!(
+            validate_layout(&manifest(), &devices, &sfdisk(), "8:2"),
+            Err(LayoutError::UnexpectedWritableMount)
+        );
+        assert!(
+            validate_layout_for_attestation(
+                &manifest(),
+                &devices,
+                &sfdisk(),
+                "8:2",
+                "/var/lib/rigos"
+            )
+            .is_ok()
+        );
+        devices.blockdevices[0].children[state_index].mountpoints =
+            vec![Some("/mnt/unexpected".into())];
+        assert_eq!(
+            validate_layout_for_attestation(
+                &manifest(),
+                &devices,
+                &sfdisk(),
+                "8:2",
+                "/var/lib/rigos"
+            ),
+            Err(LayoutError::UnexpectedWritableMount)
         );
     }
 

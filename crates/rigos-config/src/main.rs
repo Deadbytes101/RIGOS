@@ -270,6 +270,7 @@ fn revalidate_attestation(expected: &Attestation) -> Result<Attestation, ConfigE
     let status_path = temporary.join("state-status.json");
     let result = Command::new("/usr/lib/rigos/rigos-state-init")
         .arg("--dry-run")
+        .arg("--attestation-only")
         .arg("--attestation")
         .arg(&attestation_path)
         .arg("--status")

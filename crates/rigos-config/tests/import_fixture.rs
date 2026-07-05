@@ -16,3 +16,18 @@ fn synthetic_hive_fixture_maps_without_runtime_identity() {
             .contains("RIG_PASSWD")
     );
 }
+
+#[test]
+fn hive_envelope_rejects_ambiguous_or_invalid_pool_contracts() {
+    let cases = [
+        r#"{"items":[]}"#,
+        r#"{"items":[{},{}]}"#,
+        r#"{"items":[{"miner":"xmrig","pool_urls":["pool.invalid:1",7],"pool_ssl":[false,false]}]}"#,
+        r#"{"items":[{"miner":"xmrig","pool_urls":["pool.invalid:1","backup.invalid:2"],"pool_ssl":[false]}]}"#,
+        r#"{"items":[{"miner":"xmrig","pool_urls":["pool.invalid:1"],"pool_ssl":["false"]}]}"#,
+        r#"{"items":[{"miner":"xmrig","pool_urls":["stratum+ssl://pool.invalid:1"],"pool_ssl":false}]}"#,
+    ];
+    for input in cases {
+        assert!(import_hive_style(input.as_bytes(), "hive-xmrig.json").is_err());
+    }
+}

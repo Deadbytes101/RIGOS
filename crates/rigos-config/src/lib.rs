@@ -500,6 +500,7 @@ pub fn import_hive_style(
             "external sheet must be an object",
         )
     })?;
+    let workload = hive_workload(object, filename)?;
     for forbidden in [
         "hive_host_url",
         "api_host_url",
@@ -510,7 +511,11 @@ pub fn import_hive_style(
         "token",
         "password",
     ] {
-        if object.keys().any(|key| key.eq_ignore_ascii_case(forbidden)) {
+        if object
+            .keys()
+            .chain(workload.keys())
+            .any(|key| key.eq_ignore_ascii_case(forbidden))
+        {
             return Err(error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
                 Some(filename),
@@ -520,7 +525,7 @@ pub fn import_hive_style(
             ));
         }
     }
-    let miner = string_field(object, &["miner", "miner_name"]).unwrap_or("xmrig");
+    let miner = string_field(workload, &["miner", "miner_name"]).unwrap_or("xmrig");
     if !miner.to_ascii_lowercase().contains("xmrig") {
         return Err(error(
             "RIGOS_FLIGHT_SHEET_INVALID",
@@ -530,15 +535,19 @@ pub fn import_hive_style(
             "only XMRig imports are supported",
         ));
     }
-    let name = string_field(object, &["name"])
+    let name = string_field(workload, &["name"])
+        .or_else(|| string_field(object, &["name"]))
         .unwrap_or("imported-xmrig")
         .to_ascii_lowercase()
         .replace([' ', '_'], "-");
-    let coin = string_field(object, &["coin"]).unwrap_or("XMR").to_owned();
-    let algorithm = string_field(object, &["algo", "algorithm"])
+    let coin = string_field(workload, &["coin"])
+        .or_else(|| string_field(object, &["coin"]))
+        .unwrap_or("XMR")
+        .to_owned();
+    let algorithm = string_field(workload, &["algo", "algorithm"])
         .unwrap_or("auto")
         .to_owned();
-    if let Some(pass) = string_field(object, &["pass"]) {
+    if let Some(pass) = string_field(workload, &["pass"]) {
         if !matches!(pass, "x" | "%WORKER_NAME%" | "{node_name}") {
             return Err(error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
@@ -549,7 +558,7 @@ pub fn import_hive_style(
             ));
         }
     }
-    let worker_template = match string_field(object, &["template"]) {
+    let worker_template = match string_field(workload, &["template"]) {
         None | Some("%WORKER_NAME%") | Some("{node_name}") => "{node_name}",
         Some("%WORKER_NAME%.rig") | Some("{node_name}.rig") => "{node_name}.rig",
         Some(_) => {
@@ -562,23 +571,30 @@ pub fn import_hive_style(
             ));
         }
     };
-    let urls =
-        string_list(object.get("pool_urls").or_else(|| object.get("pools"))).ok_or_else(|| {
-            error(
+    let urls = strict_string_list(
+        workload.get("pool_urls").or_else(|| workload.get("pools")),
+        filename,
+        "pool_urls",
+    )?;
+    let tls_values = strict_bool_list(workload.get("pool_ssl"), urls.len(), filename)?;
+    let mut pools = Vec::new();
+    for (index, raw) in urls.iter().enumerate() {
+        let (clean, scheme_tls) = if let Some(value) = raw.strip_prefix("stratum+ssl://") {
+            (value, Some(true))
+        } else if let Some(value) = raw.strip_prefix("stratum+tcp://") {
+            (value, Some(false))
+        } else {
+            (raw.as_str(), None)
+        };
+        if scheme_tls.is_some_and(|value| value != tls_values[index]) {
+            return Err(error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
                 Some(filename),
                 None,
-                Some("pool_urls"),
-                "pool_urls is required",
-            )
-        })?;
-    let tls_values = bool_list(object.get("pool_ssl"), urls.len());
-    let mut pools = Vec::new();
-    for (index, raw) in urls.iter().enumerate() {
-        let clean = raw
-            .strip_prefix("stratum+ssl://")
-            .or_else(|| raw.strip_prefix("stratum+tcp://"))
-            .unwrap_or(raw);
+                Some("pool_ssl"),
+                "pool URL scheme conflicts with pool_ssl",
+            ));
+        }
         let (host, port) = clean.rsplit_once(':').ok_or_else(|| {
             error(
                 "RIGOS_FLIGHT_SHEET_INVALID",
@@ -599,12 +615,11 @@ pub fn import_hive_style(
                     "invalid pool port",
                 )
             })?,
-            tls: raw.starts_with("stratum+ssl://")
-                || tls_values.get(index).copied().unwrap_or(false),
+            tls: tls_values[index],
             priority: index as u16,
         });
     }
-    let wal = object.get("wal_id").map(value_as_reference);
+    let wal = workload.get("wal_id").map(value_as_reference);
     let identity_ref = wal
         .as_deref()
         .map(|v| format!("hive-wal-{v}"))
@@ -612,7 +627,7 @@ pub fn import_hive_style(
     let mut huge_pages = true;
     let mut max_threads_hint = 100;
     for key in ["cpu_config", "user_config"] {
-        if let Some(value) = object.get(key) {
+        if let Some(value) = workload.get(key) {
             let fragment = if let Some(text) = value.as_str() {
                 Value::Object(parse_json_member_fragment(text, filename, key)?)
             } else {
@@ -656,7 +671,7 @@ pub fn import_hive_style(
         source_filename: filename.into(),
         source_sha256: digest,
         imported_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-        warnings: lifecycle_warnings(object),
+        warnings: lifecycle_warnings(object, workload),
         external_reference: wal.map(|value| ExternalReference {
             source: "hive-style".into(),
             external_type: "wal_id".into(),
@@ -1041,29 +1056,100 @@ fn value_as_reference(value: &Value) -> String {
         .map(str::to_owned)
         .unwrap_or_else(|| value.to_string())
 }
-fn string_list(value: Option<&Value>) -> Option<Vec<String>> {
-    match value? {
-        Value::Array(v) => Some(
-            v.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect(),
-        ),
-        Value::String(v) => Some(vec![v.clone()]),
-        _ => None,
+fn hive_workload<'a>(
+    envelope: &'a Map<String, Value>,
+    filename: &str,
+) -> Result<&'a Map<String, Value>, ConfigError> {
+    let Some(items) = envelope.get("items") else {
+        return Ok(envelope);
+    };
+    let items = items.as_array().ok_or_else(|| {
+        error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some("items"),
+            "items must be an array containing exactly one workload",
+        )
+    })?;
+    if items.len() != 1 {
+        return Err(error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some("items"),
+            "exactly one Hive workload item is required",
+        ));
     }
+    items[0].as_object().ok_or_else(|| {
+        error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some("items"),
+            "the Hive workload item must be an object",
+        )
+    })
 }
-fn bool_list(value: Option<&Value>, count: usize) -> Vec<bool> {
+
+fn strict_string_list(
+    value: Option<&Value>,
+    filename: &str,
+    key: &str,
+) -> Result<Vec<String>, ConfigError> {
+    let invalid = || {
+        error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some(key),
+            format!("{key} must contain only strings and cannot be empty"),
+        )
+    };
     match value {
-        Some(Value::Array(v)) => v.iter().map(|x| x.as_bool().unwrap_or(false)).collect(),
-        Some(Value::Bool(v)) => vec![*v; count],
-        _ => vec![false; count],
+        Some(Value::String(value)) if !value.is_empty() => Ok(vec![value.clone()]),
+        Some(Value::Array(values)) if !values.is_empty() => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(invalid)
+            })
+            .collect(),
+        _ => Err(invalid()),
     }
 }
-fn lifecycle_warnings(object: &Map<String, Value>) -> Vec<String> {
+
+fn strict_bool_list(
+    value: Option<&Value>,
+    count: usize,
+    filename: &str,
+) -> Result<Vec<bool>, ConfigError> {
+    let invalid = || {
+        error(
+            "RIGOS_FLIGHT_SHEET_INVALID",
+            Some(filename),
+            None,
+            Some("pool_ssl"),
+            "pool_ssl must be one boolean or a boolean array matching pool_urls",
+        )
+    };
+    match value {
+        Some(Value::Bool(value)) => Ok(vec![*value; count]),
+        Some(Value::Array(values)) if values.len() == count => values
+            .iter()
+            .map(|value| value.as_bool().ok_or_else(invalid))
+            .collect(),
+        _ => Err(invalid()),
+    }
+}
+
+fn lifecycle_warnings(envelope: &Map<String, Value>, workload: &Map<String, Value>) -> Vec<String> {
     ["autostart", "enabled", "start_on_boot"]
         .into_iter()
-        .filter(|key| object.contains_key(*key))
+        .filter(|key| envelope.contains_key(*key) || workload.contains_key(*key))
         .map(|key| format!("lifecycle field {key} was not imported"))
         .collect()
 }
@@ -1295,7 +1381,7 @@ mod tests {
         let secret =
             br#"{"miner":"xmrig","pool_urls":["pool.example:443"],"rig_passwd":"do-not-copy"}"#;
         assert!(import_hive_style(secret, "fixture.json").is_err());
-        let lifecycle = br#"{"miner":"xmrig","pool_urls":["pool.example:443"],"autostart":true}"#;
+        let lifecycle = br#"{"miner":"xmrig","pool_urls":["pool.example:443"],"pool_ssl":false,"autostart":true}"#;
         let (_, provenance) = import_hive_style(lifecycle, "fixture.json").unwrap();
         assert_eq!(provenance.warnings.len(), 1);
         assert!(!serde_json::to_string(&provenance).unwrap().contains("true"));
