@@ -1,79 +1,52 @@
 # RIGOS
 
-CPU-only, pool-neutral, USB-native, local-first Linux mining operating system.
+CPU-only USB appliance for local Linux mining rigs.
 
-Current USB appliance preview: `RIGOS 0.0.4-alpha.1`. The persistent appliance
-is a raw GPT disk image; the ISO is recovery-only and stateless.
+Current preview is `RIGOS 0.0.4-alpha.3`.
 
-```text
-NO CLOUD. NO ACCOUNT. NO SUBSCRIPTION. NO WORKER LIMIT.
-NO LICENSE SERVER. NO RIGOS DEV FEE. NO FORCED POOL.
-
-FLASH IT. BOOT IT. MINE.
-```
-
-RIGOS charges no subscription, worker fee, mining fee, or developer fee. The
-default image bundles the official unmodified XMRig 6.26.0 binary. XMRig's
-upstream donation behavior remains applicable and is not received or
-redirected by RIGOS.
+The persistent appliance is a raw MBR disk image. It supports Legacy BIOS through GRUB boot code in LBA0 and removable-media UEFI through `EFI/BOOT/BOOTX64.EFI`.
 
 ```text
-READ THE MACHINE.
-UNDERSTAND THE MINER.
-ESTABLISH THE CONTRACT.
-MUTATE NOTHING.
+partition 1  EFI_SYSTEM FAT32 active
+partition 2  RIGOS_ROOT_A
+partition 3  RIGOS_ROOT_B
+partition 4  RIGOS_STATE_SEED
 ```
 
-`v0.0.1` is the observation contract. It reads Linux machine state and an existing local XMRig process; it does not start, stop, signal, configure, supervise, download, or update a miner. USB appliance construction and local authority remain later milestones.
+The recovery ISO is stateless and does not grow the state partition.
 
-```mermaid
-flowchart LR
-    USB["RIGOS USB"] --> Firmware["Legacy BIOS / UEFI"]
-    Firmware --> Boot["GRUB"]
-    Boot --> Select["Select ROOT_A or ROOT_B"]
-    Select --> Root["Read-only RIGOS Root"]
-    Root --> State["Mount RIGOS_STATE"]
-    State --> Network["Network Initialization"]
-    Network --> Agent["rigosd"]
-    Agent --> Policy["Load Last-Known-Good Policy"]
-    Policy --> Miner["XMRig"]
-    Miner --> Pool["Compatible Stratum Pool"]
+## Alpha history
+
+```text
+0.0.4-alpha.1  GPT image passed QEMU and failed Dell Legacy BIOS before GRUB
+0.0.4-alpha.2  MBR image reached GRUB ROOT_A systemd and password setup
+0.0.4-alpha.3  repairs first boot terminal rendering and console order
 ```
 
-## Commands
+Alpha three still requires a new image build, checksum, QEMU boot matrix and physical first-boot completion.
+
+## Build checks
+
+```bash
+./scripts/verify.sh
+```
+
+## Local inspection commands
 
 ```bash
 cargo run -p rigosd -- machine inspect
 cargo run -p rigosd -- machine inspect --json
 cargo run -p rigosd -- miner inspect --json
 cargo run -p rigosd -- doctor --json
-./scripts/verify.sh
 ```
 
-Release artifacts expose `rigosd` and the canonical `rigosctl` symlink from one executable, preventing daemon/CLI implementation drift.
+## Product boundaries
 
-Optional local fallbacks:
+- local-first operation
+- pool-neutral configuration
+- generic x86-64 release target
+- no automatic internal disk installation
+- exact USB parent verification before state growth
+- official pinned XMRig binary with recorded provenance
 
-```bash
-rigosd --xmrig-executable /usr/local/bin/xmrig --xmrig-config /etc/xmrig/config.json miner inspect --json
-```
-
-The API endpoint is never accepted from the CLI. API inspection is derived only from the active XMRig configuration and connects only to validated loopback addresses.
-
-## Platform contract
-
-- Canonical future OS base: Debian 13 amd64
-- Binary ABI floor: Debian 12 amd64
-- Tested runtimes: Debian 12 and Debian 13
-- Release CPU target: generic x86-64; never `target-cpu=native`
-- Cloud control, accounts, subscriptions, LAN fleet control and ISO construction are out of scope
-
-See [architecture](docs/architecture.md), [JSON contract](docs/json-cli-contract.md), and [threat model](docs/threat-model.md).
-
-Product boundaries are defined by the [product contract](docs/product-contract.md), [USB architecture](docs/usb-architecture.md), [pool-neutral contract](docs/pool-contract.md), and [roadmap](docs/roadmap.md).
-Marketing and comparison statements are governed by [release evidence gates](docs/release-claims.md).
-
-Release candidates are produced through the [authoritative release pipeline](docs/release-pipeline.md). Physical evidence follows the [dual-tier evidence policy](docs/physical-validation-evidence.md). No final `v0.0.1` tag is permitted before the documented physical acceptance gate passes.
-
-The USB appliance build is documented in [USB image build](docs/usb-image-build.md).
-Third-party behavior and hashes are documented in [miner provenance](docs/miner-provenance.md).
+See [architecture](docs/architecture.md), [USB image build](docs/usb-image-build.md), [product contract](docs/product-contract.md), [pool contract](docs/pool-contract.md), [release claims](docs/release-claims.md), and [physical evidence policy](docs/physical-validation-evidence.md).
