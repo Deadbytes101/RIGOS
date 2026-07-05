@@ -22,7 +22,9 @@ Observed
 - safe mode launched the kernel
 - USB mass storage was detected as a removable SCSI disk
 - no kernel panic was visible in the captured frames
-- local display cleared to a black screen with a cursor before the first boot dialog appeared
+- safe mode continued to about 70.9 seconds
+- the last visible lines were HDA audio codec and input device registration
+- no first boot dialog appeared after those lines
 
 Current boot arguments place the serial console after the local console
 
@@ -30,10 +32,20 @@ Current boot arguments place the serial console after the local console
 console=tty0 console=ttyS0,115200n8
 ```
 
-The first boot service is bound to `/dev/tty1` and waits for network online before starting. The next physical diagnostic must place the local console last and show systemd status
+The first boot service is bound to `/dev/tty1` and waits for network online before starting.
+
+The safe mode entry also disables APIC and ACPI
 
 ```text
-console=ttyS0,115200n8 console=tty0 systemd.show_status=yes loglevel=7
+nomodeset noapic noacpi
 ```
+
+The next physical diagnostic must use the normal first entry, not safe mode, and only reverse the console order while enabling status output
+
+```text
+console=ttyS0,115200n8 console=tty0 systemd.show_status=yes loglevel=7 debug=1
+```
+
+Do not add `noapic` or `noacpi` for that test.
 
 This test does not prove ROOT_A mount state initialization miner start or internal disk safety.
