@@ -99,8 +99,7 @@ pub fn import_hive_style(
 
     let normalized = serde_json::to_vec(&sanitized)
         .map_err(|_| compat_error(filename, None, "external sheet normalization failed"))?;
-    let (mut sheet, mut provenance) =
-        rigos_config::import_hive_style(&normalized, filename)?;
+    let (mut sheet, mut provenance) = rigos_config::import_hive_style(&normalized, filename)?;
     if let Some(count) = hugepages {
         sheet.cpu.huge_pages = count > 0;
     }
@@ -120,10 +119,7 @@ fn validate_keys(config: &Map<String, Value>, filename: &str) -> Result<(), Conf
         "fork",
         "hugepages",
     ];
-    if let Some(unknown) = config
-        .keys()
-        .find(|key| !ALLOWED.contains(&key.as_str()))
-    {
+    if let Some(unknown) = config.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
         return Err(compat_error(
             filename,
             Some(unknown),
@@ -201,9 +197,13 @@ fn explicit_huge_pages(
             ));
         }
     };
-    let object = parsed
-        .as_object()
-        .ok_or_else(|| compat_error(filename, Some(key), "embedded miner config must be an object"))?;
+    let object = parsed.as_object().ok_or_else(|| {
+        compat_error(
+            filename,
+            Some(key),
+            "embedded miner config must be an object",
+        )
+    })?;
     let cpu = object
         .get("cpu")
         .and_then(Value::as_object)
