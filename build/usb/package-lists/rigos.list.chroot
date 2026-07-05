@@ -2,6 +2,7 @@ ca-certificates
 curl
 e2fsprogs
 fdisk
+gdisk
 live-boot
 live-config
 linux-image-amd64

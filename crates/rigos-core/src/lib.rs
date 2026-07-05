@@ -70,6 +70,14 @@ pub struct BuildMetadata {
     pub build_commit: String,
     pub target: String,
     pub profile: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_channel: Option<String>,
 }
 
 impl BuildMetadata {
@@ -85,6 +93,10 @@ impl BuildMetadata {
             profile: option_env!("RIGOS_BUILD_PROFILE")
                 .unwrap_or("unknown")
                 .into(),
+            product_version: option_env!("RIGOS_PRODUCT_VERSION").map(str::to_owned),
+            image_id: option_env!("RIGOS_IMAGE_ID").map(str::to_owned),
+            image_version: option_env!("RIGOS_IMAGE_VERSION").map(str::to_owned),
+            image_channel: option_env!("RIGOS_IMAGE_CHANNEL").map(str::to_owned),
         }
     }
 }

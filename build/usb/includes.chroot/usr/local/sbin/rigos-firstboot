@@ -50,8 +50,17 @@ def atomic_json(path: Path, value: object, mode: int = 0o640) -> None:
 
 
 def main() -> None:
+    status_path = Path("/run/rigos/state-status.json")
+    state_outcome = "stateless"
+    if status_path.exists():
+        try:
+            state_outcome = json.loads(status_path.read_text(encoding="utf-8"))["outcome"]
+        except (OSError, KeyError, json.JSONDecodeError):
+            state_outcome = "stateless"
+    dialog("--msgbox", f"Persistent state status: {state_outcome}\n\nNo disk override is available when layout verification fails.", "12", "72")
     dialog("--msgbox", "Set the local administrator password next. It remains on this machine and is never sent to RIGOS.", "10", "72")
     subprocess.run(["passwd", "rigosadmin"], check=True)
+    dialog("--msgbox", "MINER\nXMRig 6.26.0 — official upstream binary\n\nRIGOS fee: 0%\nUpstream XMRig donation behavior applies.\nRIGOS does not receive or redirect it.", "14", "72")
     dialog("--msgbox", "Configure a compatible Stratum pool. RIGOS has no account and no forced pool.", "10", "72")
     node = prompt("Node name", "rig01").strip()
     endpoint = prompt("Pool endpoint (host:port)", "gulf.moneroocean.stream:10128").strip()

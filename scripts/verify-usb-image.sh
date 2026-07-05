@@ -27,6 +27,8 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/filesystem.squashfs" \
 
 [[ -x "$temporary/root/usr/lib/rigos/xmrig" ]] || die 'XMRig is missing or not executable'
 [[ -x "$temporary/root/usr/local/sbin/rigos-firstboot" ]] || die 'first-boot TUI is missing'
+grep -q 'rigos.stateless=1' <(xorriso -osirrox on -indev "$iso" -cat /isolinux/live.cfg 2>/dev/null) \
+  || die 'recovery image is not explicitly stateless'
 "$temporary/root/usr/lib/rigos/xmrig" --version | grep -q '^XMRig 6\.26\.0$' \
   || die 'unexpected XMRig version'
 

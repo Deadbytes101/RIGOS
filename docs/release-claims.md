@@ -2,6 +2,9 @@
 
 RIGOS does not claim superiority over Hive OS, NiceHash, or another product before comparative physical evidence exists.
 
+RIGOS fee claims apply to RIGOS only. They must never imply removal of the
+bundled official XMRig binary's upstream donation behavior.
+
 CPU-only superiority targets are measurable gates:
 
 - agent idle CPU below 0.5%;

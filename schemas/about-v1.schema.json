@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "ComponentProvenanceV1": {
+      "properties": {
+        "architecture": {
+          "type": "string"
+        },
+        "archive_sha256": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "string"
+        },
+        "binary_sha256": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "modified": {
+          "type": "boolean"
+        },
+        "rigos_fee_percent": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rigos_receives_donation": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "upstream_donation_behavior": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "component",
+        "version",
+        "source",
+        "modified",
+        "architecture",
+        "artifact",
+        "archive_sha256",
+        "binary_sha256",
+        "license",
+        "upstream_donation_behavior",
+        "rigos_receives_donation",
+        "rigos_fee_percent"
+      ],
+      "type": "object"
+    },
+    "ReleaseInfoV1": {
+      "properties": {
+        "architecture": {
+          "type": "string"
+        },
+        "base_id": {
+          "type": "string"
+        },
+        "base_version_id": {
+          "type": "string"
+        },
+        "build_commit": {
+          "type": "string"
+        },
+        "build_id": {
+          "type": "string"
+        },
+        "image_channel": {
+          "type": "string"
+        },
+        "image_id": {
+          "type": "string"
+        },
+        "image_version": {
+          "type": "string"
+        },
+        "product": {
+          "type": "string"
+        },
+        "product_version": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "product",
+        "product_version",
+        "image_id",
+        "image_version",
+        "image_channel",
+        "variant",
+        "architecture",
+        "base_id",
+        "base_version_id",
+        "build_id",
+        "build_commit"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "bundled_miner": {
+      "$ref": "#/$defs/ComponentProvenanceV1"
+    },
+    "cloud_dependency": {
+      "type": "string"
+    },
+    "mining_fee_percent": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "release": {
+      "$ref": "#/$defs/ReleaseInfoV1"
+    },
+    "subscription": {
+      "type": "string"
+    },
+    "worker_limit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "release",
+    "subscription",
+    "worker_limit",
+    "mining_fee_percent",
+    "cloud_dependency",
+    "bundled_miner"
+  ],
+  "title": "AboutReportV1",
+  "type": "object"
+}

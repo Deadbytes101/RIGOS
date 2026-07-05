@@ -12,6 +12,134 @@ pub const BUILD_MANIFEST_SCHEMA: &str = "rigos.build-manifest/v1";
 pub const VALIDATION_MANIFEST_SCHEMA: &str = "rigos.physical-validation-manifest/v1";
 pub const VALIDATION_RESULT_SCHEMA: &str = "rigos.physical-validation-result/v1";
 pub const REDACTION_REPORT_SCHEMA: &str = "rigos.redaction-report/v1";
+pub const ABOUT_SCHEMA: &str = "rigos.about/v1";
+pub const LICENSES_SCHEMA: &str = "rigos.licenses/v1";
+pub const COMPONENT_PROVENANCE_SCHEMA: &str = "rigos.component-provenance/v1";
+pub const IMAGE_LAYOUT_SCHEMA: &str = "rigos.image-layout/v1";
+pub const IMAGE_BUILD_MANIFEST_SCHEMA: &str = "rigos.image-build-manifest/v1";
+pub const STATE_LAYOUT_SCHEMA: &str = "rigos.state-layout/v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ReleaseInfoV1 {
+    pub schema: String,
+    pub product: String,
+    pub product_version: String,
+    pub image_id: String,
+    pub image_version: String,
+    pub image_channel: String,
+    pub variant: String,
+    pub architecture: String,
+    pub base_id: String,
+    pub base_version_id: String,
+    pub build_id: String,
+    pub build_commit: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ComponentProvenanceV1 {
+    pub schema: String,
+    pub component: String,
+    pub version: String,
+    pub source: String,
+    pub modified: bool,
+    pub architecture: String,
+    pub artifact: String,
+    pub archive_sha256: String,
+    pub binary_sha256: String,
+    pub license: String,
+    pub upstream_donation_behavior: String,
+    pub rigos_receives_donation: bool,
+    pub rigos_fee_percent: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct AboutReportV1 {
+    pub release: ReleaseInfoV1,
+    pub subscription: String,
+    pub worker_limit: String,
+    pub mining_fee_percent: u32,
+    pub cloud_dependency: String,
+    pub bundled_miner: ComponentProvenanceV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct LicenseEntryV1 {
+    pub component: String,
+    pub license: String,
+    pub notice_path: String,
+    pub license_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct LicensesReportV1 {
+    pub entries: Vec<LicenseEntryV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ImagePartitionV1 {
+    pub number: u32,
+    pub label: String,
+    pub type_guid: String,
+    pub unique_guid: String,
+    pub start_lba: u64,
+    pub minimum_size_lba: u64,
+    pub filesystem: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ImageLayoutV1 {
+    pub schema: String,
+    pub image_version: String,
+    pub image_id: String,
+    pub partition_table: String,
+    pub disk_guid: String,
+    pub logical_sector_size: u32,
+    pub minimum_media_size_bytes: u64,
+    pub alignment_lba: u64,
+    pub final_state_partition: u32,
+    pub build_commit: String,
+    pub root_payload_sha256: String,
+    pub partitions: Vec<ImagePartitionV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct StateLayoutV1 {
+    pub schema: String,
+    pub image_version: String,
+    pub initialization_state: String,
+    pub partition_number: u32,
+    pub partition_start_lba: u64,
+    pub partition_end_lba: u64,
+    pub filesystem_type: String,
+    pub filesystem_uuid: String,
+    pub state_capacity_bytes: u64,
+    pub authoritative_image_commit: String,
+    pub initialized_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ImageBuildManifestV1 {
+    pub schema: String,
+    pub product: String,
+    pub product_version: String,
+    pub image_id: String,
+    pub image_version: String,
+    pub image_channel: String,
+    pub source_commit: String,
+    pub source_date_epoch: u64,
+    pub target: String,
+    pub base: String,
+    pub kernel: String,
+    pub artifact: String,
+    pub artifact_sha256: String,
+    pub artifact_size_bytes: u64,
+    pub root_a_sha256: String,
+    pub root_b_sha256: String,
+    pub root_payload_sha256: String,
+    pub layout: ImageLayoutV1,
+    pub components: Vec<ComponentProvenanceV1>,
+    pub tools: BTreeMap<String, String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BuildManifestV1 {
@@ -159,6 +287,30 @@ pub fn schemas() -> BTreeMap<&'static str, serde_json::Value> {
     output.insert(
         "pool-profile-v1.schema.json",
         serde_json::to_value(schema_for!(PoolProfile)).unwrap(),
+    );
+    output.insert(
+        "about-v1.schema.json",
+        serde_json::to_value(schema_for!(AboutReportV1)).unwrap(),
+    );
+    output.insert(
+        "licenses-v1.schema.json",
+        serde_json::to_value(schema_for!(LicensesReportV1)).unwrap(),
+    );
+    output.insert(
+        "component-provenance-v1.schema.json",
+        serde_json::to_value(schema_for!(ComponentProvenanceV1)).unwrap(),
+    );
+    output.insert(
+        "image-layout-v1.schema.json",
+        serde_json::to_value(schema_for!(ImageLayoutV1)).unwrap(),
+    );
+    output.insert(
+        "image-build-manifest-v1.schema.json",
+        serde_json::to_value(schema_for!(ImageBuildManifestV1)).unwrap(),
+    );
+    output.insert(
+        "state-layout-v1.schema.json",
+        serde_json::to_value(schema_for!(StateLayoutV1)).unwrap(),
     );
     output
 }

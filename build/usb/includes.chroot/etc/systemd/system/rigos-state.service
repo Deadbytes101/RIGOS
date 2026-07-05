@@ -6,7 +6,7 @@ Before=local-fs.target rigos-firstboot.service rigos-miner.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/rigos-state-mount
+ExecStart=/usr/lib/rigos/rigos-state-init
 RemainAfterExit=yes
 
 [Install]

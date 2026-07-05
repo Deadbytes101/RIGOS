@@ -1,26 +1,15 @@
 #!/bin/sh
 set -eu
 
-XMRIG_VERSION=6.26.0
-XMRIG_ARCHIVE="xmrig-${XMRIG_VERSION}-linux-static-x64.tar.gz"
-XMRIG_SHA256=fc6f8ae5f64e4f17481f7e3be29a1c56949f216a998414188003eae1db20c9e5
-XMRIG_URL="https://github.com/xmrig/xmrig/releases/download/v${XMRIG_VERSION}/${XMRIG_ARCHIVE}"
-
 useradd --system --home-dir /var/lib/rigos --shell /usr/sbin/nologin --user-group rigos
 useradd --create-home --shell /bin/bash --groups sudo rigosadmin
 passwd --lock rigosadmin
 install -d -o rigos -g rigos -m 0750 /var/lib/rigos /run/rigos
 install -d -m 0755 /usr/lib/rigos
 
-temporary="$(mktemp -d)"
-trap 'rm -rf "$temporary"' EXIT
-curl --fail --location --proto '=https' --tlsv1.2 --output "$temporary/$XMRIG_ARCHIVE" "$XMRIG_URL"
-printf '%s  %s\n' "$XMRIG_SHA256" "$temporary/$XMRIG_ARCHIVE" | sha256sum --check --strict
-tar -xzf "$temporary/$XMRIG_ARCHIVE" -C "$temporary"
-install -m 0755 "$temporary/xmrig-${XMRIG_VERSION}/xmrig" /usr/lib/rigos/xmrig
-
-chmod 0755 /usr/local/sbin/rigos-firstboot /usr/local/sbin/rigos-state-mount
-systemctl enable NetworkManager.service rigos-state.service rigos-firstboot.service
+chmod 0755 /usr/local/sbin/rigos-firstboot /usr/lib/rigos/rigos-state-init /usr/lib/rigos/xmrig
+systemctl enable NetworkManager.service rigos-state.service rigos-firstboot.service tmp.mount
+systemctl disable apt-daily.timer apt-daily-upgrade.timer logrotate.timer fstrim.timer 2>/dev/null || true
 systemctl disable systemd-journald-audit.socket 2>/dev/null || true
 
 mkdir -p /etc/systemd/journald.conf.d

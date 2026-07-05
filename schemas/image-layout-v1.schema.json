@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "ImagePartitionV1": {
+      "properties": {
+        "filesystem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "minimum_size_lba": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_lba": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type_guid": {
+          "type": "string"
+        },
+        "unique_guid": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "label",
+        "type_guid",
+        "unique_guid",
+        "start_lba",
+        "minimum_size_lba"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "alignment_lba": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "build_commit": {
+      "type": "string"
+    },
+    "disk_guid": {
+      "type": "string"
+    },
+    "final_state_partition": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "image_id": {
+      "type": "string"
+    },
+    "image_version": {
+      "type": "string"
+    },
+    "logical_sector_size": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "minimum_media_size_bytes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "partition_table": {
+      "type": "string"
+    },
+    "partitions": {
+      "items": {
+        "$ref": "#/$defs/ImagePartitionV1"
+      },
+      "type": "array"
+    },
+    "root_payload_sha256": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "image_version",
+    "image_id",
+    "partition_table",
+    "disk_guid",
+    "logical_sector_size",
+    "minimum_media_size_bytes",
+    "alignment_lba",
+    "final_state_partition",
+    "build_commit",
+    "root_payload_sha256",
+    "partitions"
+  ],
+  "title": "ImageLayoutV1",
+  "type": "object"
+}

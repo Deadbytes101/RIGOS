@@ -5,6 +5,30 @@
         "build_commit": {
           "type": "string"
         },
+        "image_channel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "image_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "profile": {
           "type": "string"
         },

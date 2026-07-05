@@ -11,7 +11,7 @@ cargo run --locked -p rigos-schema --bin generate-schemas -- --check
 cargo build --workspace --release --locked
 
 bash -n scripts/*.sh build/usb/hooks/*.chroot \
-  build/usb/includes.chroot/usr/local/sbin/rigos-state-mount
+  build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -37,7 +37,7 @@ if rg -n -i 'DBYTE RIGOS|dbyte-rigos|dbyte\.rigos|/etc/dbyte-rigos|/var/lib/dbyt
   echo "obsolete pre-release namespace detected" >&2
   exit 1
 fi
-if rg -n -i '(billing|subscription|entitlement|trial_expir|license.{0,12}server|account_balance|worker_limit|dev_fee|forced_pool|remote.{0,12}kill)' \
+if rg -n -i '(billing|entitlement|trial_expir|license.{0,12}server|account_balance|payment.{0,12}(gate|control)|remote.{0,12}kill)' \
   crates/rigos-core crates/rigos-machine crates/rigos-miner crates/rigos-xmrig crates/rigosd \
   crates/rigos-pool crates/rigos-evidence crates/rigos-schema; then
   echo "forbidden billing/account/control runtime surface detected" >&2
@@ -45,6 +45,18 @@ if rg -n -i '(billing|subscription|entitlement|trial_expir|license.{0,12}server|
 fi
 if rg -n 'if\s+.*(moneroocean|2miners|nicehash|supportxmr|herominers|hashvault|nanopool)' crates/rigos-pool crates/rigosd; then
   echo "pool-name conditional leaked into runtime core" >&2
+  exit 1
+fi
+if rg -n 'curl|wget|Invoke-WebRequest|latest' build/usb/includes.chroot; then
+  echo "runtime miner download or floating dependency detected" >&2
+  exit 1
+fi
+for required in build/usb/THIRD_PARTY_NOTICES docs/miner-provenance.md docs/third-party-components.md; do
+  [[ -s "$required" ]] || { echo "missing third-party disclosure: $required" >&2; exit 1; }
+done
+if rg -n -i 'donation.{0,20}disabled|complete mining stack.{0,20}(zero|0%).{0,10}fee|rigos.{0,20}(wallet|donation endpoint)' \
+  crates build/usb docs README.md; then
+  echo "false fee claim or RIGOS donation destination detected" >&2
   exit 1
 fi
 

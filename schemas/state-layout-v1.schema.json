@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "authoritative_image_commit": {
+      "type": "string"
+    },
+    "filesystem_type": {
+      "type": "string"
+    },
+    "filesystem_uuid": {
+      "type": "string"
+    },
+    "image_version": {
+      "type": "string"
+    },
+    "initialization_state": {
+      "type": "string"
+    },
+    "initialized_at": {
+      "type": "string"
+    },
+    "partition_end_lba": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "partition_number": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "partition_start_lba": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "state_capacity_bytes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "image_version",
+    "initialization_state",
+    "partition_number",
+    "partition_start_lba",
+    "partition_end_lba",
+    "filesystem_type",
+    "filesystem_uuid",
+    "state_capacity_bytes",
+    "authoritative_image_commit",
+    "initialized_at"
+  ],
+  "title": "StateLayoutV1",
+  "type": "object"
+}

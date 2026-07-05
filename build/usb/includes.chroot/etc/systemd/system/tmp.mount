@@ -1,0 +1,12 @@
+[Unit]
+Description=RIGOS volatile temporary storage
+Before=local-fs.target
+
+[Mount]
+What=tmpfs
+Where=/tmp
+Type=tmpfs
+Options=mode=1777,nosuid,nodev,noatime,size=25%
+
+[Install]
+WantedBy=local-fs.target

@@ -2,12 +2,20 @@
 
 CPU-only, pool-neutral, USB-native, local-first Linux mining operating system.
 
+Current USB appliance preview: `RIGOS 0.0.4-alpha.1`. The persistent appliance
+is a raw GPT disk image; the ISO is recovery-only and stateless.
+
 ```text
 NO CLOUD. NO ACCOUNT. NO SUBSCRIPTION. NO WORKER LIMIT.
 NO LICENSE SERVER. NO RIGOS DEV FEE. NO FORCED POOL.
 
 FLASH IT. BOOT IT. MINE.
 ```
+
+RIGOS charges no subscription, worker fee, mining fee, or developer fee. The
+default image bundles the official unmodified XMRig 6.26.0 binary. XMRig's
+upstream donation behavior remains applicable and is not received or
+redirected by RIGOS.
 
 ```text
 READ THE MACHINE.
@@ -67,4 +75,5 @@ Marketing and comparison statements are governed by [release evidence gates](doc
 
 Release candidates are produced through the [authoritative release pipeline](docs/release-pipeline.md). Physical evidence follows the [dual-tier evidence policy](docs/physical-validation-evidence.md). No final `v0.0.1` tag is permitted before the documented physical acceptance gate passes.
 
-The first flashable bootstrap image is documented in [USB image build](docs/usb-image-build.md). It provides a read-only Debian live root and local first-boot mining configuration; it is not yet the final signed A/B updater.
+The USB appliance build is documented in [USB image build](docs/usb-image-build.md).
+Third-party behavior and hashes are documented in [miner provenance](docs/miner-provenance.md).

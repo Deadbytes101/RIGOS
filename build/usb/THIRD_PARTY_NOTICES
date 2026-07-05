@@ -1,0 +1,12 @@
+RIGOS Third-Party Components
+============================
+
+XMRig 6.26.0
+-------------
+Source: official unmodified upstream Linux x86-64 release
+Upstream: https://github.com/xmrig/xmrig/tree/v6.26.0
+License: GNU General Public License v3.0 or later
+
+RIGOS charges no subscription, worker fee, mining fee, or developer fee.
+The bundled official XMRig binary retains its upstream donation behavior.
+RIGOS does not receive or redirect that donation.

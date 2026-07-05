@@ -6,4 +6,15 @@ fn main() {
     println!("cargo:rustc-env=RIGOS_BUILD_TARGET={target}");
     println!("cargo:rustc-env=RIGOS_BUILD_PROFILE={profile}");
     println!("cargo:rerun-if-env-changed=RIGOS_BUILD_COMMIT");
+    for name in [
+        "RIGOS_PRODUCT_VERSION",
+        "RIGOS_IMAGE_ID",
+        "RIGOS_IMAGE_VERSION",
+        "RIGOS_IMAGE_CHANNEL",
+    ] {
+        if let Ok(value) = std::env::var(name) {
+            println!("cargo:rustc-env={name}={value}");
+        }
+        println!("cargo:rerun-if-env-changed={name}");
+    }
 }

@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "LicenseEntryV1": {
+      "properties": {
+        "component": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "license_path": {
+          "type": "string"
+        },
+        "notice_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "license",
+        "notice_path",
+        "license_path"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/LicenseEntryV1"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries"
+  ],
+  "title": "LicensesReportV1",
+  "type": "object"
+}

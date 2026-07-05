@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "ComponentProvenanceV1": {
+      "properties": {
+        "architecture": {
+          "type": "string"
+        },
+        "archive_sha256": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "string"
+        },
+        "binary_sha256": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "modified": {
+          "type": "boolean"
+        },
+        "rigos_fee_percent": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rigos_receives_donation": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "upstream_donation_behavior": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "component",
+        "version",
+        "source",
+        "modified",
+        "architecture",
+        "artifact",
+        "archive_sha256",
+        "binary_sha256",
+        "license",
+        "upstream_donation_behavior",
+        "rigos_receives_donation",
+        "rigos_fee_percent"
+      ],
+      "type": "object"
+    },
+    "ImageLayoutV1": {
+      "properties": {
+        "alignment_lba": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "build_commit": {
+          "type": "string"
+        },
+        "disk_guid": {
+          "type": "string"
+        },
+        "final_state_partition": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "image_id": {
+          "type": "string"
+        },
+        "image_version": {
+          "type": "string"
+        },
+        "logical_sector_size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minimum_media_size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "partition_table": {
+          "type": "string"
+        },
+        "partitions": {
+          "items": {
+            "$ref": "#/$defs/ImagePartitionV1"
+          },
+          "type": "array"
+        },
+        "root_payload_sha256": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "image_version",
+        "image_id",
+        "partition_table",
+        "disk_guid",
+        "logical_sector_size",
+        "minimum_media_size_bytes",
+        "alignment_lba",
+        "final_state_partition",
+        "build_commit",
+        "root_payload_sha256",
+        "partitions"
+      ],
+      "type": "object"
+    },
+    "ImagePartitionV1": {
+      "properties": {
+        "filesystem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "minimum_size_lba": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start_lba": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type_guid": {
+          "type": "string"
+        },
+        "unique_guid": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "label",
+        "type_guid",
+        "unique_guid",
+        "start_lba",
+        "minimum_size_lba"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifact": {
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "type": "string"
+    },
+    "artifact_size_bytes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "base": {
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "$ref": "#/$defs/ComponentProvenanceV1"
+      },
+      "type": "array"
+    },
+    "image_channel": {
+      "type": "string"
+    },
+    "image_id": {
+      "type": "string"
+    },
+    "image_version": {
+      "type": "string"
+    },
+    "kernel": {
+      "type": "string"
+    },
+    "layout": {
+      "$ref": "#/$defs/ImageLayoutV1"
+    },
+    "product": {
+      "type": "string"
+    },
+    "product_version": {
+      "type": "string"
+    },
+    "root_a_sha256": {
+      "type": "string"
+    },
+    "root_b_sha256": {
+      "type": "string"
+    },
+    "root_payload_sha256": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "source_commit": {
+      "type": "string"
+    },
+    "source_date_epoch": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "target": {
+      "type": "string"
+    },
+    "tools": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "product",
+    "product_version",
+    "image_id",
+    "image_version",
+    "image_channel",
+    "source_commit",
+    "source_date_epoch",
+    "target",
+    "base",
+    "kernel",
+    "artifact",
+    "artifact_sha256",
+    "artifact_size_bytes",
+    "root_a_sha256",
+    "root_b_sha256",
+    "root_payload_sha256",
+    "layout",
+    "components",
+    "tools"
+  ],
+  "title": "ImageBuildManifestV1",
+  "type": "object"
+}
