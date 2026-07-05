@@ -73,7 +73,10 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(jq -r .final_state_partition "$temporary/a/image-layout.json")" == 4 ]] || die 'final state partition mismatch'
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
-  etc/rigos-release etc/os-release usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
+  etc/rigos-release etc/os-release \
+  etc/systemd/system/rigos-miner.service \
+  etc/systemd/system/rigos-profile-apply.service \
+  usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
   usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-config usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
