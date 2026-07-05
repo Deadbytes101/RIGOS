@@ -1,15 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[path = "lib.rs"]
-mod base;
-
-pub use base::{
-    ConfigDiagnostic, ConfigError, CpuPolicy, ExternalReference, FlightSheet, FlightSource,
-    IdentityRecord, ImportProvenance, MAX_CONFIG_BYTES, MAX_SHEET_BYTES, MinerStartMode, Pool,
-    Proposal, RigProfile, Threads, build_runtime, commit_revision, parse_flight_sheet,
-    parse_rig_profile, safe_join, safe_json_basename, validate_identity,
-};
-
+use rigos_config::{ConfigDiagnostic, ConfigError, FlightSheet, ImportProvenance};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -26,7 +17,7 @@ pub fn import_hive_style(
         .ok_or_else(|| compat_error(filename, None, "external sheet must be an object"))?;
 
     if !envelope.contains_key("items") {
-        return base::import_hive_style(bytes, filename);
+        return rigos_config::import_hive_style(bytes, filename);
     }
 
     let items = envelope
@@ -108,7 +99,8 @@ pub fn import_hive_style(
 
     let normalized = serde_json::to_vec(&sanitized)
         .map_err(|_| compat_error(filename, None, "external sheet normalization failed"))?;
-    let (mut sheet, mut provenance) = base::import_hive_style(&normalized, filename)?;
+    let (mut sheet, mut provenance) =
+        rigos_config::import_hive_style(&normalized, filename)?;
     if let Some(count) = hugepages {
         sheet.cpu.huge_pages = count > 0;
     }
