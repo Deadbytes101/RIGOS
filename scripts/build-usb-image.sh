@@ -196,9 +196,13 @@ root_a_sha="$(sha256sum "$p2" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p3" |
 sync; losetup -d "$loop"; rm -f "${loop}p"{1,2,3,4}; trap - EXIT
 
 output="$repo/dist/usb"
-rm -rf "$output"; mkdir -p "$output"
+mkdir -p "$output"
 image_name="rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.img"
 recovery_name="rigos-recovery-amd64-${RIGOS_IMAGE_VERSION}.iso"
+manifest_name="rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.build-manifest.json"
+rm -f "$output/$image_name" "$output/$image_name.sha256" \
+  "$output/$recovery_name" "$output/$recovery_name.sha256" \
+  "$output/$manifest_name"
 install -m 0644 "$image" "$output/$image_name"
 install -m 0644 "$live/live-image-amd64.hybrid.iso" "$output/$recovery_name"
 image_sha="$(sha256sum "$output/$image_name" | cut -d' ' -f1)"
@@ -213,8 +217,8 @@ jq -n --arg version "$RIGOS_IMAGE_VERSION" --arg channel "$RIGOS_IMAGE_CHANNEL" 
   --arg kernel "$kernel_version" --argjson epoch "$source_epoch" --slurpfile layout "$layout" \
   --slurpfile xmrig "$live/config/includes.chroot/usr/share/rigos/components/xmrig.json" \
   '{schema:"rigos.image-build-manifest/v2",product:"RIGOS",product_version:$version,image_id:"rigos-usb-amd64",image_version:$version,image_channel:$channel,source_commit:$commit,source_date_epoch:$epoch,target:"x86_64-unknown-linux-gnu",base:"Debian GNU/Linux 12",kernel:$kernel,artifact:$artifact,artifact_sha256:$sha,artifact_size_bytes:$size,root_a_sha256:$root_a,root_b_sha256:$root_b,root_payload_sha256:$payload,layout:$layout[0],components:[$xmrig[0]],tools:{rustc:"1.85.1",live_build:"20230502",grub:"2.06"}}' \
-  >"$output/rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.build-manifest.json"
+  >"$output/$manifest_name"
 
-"$source_root/scripts/verify-usb-appliance.sh" "$output/$image_name" "$output/rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.build-manifest.json"
+"$source_root/scripts/verify-usb-appliance.sh" "$output/$image_name" "$output/$manifest_name"
 "$source_root/scripts/verify-usb-image.sh" "$output/$recovery_name"
 printf 'RIGOS appliance: %s\nRecovery ISO: %s\n' "$output/$image_name" "$output/$recovery_name"
