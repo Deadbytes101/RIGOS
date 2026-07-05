@@ -11,6 +11,8 @@ image="$(readlink -f "$1")"; manifest="$(readlink -f "$2")"
 [[ "$(jq -r .layout.schema "$manifest")" == 'rigos.image-layout/v2' ]] || die 'layout schema mismatch'
 [[ "$(jq -r .layout.partition_table "$manifest")" == mbr ]] || die 'partition table contract mismatch'
 [[ "$(jq -r .layout.disk_guid "$manifest")" == '0x5249474f' ]] || die 'disk signature contract mismatch'
+image_version="$(jq -r .image_version "$manifest")"
+[[ -n "$image_version" && "$image_version" != null ]] || die 'image version is missing'
 
 signature="$(od -An -tx1 -j510 -N2 "$image" | tr -d ' \n')"
 [[ "$signature" == 55aa ]] || die 'MBR signature is missing'
@@ -72,9 +74,13 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
   etc/rigos-release etc/os-release usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/rigos-state-init usr/lib/rigos/xmrig usr/share/rigos >/dev/null
-grep -q 'VERSION_ID="0.0.4-alpha.2"' "$temporary/root/etc/rigos-release"
-grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release"
+  usr/lib/rigos/rigos-state-init usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
+  usr/share/rigos >/dev/null
+grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
+grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
+python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
+grep -Fq -- '"--output-fd", "1"' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot output fd contract missing'
+if grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot hides whiptail UI'; fi
 [[ "$(jq -r .modified "$temporary/root/usr/share/rigos/components/xmrig.json")" == false ]]
 [[ "$(jq -r .upstream_donation_behavior "$temporary/root/usr/share/rigos/components/xmrig.json")" == applies ]]
 [[ "$(jq -r .rigos_fee_percent "$temporary/root/usr/share/rigos/components/xmrig.json")" == 0 ]]
