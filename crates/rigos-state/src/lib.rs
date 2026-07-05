@@ -60,7 +60,13 @@ pub struct SfdiskPartition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedLayout {
     pub disk_path: String,
+    pub disk_major_minor: String,
+    pub disk_ptuuid: String,
     pub disk_size_bytes: u64,
+    pub efi_path: String,
+    pub efi_major_minor: String,
+    pub efi_partuuid: String,
+    pub root_major_minor: String,
     pub state_path: String,
     pub state_start_lba: u64,
     pub state_size_lba: u64,
@@ -211,6 +217,11 @@ pub fn validate_layout(
         .iter()
         .find(|child| child.partn == Some(manifest.final_state_partition))
         .ok_or(LayoutError::StateNotFinal)?;
+    let efi = disk
+        .children
+        .iter()
+        .find(|child| child.partn == Some(1))
+        .ok_or(LayoutError::PartitionSetMismatch)?;
     let max_start = disk.children.iter().filter_map(|child| child.start).max();
     let state_label_matches = matches!(
         state.label.as_deref(),
@@ -232,7 +243,13 @@ pub fn validate_layout(
 
     Ok(VerifiedLayout {
         disk_path: disk.path.clone(),
+        disk_major_minor: disk.major_minor.clone(),
+        disk_ptuuid: disk.ptuuid.clone().unwrap_or_default(),
         disk_size_bytes: disk.size,
+        efi_path: efi.path.clone(),
+        efi_major_minor: efi.major_minor.clone(),
+        efi_partuuid: efi.partuuid.clone().unwrap_or_default(),
+        root_major_minor: boot_major_minor.to_owned(),
         state_path: state.path.clone(),
         state_start_lba: state.start.unwrap_or_default(),
         state_size_lba: state.size / u64::from(manifest.logical_sector_size),

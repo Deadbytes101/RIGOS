@@ -29,6 +29,8 @@ struct Args {
     mountpoint: PathBuf,
     #[arg(long, default_value = "/run/rigos/state-status.json")]
     status: PathBuf,
+    #[arg(long, default_value = "/run/rigos/boot-device.json")]
+    attestation: PathBuf,
     #[arg(long)]
     dry_run: bool,
 }
@@ -46,6 +48,7 @@ struct FindmntEntry {
 
 fn main() -> ExitCode {
     let args = Args::parse();
+    let _ = fs::remove_file(&args.attestation);
     let (outcome, message) = match execute(&args) {
         Ok(outcome) => (outcome, None),
         Err(
@@ -138,6 +141,30 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     .into_owned();
     if !udev.lines().any(|line| line == "ID_BUS=usb") {
         return Err(LayoutError::NotWritableUsb.into());
+    }
+    write_atomic(
+        &args.attestation,
+        &json!({
+            "schema":"rigos.boot-device/v1",
+            "boot_id":fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim(),
+            "verification_outcome":"verified",
+            "disk":{
+                "path":verified.disk_path,
+                "major_minor":verified.disk_major_minor,
+                "ptuuid":verified.disk_ptuuid,
+            },
+            "partition1":{
+                "path":verified.efi_path,
+                "major_minor":verified.efi_major_minor,
+                "partuuid":verified.efi_partuuid,
+            },
+            "root":{"major_minor":verified.root_major_minor},
+        }),
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&args.attestation, fs::Permissions::from_mode(0o600))?;
     }
     if args.dry_run {
         return Ok(StateOutcome::Ready);
