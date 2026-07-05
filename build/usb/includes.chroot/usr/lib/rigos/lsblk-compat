@@ -1,0 +1,122 @@
+#!/usr/bin/python3
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+MAJOR_MINOR_RE = re.compile(r"^[0-9]+:[0-9]+$")
+
+
+def runtime_paths() -> tuple[str, Path]:
+    test_mode = os.environ.get("RIGOS_LSBLK_COMPAT_TEST") == "1"
+    if test_mode:
+        real_lsblk = os.environ.get("RIGOS_REAL_LSBLK", "/usr/bin/lsblk")
+        sysfs_root = Path(os.environ.get("RIGOS_SYSFS_BLOCK_ROOT", "/sys/dev/block"))
+        return real_lsblk, sysfs_root
+    return "/usr/bin/lsblk", Path("/sys/dev/block")
+
+
+def remove_partn_column(arguments: list[str]) -> tuple[list[str], bool]:
+    updated = list(arguments)
+    requested = False
+    index = 0
+    while index < len(updated):
+        argument = updated[index]
+        if argument in {"--output", "-o"}:
+            if index + 1 >= len(updated):
+                raise ValueError(f"{argument} requires a value")
+            columns = updated[index + 1].split(",")
+            if "PARTN" in columns:
+                requested = True
+                columns = [column for column in columns if column != "PARTN"]
+                updated[index + 1] = ",".join(columns)
+            index += 2
+            continue
+        if argument.startswith("--output="):
+            columns = argument.split("=", 1)[1].split(",")
+            if "PARTN" in columns:
+                requested = True
+                columns = [column for column in columns if column != "PARTN"]
+                updated[index] = "--output=" + ",".join(columns)
+        index += 1
+    return updated, requested
+
+
+def partition_number(device: dict, sysfs_root: Path) -> int:
+    major_minor = device.get("maj:min")
+    path = device.get("path", "unknown device")
+    if not isinstance(major_minor, str) or not MAJOR_MINOR_RE.fullmatch(major_minor):
+        raise ValueError(f"invalid block identity for {path}")
+    source = sysfs_root / major_minor / "partition"
+    try:
+        raw = source.read_text(encoding="ascii").strip()
+    except OSError as error:
+        raise ValueError(f"partition number unavailable for {path} at {source}: {error}") from error
+    try:
+        number = int(raw, 10)
+    except ValueError as error:
+        raise ValueError(f"invalid partition number for {path} at {source}") from error
+    if number <= 0 or number > 0xFFFFFFFF:
+        raise ValueError(f"partition number out of range for {path} at {source}")
+    return number
+
+
+def add_partition_numbers(devices: list[dict], sysfs_root: Path) -> None:
+    for device in devices:
+        if device.get("type") == "part":
+            device["partn"] = partition_number(device, sysfs_root)
+        else:
+            device["partn"] = None
+        children = device.get("children")
+        if children is not None:
+            if not isinstance(children, list):
+                raise ValueError("lsblk children field is not a list")
+            add_partition_numbers(children, sysfs_root)
+
+
+def main() -> int:
+    real_lsblk, sysfs_root = runtime_paths()
+    try:
+        arguments, requested_partn = remove_partn_column(sys.argv[1:])
+    except ValueError as error:
+        print(f"lsblk-compat: {error}", file=sys.stderr)
+        return 2
+
+    if not requested_partn:
+        os.execv(real_lsblk, [real_lsblk, *arguments])
+
+    if "--json" not in arguments and "-J" not in arguments:
+        print("lsblk-compat: PARTN compatibility requires JSON output", file=sys.stderr)
+        return 2
+
+    result = subprocess.run(
+        [real_lsblk, *arguments],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
+    if result.returncode != 0:
+        return result.returncode
+
+    try:
+        document = json.loads(result.stdout)
+        devices = document.get("blockdevices")
+        if not isinstance(devices, list):
+            raise ValueError("lsblk JSON has no blockdevices list")
+        add_partition_numbers(devices, sysfs_root)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
+        print(f"lsblk-compat: {error}", file=sys.stderr)
+        return 2
+
+    json.dump(document, sys.stdout, separators=(",", ":"))
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
