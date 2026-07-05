@@ -1,6 +1,6 @@
 title-color: "#ffffff"
 title-font: "Unifont Regular 16"
-title-text: "RIGOS 0.0.4-alpha.1 - CPU-Only USB Mining OS"
+title-text: "RIGOS Recovery 0.0.4-alpha.2 - Stateless Diagnostics"
 message-font: "Unifont Regular 16"
 terminal-font: "Unifont Regular 16"
 
