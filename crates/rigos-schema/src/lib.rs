@@ -24,6 +24,7 @@ pub const PERFORMANCE_STATUS_SCHEMA: &str = "rigos.performance-status/v1";
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HugePageAuthorityStatusV1 {
+    NotProvisioned,
     Ready,
     Disabled,
     DegradedInsufficientMemory,
@@ -52,7 +53,7 @@ pub struct PerformanceStatusV1 {
     pub schema: String,
     pub boot_id: String,
     pub generated_at: String,
-    pub config_revision: String,
+    pub config_revision: Option<String>,
     pub algorithm: Option<String>,
     pub huge_pages: HugePageAuthorityV1,
 }

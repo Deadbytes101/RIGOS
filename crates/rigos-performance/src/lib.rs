@@ -415,8 +415,38 @@ pub fn execute<K: HugePageKernel, C: MinerControl>(
         Err(error) => return Err(AuthorityError::Status(error.to_string())),
     }
     let current = paths.state_root.join("current");
-    let revision_target = fs::read_link(&current)
-        .map_err(|error| AuthorityError::Configuration(format!("current revision: {error}")))?;
+    let revision_target = match fs::read_link(&current) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let snapshot = kernel.snapshot()?;
+            let status = PerformanceStatusV1 {
+                schema: PERFORMANCE_STATUS_SCHEMA.into(),
+                boot_id: read_trimmed(&paths.boot_id, "boot ID")?,
+                generated_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                config_revision: None,
+                algorithm: None,
+                huge_pages: HugePageAuthorityV1 {
+                    requested: false,
+                    target_pages: 0,
+                    attempted_pages: 0,
+                    actual_pages: snapshot.huge_pages_total,
+                    huge_page_size_bytes: snapshot.huge_page_size_bytes,
+                    memory_available_before_bytes: snapshot.available_bytes,
+                    reserve_bytes: MEMORY_RESERVE_BYTES,
+                    allocation_percent_of_target: 0.0,
+                    status: HugePageAuthorityStatusV1::NotProvisioned,
+                    reason: Some("configuration_not_committed".into()),
+                },
+            };
+            write_status_verified(&paths.status, &status)?;
+            return Ok(status);
+        }
+        Err(error) => {
+            return Err(AuthorityError::Configuration(format!(
+                "current revision: {error}"
+            )));
+        }
+    };
     let revision = revision_target
         .file_name()
         .and_then(|value| value.to_str())
@@ -433,7 +463,7 @@ pub fn execute<K: HugePageKernel, C: MinerControl>(
         schema: PERFORMANCE_STATUS_SCHEMA.into(),
         boot_id: read_trimmed(&paths.boot_id, "boot ID")?,
         generated_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-        config_revision: revision,
+        config_revision: Some(revision),
         algorithm: Some(policy.algorithm),
         huge_pages,
     };
@@ -770,7 +800,7 @@ mod tests {
             schema: PERFORMANCE_STATUS_SCHEMA.into(),
             boot_id: "boot".into(),
             generated_at: "2026-07-06T00:00:00.000Z".into(),
-            config_revision: "revision".into(),
+            config_revision: Some("revision".into()),
             algorithm: Some("rx/0".into()),
             huge_pages: outcome(
                 true,
@@ -800,6 +830,35 @@ mod tests {
                 0o644
             );
         }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unprovisioned_status_reads_truth_without_mutation_or_miner_control() {
+        let root = std::env::temp_dir().join(format!("rigos-unprovisioned-{}", Uuid::new_v4()));
+        let state = root.join("state");
+        fs::create_dir_all(&state).unwrap();
+        let boot_id = root.join("boot-id");
+        fs::write(&boot_id, "boot-fresh\n").unwrap();
+        let paths = AuthorityPaths {
+            state_root: state,
+            status: root.join("performance-status.json"),
+            boot_id,
+        };
+        let mut kernel = FakeKernel::new(vec![memory(4 * MEMORY_RESERVE_BYTES, 17)]);
+        let mut miner = FakeMiner {
+            active: false,
+            calls: vec![],
+        };
+        let status = execute(&paths, &mut kernel, &mut miner).unwrap();
+        assert_eq!(
+            status.huge_pages.status,
+            HugePageAuthorityStatusV1::NotProvisioned
+        );
+        assert_eq!(status.huge_pages.actual_pages, 17);
+        assert_eq!(status.config_revision, None);
+        assert!(kernel.writes.is_empty());
+        assert!(miner.calls.is_empty());
         let _ = fs::remove_dir_all(root);
     }
 

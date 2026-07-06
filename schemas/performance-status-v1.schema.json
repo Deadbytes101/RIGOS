@@ -2,6 +2,7 @@
   "$defs": {
     "HugePageAuthorityStatusV1": {
       "enum": [
+        "not_provisioned",
         "ready",
         "disabled",
         "degraded_insufficient_memory",
@@ -87,7 +88,10 @@
       "type": "string"
     },
     "config_revision": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "generated_at": {
       "type": "string"
@@ -103,7 +107,6 @@
     "schema",
     "boot_id",
     "generated_at",
-    "config_revision",
     "huge_pages"
   ],
   "title": "PerformanceStatusV1",

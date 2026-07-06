@@ -223,17 +223,18 @@ fn load_huge_page_check() -> DoctorCheckV1 {
     };
     let revision = match fs::read_link(current_revision_path()) {
         Ok(value) => match value.file_name().and_then(|value| value.to_str()) {
-            Some(value) if !value.is_empty() => value.to_owned(),
+            Some(value) if !value.is_empty() => Some(value.to_owned()),
             _ => return failed_huge_page_check("current revision target is invalid".into()),
         },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => {
             return failed_huge_page_check(format!("current revision unavailable: {error}"));
         }
     };
-    evaluate_huge_page_check(&status, &boot_id, &revision)
+    evaluate_huge_page_check(&status, &boot_id, revision.as_deref())
 }
 
-fn evaluate_huge_page_check(status: &[u8], boot_id: &str, revision: &str) -> DoctorCheckV1 {
+fn evaluate_huge_page_check(status: &[u8], boot_id: &str, revision: Option<&str>) -> DoctorCheckV1 {
     let status: PerformanceStatusV1 = match serde_json::from_slice(status) {
         Ok(value) => value,
         Err(error) => return failed_huge_page_check(format!("invalid status JSON: {error}")),
@@ -244,7 +245,7 @@ fn evaluate_huge_page_check(status: &[u8], boot_id: &str, revision: &str) -> Doc
     if status.boot_id != boot_id {
         return failed_huge_page_check("performance status is from another boot".into());
     }
-    if status.config_revision != revision {
+    if status.config_revision.as_deref() != revision {
         return failed_huge_page_check("performance status uses another config revision".into());
     }
     let level = match status.huge_pages.status {
@@ -265,6 +266,7 @@ fn evaluate_huge_page_check(status: &[u8], boot_id: &str, revision: &str) -> Doc
 
 fn huge_page_status_name(status: &HugePageAuthorityStatusV1) -> &'static str {
     match status {
+        HugePageAuthorityStatusV1::NotProvisioned => "not_provisioned",
         HugePageAuthorityStatusV1::Ready => "ready",
         HugePageAuthorityStatusV1::Disabled => "disabled",
         HugePageAuthorityStatusV1::DegradedInsufficientMemory => "degraded_insufficient_memory",
@@ -490,7 +492,7 @@ mod tests {
             schema: PERFORMANCE_STATUS_SCHEMA.into(),
             boot_id: "boot-a".into(),
             generated_at: "2026-07-06T00:00:00.000Z".into(),
-            config_revision: "revision-a".into(),
+            config_revision: Some("revision-a".into()),
             algorithm: Some("rx/0".into()),
             huge_pages: rigos_schema::HugePageAuthorityV1 {
                 requested: true,
@@ -507,7 +509,7 @@ mod tests {
         };
         let ready = serde_json::to_vec(&status(HugePageAuthorityStatusV1::Ready)).unwrap();
         assert_eq!(
-            evaluate_huge_page_check(&ready, "boot-a", "revision-a").status,
+            evaluate_huge_page_check(&ready, "boot-a", Some("revision-a")).status,
             "pass"
         );
         for kind in [
@@ -519,17 +521,17 @@ mod tests {
         ] {
             let degraded = serde_json::to_vec(&status(kind)).unwrap();
             assert_eq!(
-                evaluate_huge_page_check(&degraded, "boot-a", "revision-a").status,
+                evaluate_huge_page_check(&degraded, "boot-a", Some("revision-a")).status,
                 "warning"
             );
         }
         let disabled = serde_json::to_vec(&status(HugePageAuthorityStatusV1::Disabled)).unwrap();
         assert_eq!(
-            evaluate_huge_page_check(&disabled, "boot-a", "revision-a").status,
+            evaluate_huge_page_check(&disabled, "boot-a", Some("revision-a")).status,
             "pass"
         );
         assert_eq!(
-            evaluate_huge_page_check(&ready, "boot-b", "revision-a").status,
+            evaluate_huge_page_check(&ready, "boot-b", Some("revision-a")).status,
             "fail"
         );
     }
