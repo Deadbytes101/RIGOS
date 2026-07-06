@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+cycles="${1:-20}"
+case "$cycles" in
+    *[!0-9]*|'') echo "invalid cycle count" >&2; exit 2 ;;
+esac
+[ "$cycles" -ge 20 ] || { echo "at least 20 cycles are required" >&2; exit 2; }
+[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 2; }
+[ -L /var/lib/rigos/current ] || { echo "node is not provisioned" >&2; exit 2; }
+
+current="$(readlink /var/lib/rigos/current)"
+revisions="$(find /var/lib/rigos/revisions -mindepth 1 -maxdepth 1 -type d | wc -l)"
+index=1
+while [ "$index" -le "$cycles" ]; do
+    systemctl restart rigos-profile-apply.service
+    systemctl restart rigos-hugepages.service
+    systemctl restart rigos-miner.service
+    [ -d /run/rigos ] || { echo "shared runtime directory disappeared at cycle $index" >&2; exit 1; }
+    [ "$(readlink /var/lib/rigos/current)" = "$current" ] || { echo "current revision changed at cycle $index" >&2; exit 1; }
+    [ "$(find /var/lib/rigos/revisions -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq "$revisions" ] || { echo "revision count changed at cycle $index" >&2; exit 1; }
+    index=$((index + 1))
+done
+
+if journalctl -b --no-pager -u rigos-profile-apply.service -u rigos-hugepages.service -u rigos-miner.service | grep -Fq '226/NAMESPACE'; then
+    echo "systemd namespace failure observed" >&2
+    exit 1
+fi
+
+printf '{"schema":"rigos.lifecycle-cycles/v1","cycles":%s,"revision":"%s","outcome":"pass"}\n' "$cycles" "$current"

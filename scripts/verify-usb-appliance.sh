@@ -74,6 +74,7 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
   etc/rigos-release etc/os-release \
+  usr/lib/tmpfiles.d/rigos.conf \
   etc/systemd/system/rigos-state.service \
   etc/systemd/system/rigos-state-ready.service \
   etc/systemd/system/rigos-recovery-access.service \
@@ -82,7 +83,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-profile-apply.service \
   usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/xmrig usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/xmrig usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
@@ -91,6 +92,7 @@ python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
+grep -Fqx 'd /run/rigos 0755 root root -' "$temporary/root/usr/lib/tmpfiles.d/rigos.conf" || die 'shared runtime directory contract is missing'
 if rg -q '^RuntimeDirectory=rigos$' "$temporary/root/etc/systemd/system"; then die 'a service owns the shared runtime directory'; fi
 if grep -Eq '^(ExecStartPre|Environment=PATH)=.*compat-bin' "$temporary/root/etc/systemd/system/rigos-state.service"; then die 'state unit executes compatibility code from the runtime directory'; fi
 [[ -f "$temporary/root/usr/lib/rigos/lsblk-compat" ]] || die 'state lsblk compatibility wrapper is missing'
@@ -102,10 +104,10 @@ if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigo
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-state-ready' "$temporary/root/etc/systemd/system/rigos-state-ready.service" || die 'state readiness verifier is not wired'
 grep -Fq 'Requires=rigos-state-ready.service' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply bypasses state readiness'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-performance" ]] || die 'performance authority is missing or not executable'
-grep -Fq 'After=rigos-state.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority ordering is missing'
+grep -Fq 'After=rigos-state-ready.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority ordering is missing'
 grep -Fq 'Before=rigos-miner.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority is not ordered before miner'
-grep -Fq 'Requires=rigos-state.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority dependencies are missing'
-grep -Fq 'Requires=rigos-state.service rigos-hugepages.service' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner does not require huge page authority'
+grep -Fq 'Requires=rigos-state-ready.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority dependencies are missing'
+grep -Fq 'Requires=rigos-state-ready.service rigos-hugepages.service' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner does not require huge page authority'
 strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F '/proc/sys/vm/nr_hugepages' >/dev/null || die 'performance authority does not use direct kernel huge page control'
 strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'rigos.performance-status/v1' >/dev/null || die 'performance authority status contract is missing'
 if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'sysctl' >/dev/null; then die 'performance authority shells out to sysctl'; fi
@@ -114,6 +116,7 @@ grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' "$temporary/root/etc/s
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'first boot activation gate is missing'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'
+[[ -x "$temporary/root/usr/lib/rigos/rigos-lifecycle-cycles" ]] || die 'booted lifecycle cycle test is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
 grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot value stream mismatch'

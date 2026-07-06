@@ -11,6 +11,7 @@ cargo run --locked -p rigos-schema --bin generate-schemas -- --check
 cargo build --workspace --release --locked
 
 bash -n scripts/*.sh build/usb/hooks/*.chroot
+sh -n build/usb/includes.chroot/usr/lib/rigos/rigos-lifecycle-cycles
 python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access
 
 grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
@@ -21,6 +22,11 @@ grep -Fq 'boot_id' crates/rigos-state/src/main.rs
 grep -Fq 'major_minor' crates/rigos-state/src/main.rs
 grep -Fq 'ptuuid' crates/rigos-state/src/main.rs
 grep -Fq 'partuuid' crates/rigos-state/src/main.rs
+grep -Fq 'Duration::from_secs(10)' crates/rigos-state/src/main.rs
+if rg -q 'udevadm.*settle|systemd-udev-settle' crates/rigos-state build/usb/includes.chroot/etc/systemd/system; then
+  echo "state readiness uses a global udev settle" >&2
+  exit 1
+fi
 grep -Fq 'activation-status.json' crates/rigos-config/src/main.rs
 if rg -q 'rollback|pending-transaction' crates/rigos-config/src/main.rs; then
   echo "configuration activation still contains pointer rollback machinery" >&2
@@ -28,6 +34,7 @@ if rg -q 'rollback|pending-transaction' crates/rigos-config/src/main.rs; then
 fi
 grep -Fq 'engine("commit"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'engine("activate"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+grep -Fq 'engine("current"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 grep -Fq 'rigos-hugepages.service' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 grep -Fq '/proc/sys/vm/nr_hugepages' crates/rigos-performance/src/lib.rs
@@ -88,6 +95,18 @@ if seen["kwargs"].get("stderr") is not subprocess_module.PIPE:
     raise SystemExit("first boot dialog does not capture stderr")
 if "stdout" in seen["kwargs"]:
     raise SystemExit("first boot dialog does not leave stdout on tty")
+PY
+
+python3 - <<'PY'
+from pathlib import Path
+
+recovery = Path("build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access").read_text(encoding="utf-8")
+for forbidden in ("rigos-config", "rigos-miner.service", "systemctl\", \"start", "systemctl\", \"enable"):
+    if forbidden in recovery:
+        raise SystemExit(f"recovery access contains forbidden configuration or service mutation: {forbidden}")
+for required in ("passwd", "local_console_access", "remote_access", "configuration_commit"):
+    if required not in recovery:
+        raise SystemExit(f"recovery access contract is missing {required}")
 PY
 
 python3 - "$firstboot" <<'PY'

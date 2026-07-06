@@ -917,4 +917,54 @@ mod tests {
             assert!(!runtime.active);
         }
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn activation_retry_preserves_one_current_revision() {
+        use std::os::unix::fs::symlink;
+
+        let state = std::env::temp_dir().join(format!("rigos-activation-{}", Uuid::new_v4()));
+        let revision = Uuid::new_v4().to_string();
+        let revision_path = state.join("revisions").join(&revision);
+        fs::create_dir_all(&revision_path).unwrap();
+        fs::write(
+            revision_path.join("policy.json"),
+            br#"{"timezone":"Asia/Bangkok","miner_start_mode":"on_boot"}"#,
+        )
+        .unwrap();
+        fs::write(revision_path.join("xmrig.json"), b"{}\n").unwrap();
+        symlink(
+            Path::new("revisions").join(&revision),
+            state.join("current"),
+        )
+        .unwrap();
+
+        let mut failed = FakeRuntime {
+            timezone: "UTC".into(),
+            enabled: false,
+            active: false,
+            fail_once: Some("hugepages"),
+            events: vec![],
+        };
+        assert!(activate(&state, Path::new("missing-cmdline"), &mut failed).is_err());
+        assert!(!failed.active);
+        assert_eq!(current_revision(&state).unwrap(), Some(revision.clone()));
+        let failed_status: Value = read_json(&state.join("activation-status.json")).unwrap();
+        assert_eq!(failed_status["outcome"], "activation_failed");
+
+        let mut retry = FakeRuntime {
+            timezone: "UTC".into(),
+            enabled: false,
+            active: false,
+            fail_once: None,
+            events: vec![],
+        };
+        let (activated_revision, started) =
+            activate(&state, Path::new("missing-cmdline"), &mut retry).unwrap();
+        assert_eq!(activated_revision, revision);
+        assert!(started);
+        assert_eq!(fs::read_dir(state.join("revisions")).unwrap().count(), 1);
+        assert!(activation_ready(&state).unwrap());
+        let _ = fs::remove_dir_all(state);
+    }
 }
