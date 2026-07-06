@@ -78,6 +78,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-state.service \
   etc/systemd/system/rigos-state-ready.service \
   etc/systemd/system/rigos-recovery-access.service \
+  etc/systemd/system/rigos-firstboot.service \
   etc/systemd/system/rigos-hugepages.service \
   etc/systemd/system/rigos-miner.service \
   etc/systemd/system/rigos-profile-apply.service \
