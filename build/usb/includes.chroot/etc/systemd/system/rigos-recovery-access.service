@@ -12,7 +12,6 @@ StandardOutput=tty
 StandardError=tty
 TTYPath=/dev/tty1
 TTYReset=yes
-TTYVHangup=yes
 
 [Install]
 WantedBy=multi-user.target
