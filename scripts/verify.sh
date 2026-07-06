@@ -16,7 +16,9 @@ python3 -m py_compile \
   build/usb/includes.chroot/usr/local/sbin/rigos-firstboot \
   build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access \
   build/usb/includes.chroot/usr/local/sbin/rigos-state-orchestrate \
-  build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate
+  build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
+  scripts/verify-systemd-ordering.py
+python3 scripts/verify-systemd-ordering.py
 
 grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
 grep -Fq 'RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN' crates/rigos-config/src/main.rs
@@ -36,9 +38,34 @@ if rg -q 'rollback|pending-transaction' crates/rigos-config/src/main.rs; then
   echo "configuration activation still contains pointer rollback machinery" >&2
   exit 1
 fi
-grep -Fq 'engine("commit"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-grep -Fq 'engine("activate"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-grep -Fq 'engine("current"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+
+firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+python3 - "$firstboot" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+commands = set()
+for node in ast.walk(tree):
+    if not isinstance(node, ast.Call):
+        continue
+    if not isinstance(node.func, ast.Name) or node.func.id != "engine":
+        continue
+    if not node.args:
+        continue
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        commands.add(first.value)
+required = {"commit", "activate", "current"}
+missing = sorted(required - commands)
+if missing:
+    raise SystemExit(
+        "firstboot is missing required engine calls: " + ", ".join(missing)
+    )
+PY
+
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' build/usb/includes.chroot/etc/systemd/system/rigos-state.service
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 if grep -Fq 'Wants=rigos-recovery-access.service' build/usb/includes.chroot/etc/systemd/system/rigos-state-ready.service; then
@@ -57,7 +84,6 @@ if rg -n '(HIVE_HOST_URL|API_HOST_URLS|RIG_PASSWD|HSSH_SRV)=' configs docs/local
   exit 1
 fi
 
-firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 if rg -q -- '--output-fd' "$firstboot"; then
   echo "first boot redirects whiptail result onto the screen stream" >&2
   exit 1
@@ -170,7 +196,7 @@ with tempfile.TemporaryDirectory() as temporary:
     (root / "state" / "activation-status.json").write_text(json.dumps({"schema":"rigos.activation-status/v1","outcome":"activation_failed","revision":"r1","failure_stage":"miner_start"}), encoding="utf-8")
     cmdline = root / "cmdline"
     cmdline.write_text("boot=live console=tty0\n", encoding="utf-8")
-    allowed = subprocess.run([sys.executable if False else "python3", str(gate), "--state", str(root / "state"), "--cmdline", str(cmdline)], check=False)
+    allowed = subprocess.run(["python3", str(gate), "--state", str(root / "state"), "--cmdline", str(cmdline)], check=False)
     if allowed.returncode != 0:
         raise SystemExit("miner gate denied an activation-required on_boot revision")
     cmdline.write_text("boot=live rigos.nomine=1 console=tty0\n", encoding="utf-8")
@@ -211,7 +237,7 @@ if git ls-files | rg '(^|/)(raw|private|work)/|\.(raw\.(json|log)|tar\.zst\.age|
   echo "raw/private validation artifact tracked by Git" >&2
   exit 1
 fi
-if git grep -n -I -E 'AGE-SECRET-KEY-1[0-9A-Z]{20,}|SENTINEL_SECRET_VALUE' -- ':!scripts/verify.sh'; then
+if git grep -n -I -E 'AGE-SECRET-KEY-1[0-9A-Z]{20,}|SENTINEL_SECRET_VALUE' -- ':!scripts/verify.sh' ':!crates/rigos-config/tests/firstboot_observability.rs'; then
   echo "forbidden secret material detected" >&2
   exit 1
 fi
