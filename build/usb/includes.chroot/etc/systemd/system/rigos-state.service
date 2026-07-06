@@ -7,7 +7,7 @@ Before=local-fs.target rigos-state-ready.service
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf
-ExecStart=/usr/lib/rigos/rigos-state-init
+ExecStart=/usr/local/sbin/rigos-state-orchestrate
 RemainAfterExit=yes
 
 [Install]
