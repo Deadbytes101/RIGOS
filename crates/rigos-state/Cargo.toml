@@ -18,3 +18,7 @@ uuid.workspace = true
 [[bin]]
 name = "rigos-state-init"
 path = "src/main.rs"
+
+[[bin]]
+name = "rigos-state-ready"
+path = "src/ready.rs"

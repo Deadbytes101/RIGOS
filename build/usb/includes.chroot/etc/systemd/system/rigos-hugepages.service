@@ -1,7 +1,7 @@
 [Unit]
 Description=Apply RIGOS huge page authority
-After=rigos-state.service rigos-profile-apply.service
-Requires=rigos-state.service rigos-profile-apply.service
+After=rigos-state-ready.service rigos-profile-apply.service
+Requires=rigos-state-ready.service rigos-profile-apply.service
 Before=rigos-miner.service
 
 [Service]

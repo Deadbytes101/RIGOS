@@ -32,6 +32,8 @@ struct Args {
     status: PathBuf,
     #[arg(long, default_value = "/run/rigos/boot-device.json")]
     attestation: PathBuf,
+    #[arg(long, default_value = "/dev/disk/by-partuuid")]
+    partuuid_root: PathBuf,
     #[arg(long)]
     dry_run: bool,
     #[arg(long)]
@@ -49,25 +51,69 @@ struct FindmntEntry {
     major_minor: String,
 }
 
+#[derive(Deserialize)]
+struct StateMountDocument {
+    filesystems: Vec<StateMountEntry>,
+}
+
+#[derive(Deserialize)]
+struct StateMountEntry {
+    source: String,
+    #[serde(rename = "maj:min")]
+    major_minor: String,
+    fstype: String,
+    options: String,
+    target: String,
+}
+
 fn main() -> ExitCode {
     let args = Args::parse();
     let _ = fs::remove_file(&args.attestation);
-    let (outcome, message) = match execute(&args) {
-        Ok(outcome) => (outcome, None),
+    let boot_id = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+    let (outcome, action, message) = match execute(&args) {
+        Ok(StateOutcome::Grown) => (StateOutcome::Ready, Some("grown"), None),
+        Ok(StateOutcome::Ready) => (StateOutcome::Ready, Some("unchanged"), None),
+        Ok(outcome) => (outcome, None, None),
         Err(
             error @ (InitError::Layout(LayoutError::AmbiguousBootDevice) | InitError::Discovery(_)),
         ) => (
             StateOutcome::BlockedAmbiguousBootDevice,
+            None,
             Some(error.to_string()),
         ),
-        Err(error @ InitError::Layout(_)) => {
-            (StateOutcome::BlockedLayoutMismatch, Some(error.to_string()))
-        }
-        Err(error) => (StateOutcome::LimitedCapacity, Some(error.to_string())),
+        Err(error @ InitError::Layout(_)) => (
+            StateOutcome::BlockedLayoutMismatch,
+            None,
+            Some(error.to_string()),
+        ),
+        Err(error) => (StateOutcome::LimitedCapacity, None, Some(error.to_string())),
     };
+    let attestation: Option<serde_json::Value> = fs::read(&args.attestation)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let device = attestation
+        .as_ref()
+        .and_then(|value| value.pointer("/state/path"))
+        .and_then(serde_json::Value::as_str);
+    let partuuid = attestation
+        .as_ref()
+        .and_then(|value| value.pointer("/state/partuuid"))
+        .and_then(serde_json::Value::as_str);
     let _ = write_atomic(
         &args.status,
-        &json!({"schema":"rigos.state-status/v1","outcome":outcome,"message":message}),
+        &json!({
+            "schema":"rigos.state-status/v1",
+            "boot_id":boot_id,
+            "outcome":outcome,
+            "action":action,
+            "message":message,
+            "device":device,
+            "partuuid":partuuid,
+            "mountpoint":if outcome == StateOutcome::Ready { Some(path_str(&args.mountpoint).unwrap_or("/var/lib/rigos")) } else { None },
+        }),
     );
     println!(
         "{}",
@@ -124,7 +170,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         .map(|device| device.path.clone())
         .ok_or_else(|| InitError::Discovery("boot parent disk was not found".into()))?;
     let table = read_sfdisk(&boot_disk_path)?;
-    let verified = if args.attestation_only {
+    let mut verified = if args.attestation_only {
         validate_layout_for_attestation(
             &manifest,
             &observed,
@@ -163,6 +209,11 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
                 "partuuid":verified.efi_partuuid,
             },
             "root":{"major_minor":verified.root_major_minor},
+            "state":{
+                "path":verified.state_path,
+                "major_minor":verified.state_major_minor,
+                "partuuid":verified.state_unique_guid,
+            },
         }),
     )?;
     #[cfg(unix)]
@@ -173,6 +224,14 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     if args.dry_run {
         return Ok(StateOutcome::Ready);
     }
+
+    let resolved_state = wait_for_verified_state_device(
+        &args.partuuid_root,
+        &verified.state_unique_guid,
+        Duration::from_secs(10),
+    )?;
+    validate_exact_state_device(&resolved_state, &verified)?;
+    verified.state_path = path_str(&resolved_state)?.to_owned();
 
     let disk = OpenOptions::new()
         .read(true)
@@ -211,7 +270,11 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
             None,
             &[0],
         )?;
-        run("udevadm", &["settle", "--timeout=10"], None, &[0])?;
+        let resolved_state = wait_for_verified_state_device(
+            &args.partuuid_root,
+            &verified.state_unique_guid,
+            Duration::from_secs(10),
+        )?;
 
         let refreshed_devices = read_lsblk()?;
         let refreshed_table = read_sfdisk(&verified.disk_path)?;
@@ -231,6 +294,8 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
                 "post-grow geometry did not match the intended monotonic update".into(),
             ));
         }
+        validate_exact_state_device(&resolved_state, &refreshed)?;
+        verified.state_path = path_str(&resolved_state)?.to_owned();
         grown = true;
     }
 
@@ -267,6 +332,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
             &[0],
         )?;
     }
+    verify_state_mount(&verified, &args.mountpoint)?;
     initialize_state(&manifest, &verified, intended_size, &args.mountpoint)?;
     FileExt::unlock(&disk)?;
     Ok(if grown {
@@ -274,6 +340,123 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
     } else {
         StateOutcome::Ready
     })
+}
+
+fn verify_state_mount(verified: &VerifiedLayout, mountpoint: &Path) -> Result<(), InitError> {
+    let document: StateMountDocument = serde_json::from_slice(&run(
+        "findmnt",
+        &[
+            "--json",
+            "--target",
+            path_str(mountpoint)?,
+            "--output",
+            "SOURCE,MAJ:MIN,FSTYPE,OPTIONS,TARGET",
+        ],
+        None,
+        &[0],
+    )?)?;
+    let mount = document
+        .filesystems
+        .first()
+        .ok_or_else(|| InitError::Discovery("persistent state is not mounted".into()))?;
+    let source = fs::canonicalize(&mount.source)?;
+    let expected = fs::canonicalize(&verified.state_path)?;
+    let required = ["rw", "nosuid", "nodev", "noexec", "noatime"];
+    let options: std::collections::BTreeSet<_> = mount.options.split(',').collect();
+    if source != expected
+        || mount.major_minor != verified.state_major_minor
+        || mount.fstype != "ext4"
+        || mount.target != path_str(mountpoint)?
+        || required.iter().any(|value| !options.contains(value))
+    {
+        return Err(InitError::Discovery(
+            "mounted state does not match the verified identity and options".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn wait_for_verified_state_device(
+    root: &Path,
+    partuuid: &str,
+    timeout: Duration,
+) -> Result<PathBuf, InitError> {
+    if partuuid.is_empty()
+        || partuuid.len() > 128
+        || !partuuid
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    {
+        return Err(InitError::Discovery(
+            "verified state PARTUUID is invalid".into(),
+        ));
+    }
+    let candidate = root.join(partuuid);
+    let deadline = Instant::now() + timeout;
+    loop {
+        if candidate.symlink_metadata().is_ok() {
+            return fs::canonicalize(&candidate).map_err(InitError::Io);
+        }
+        if Instant::now() >= deadline {
+            return Err(InitError::Discovery(
+                "verified state PARTUUID did not appear before timeout".into(),
+            ));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn validate_exact_state_device(
+    resolved: &Path,
+    verified: &VerifiedLayout,
+) -> Result<(), InitError> {
+    let expected = fs::canonicalize(&verified.state_path)?;
+    if expected != resolved {
+        return Err(InitError::Discovery(
+            "verified PARTUUID resolved to another block device".into(),
+        ));
+    }
+    let observed = read_lsblk()?;
+    let child = observed
+        .blockdevices
+        .iter()
+        .find(|disk| disk.major_minor == verified.disk_major_minor)
+        .and_then(|disk| {
+            disk.children.iter().find(|child| {
+                child.major_minor == verified.state_major_minor
+                    && child.partuuid.as_deref().is_some_and(|value| {
+                        value.eq_ignore_ascii_case(&verified.state_unique_guid)
+                    })
+            })
+        })
+        .ok_or_else(|| InitError::Discovery("verified state block identity changed".into()))?;
+    if fs::canonicalize(&child.path)? != resolved {
+        return Err(InitError::Discovery(
+            "lsblk state path differs from verified PARTUUID".into(),
+        ));
+    }
+    let properties = String::from_utf8_lossy(&run(
+        "blkid",
+        &["-o", "export", path_str(resolved)?],
+        None,
+        &[0],
+    )?)
+    .into_owned();
+    let property = |name: &str| {
+        properties
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{name}=")))
+    };
+    if property("TYPE") != Some("ext4")
+        || !matches!(property("LABEL"), Some("RIGOS_STATE_SEED" | "RIGOS_STATE"))
+        || !property("PARTUUID")
+            .is_some_and(|value| value.eq_ignore_ascii_case(&verified.state_unique_guid))
+    {
+        return Err(InitError::Discovery(
+            "verified state filesystem identity changed".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn read_lsblk() -> Result<LsblkDocument, InitError> {

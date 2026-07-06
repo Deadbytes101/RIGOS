@@ -2,7 +2,7 @@
 Description=Mount RIGOS persistent state
 DefaultDependencies=no
 After=systemd-udevd.service local-fs-pre.target
-Before=local-fs.target rigos-firstboot.service rigos-miner.service
+Before=local-fs.target rigos-state-ready.service
 
 [Service]
 Type=oneshot

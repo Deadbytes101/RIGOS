@@ -2,7 +2,7 @@
 
 use rigos_schema::ImageLayoutV1;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -68,6 +68,7 @@ pub struct VerifiedLayout {
     pub efi_partuuid: String,
     pub root_major_minor: String,
     pub state_path: String,
+    pub state_major_minor: String,
     pub state_start_lba: u64,
     pub state_size_lba: u64,
     pub state_unique_guid: String,
@@ -83,6 +84,90 @@ pub enum StateOutcome {
     Stateless,
     BlockedLayoutMismatch,
     BlockedAmbiguousBootDevice,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AttestedStatePartitionV1 {
+    pub path: String,
+    pub major_minor: String,
+    pub partuuid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BootDeviceAttestationV1 {
+    pub schema: String,
+    pub boot_id: String,
+    pub verification_outcome: String,
+    pub state: AttestedStatePartitionV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StateStatusV1 {
+    pub schema: String,
+    pub boot_id: String,
+    pub outcome: String,
+    pub action: Option<String>,
+    pub message: Option<String>,
+    pub device: Option<String>,
+    pub partuuid: Option<String>,
+    pub mountpoint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateReadyObservation {
+    pub boot_id: String,
+    pub source_major_minor: String,
+    pub source_partuuid: String,
+    pub filesystem: String,
+    pub label: String,
+    pub mountpoint: String,
+    pub mount_options: BTreeSet<String>,
+}
+
+pub fn validate_state_ready(
+    status: &StateStatusV1,
+    attestation: &BootDeviceAttestationV1,
+    observed: &StateReadyObservation,
+) -> Result<(), &'static str> {
+    if status.schema != "rigos.state-status/v1"
+        || status.outcome != "ready"
+        || status.boot_id != observed.boot_id
+    {
+        return Err("state status is not ready for the current boot");
+    }
+    if attestation.schema != "rigos.boot-device/v1"
+        || attestation.verification_outcome != "verified"
+        || attestation.boot_id != observed.boot_id
+    {
+        return Err("boot-device attestation is not current and verified");
+    }
+    if !attestation
+        .state
+        .partuuid
+        .eq_ignore_ascii_case(&observed.source_partuuid)
+        || attestation.state.major_minor != observed.source_major_minor
+    {
+        return Err("mounted state identity differs from attestation");
+    }
+    if observed.filesystem != "ext4"
+        || observed.label != "RIGOS_STATE"
+        || observed.mountpoint != "/var/lib/rigos"
+    {
+        return Err("mounted state filesystem contract mismatch");
+    }
+    let required = ["rw", "nosuid", "nodev", "noexec", "noatime"];
+    if required
+        .iter()
+        .any(|option| !observed.mount_options.contains(*option))
+    {
+        return Err("mounted state options are incomplete");
+    }
+    if status.partuuid.as_deref() != Some(attestation.state.partuuid.as_str())
+        || status.mountpoint.as_deref() != Some("/var/lib/rigos")
+    {
+        return Err("state status identity is incomplete");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -285,6 +370,7 @@ fn validate_layout_with_state_mount(
         efi_partuuid: efi.partuuid.clone().unwrap_or_default(),
         root_major_minor: boot_major_minor.to_owned(),
         state_path: state.path.clone(),
+        state_major_minor: state.major_minor.clone(),
         state_start_lba: state.start.unwrap_or_default(),
         state_size_lba: state.size / u64::from(manifest.logical_sector_size),
         state_unique_guid: state.partuuid.clone().unwrap_or_default(),
@@ -557,5 +643,68 @@ mod tests {
             validate_layout(&manifest(), &devices, &sfdisk(), "8:2"),
             Err(LayoutError::UndersizedMedia)
         );
+    }
+
+    fn ready_contract() -> (
+        StateStatusV1,
+        BootDeviceAttestationV1,
+        StateReadyObservation,
+    ) {
+        (
+            StateStatusV1 {
+                schema: "rigos.state-status/v1".into(),
+                boot_id: "boot-a".into(),
+                outcome: "ready".into(),
+                action: Some("grown".into()),
+                message: None,
+                device: Some("/dev/sdb4".into()),
+                partuuid: Some("5249474f-04".into()),
+                mountpoint: Some("/var/lib/rigos".into()),
+            },
+            BootDeviceAttestationV1 {
+                schema: "rigos.boot-device/v1".into(),
+                boot_id: "boot-a".into(),
+                verification_outcome: "verified".into(),
+                state: AttestedStatePartitionV1 {
+                    path: "/dev/sdb4".into(),
+                    major_minor: "8:20".into(),
+                    partuuid: "5249474f-04".into(),
+                },
+            },
+            StateReadyObservation {
+                boot_id: "boot-a".into(),
+                source_major_minor: "8:20".into(),
+                source_partuuid: "5249474f-04".into(),
+                filesystem: "ext4".into(),
+                label: "RIGOS_STATE".into(),
+                mountpoint: "/var/lib/rigos".into(),
+                mount_options: ["rw", "nosuid", "nodev", "noexec", "noatime"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+            },
+        )
+    }
+
+    #[test]
+    fn state_ready_requires_current_exact_mount() {
+        let (status, attestation, observed) = ready_contract();
+        assert_eq!(
+            validate_state_ready(&status, &attestation, &observed),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn state_ready_rejects_stale_or_mismatched_truth() {
+        let (status, attestation, mut observed) = ready_contract();
+        observed.boot_id = "boot-b".into();
+        assert!(validate_state_ready(&status, &attestation, &observed).is_err());
+        let (_, _, mut observed) = ready_contract();
+        observed.source_partuuid = "deadbeef-04".into();
+        assert!(validate_state_ready(&status, &attestation, &observed).is_err());
+        let (_, _, mut observed) = ready_contract();
+        observed.mount_options.remove("noexec");
+        assert!(validate_state_ready(&status, &attestation, &observed).is_err());
     }
 }
