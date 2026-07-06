@@ -174,6 +174,11 @@ for forbidden in ("rigos-config", "rigos-miner.service", "systemctl\", \"start",
 for required in ("passwd", "local_console_access", "remote_access", "configuration_commit"):
     if required not in recovery:
         raise SystemExit(f"recovery access contract is missing {required}")
+for required in ("chpasswd", "--encrypted", "credential_action", "credential_persisted", "os.replace"):
+    if required not in recovery:
+        raise SystemExit(f"persistent recovery credential contract is missing {required}")
+if "input=f\"rigosadmin:{value}\\n\"" not in recovery:
+    raise SystemExit("encrypted credential is not passed to chpasswd over stdin")
 PY
 
 python3 - "$firstboot" <<'PY'

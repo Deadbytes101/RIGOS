@@ -1,12 +1,19 @@
 #!/usr/bin/python3
 import json
 import os
+import re
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
 
 RUNTIME = Path("/run/rigos")
 STATE = Path("/var/lib/rigos")
+CREDENTIAL_DIRECTORY = STATE / "recovery"
+CREDENTIAL_FILE = CREDENTIAL_DIRECTORY / "rigosadmin-password.hash"
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+MAX_HASH_BYTES = 512
+MODULAR_CRYPT = re.compile(r"^\$[A-Za-z0-9][A-Za-z0-9./,_=-]*(?:\$[A-Za-z0-9./,_=-]+){2,}$")
 
 
 def password_ready() -> bool:
@@ -19,6 +26,108 @@ def password_ready() -> bool:
     )
     fields = result.stdout.split()
     return result.returncode == 0 and len(fields) >= 2 and fields[1] == "P"
+
+
+def current_password_hash() -> str | None:
+    result = subprocess.run(
+        ["/usr/bin/getent", "shadow", "rigosadmin"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode != 0:
+        return None
+    fields = result.stdout.rstrip("\n").split(":")
+    if len(fields) < 2 or not valid_password_hash(fields[1]):
+        return None
+    return fields[1]
+
+
+def valid_password_hash(value: str) -> bool:
+    if not value or len(value.encode("utf-8")) > MAX_HASH_BYTES:
+        return False
+    if value.startswith(("!", "*")) or any(character in value for character in ":\r\n"):
+        return False
+    return MODULAR_CRYPT.fullmatch(value) is not None
+
+
+def ensure_credential_directory() -> None:
+    CREDENTIAL_DIRECTORY.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = CREDENTIAL_DIRECTORY.lstat()
+    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+        raise RuntimeError("unsafe credential directory")
+    if info.st_uid != os.geteuid():
+        raise RuntimeError("credential directory owner mismatch")
+    CREDENTIAL_DIRECTORY.chmod(0o700)
+
+
+def load_persistent_hash() -> tuple[str | None, bool]:
+    try:
+        info = CREDENTIAL_FILE.lstat()
+    except FileNotFoundError:
+        return None, False
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+        return None, True
+    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600:
+        return None, True
+    try:
+        value = CREDENTIAL_FILE.read_text(encoding="ascii").rstrip("\n")
+    except (OSError, UnicodeError):
+        return None, True
+    return (value, False) if valid_password_hash(value) else (None, True)
+
+
+def persist_password_hash(value: str) -> None:
+    if not valid_password_hash(value):
+        raise RuntimeError("refusing invalid credential hash")
+    ensure_credential_directory()
+    descriptor, name = tempfile.mkstemp(prefix=".rigosadmin-password-", dir=CREDENTIAL_DIRECTORY)
+    temporary = Path(name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="ascii", closefd=True) as stream:
+            stream.write(value)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, CREDENTIAL_FILE)
+        CREDENTIAL_FILE.chmod(0o600)
+        directory = os.open(CREDENTIAL_DIRECTORY, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def restore_password_hash(value: str) -> bool:
+    if not valid_password_hash(value):
+        return False
+    result = subprocess.run(
+        ["/usr/sbin/chpasswd", "--encrypted"],
+        input=f"rigosadmin:{value}\n",
+        text=True,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0 and password_ready()
+
+
+def prompt_for_password(invalid_stored_hash: bool) -> None:
+    message = (
+        "The saved local credential is invalid and will be replaced. Set the local rig "
+        "administrator password next."
+        if invalid_stored_hash
+        else "Set the local rig administrator password next. This enables tty1 diagnostics only."
+    )
+    subprocess.run(
+        ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox", message, "11", "72"],
+        check=False,
+    )
+    subprocess.run(["/usr/bin/passwd", "rigosadmin"], check=True)
 
 
 def unit_active(name: str) -> bool:
@@ -53,14 +162,28 @@ def write_status(value: dict) -> None:
 
 
 def main() -> int:
-    if not password_ready():
-        subprocess.run(
-            ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox",
-             "Set the local rig administrator password next. This enables tty1 diagnostics only.",
-             "11", "72"],
-            check=False,
-        )
-        subprocess.run(["/usr/bin/passwd", "rigosadmin"], check=True)
+    ensure_credential_directory()
+    stored_hash, stored_hash_invalid = load_persistent_hash()
+    credential_action = "existing"
+
+    if password_ready():
+        live_hash = current_password_hash()
+        if live_hash is None:
+            raise RuntimeError("usable local credential hash is unavailable")
+        if stored_hash != live_hash:
+            persist_password_hash(live_hash)
+    elif stored_hash is not None and restore_password_hash(stored_hash):
+        credential_action = "restored"
+    else:
+        prompt_for_password(stored_hash_invalid)
+        if not password_ready():
+            raise RuntimeError("local credential setup did not produce a usable password")
+        live_hash = current_password_hash()
+        if live_hash is None:
+            raise RuntimeError("new local credential hash is unavailable")
+        persist_password_hash(live_hash)
+        credential_action = "created"
+
     local_access = password_ready()
     try:
         state_outcome = json.loads((RUNTIME / "state-status.json").read_text(encoding="utf-8")).get("outcome", "unavailable")
@@ -73,12 +196,14 @@ def main() -> int:
     mode = "operational" if state_outcome == "ready" and remote_inactive else "recovery"
     write_status({
         "schema": "rigos.recovery-access-status/v1",
-        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip(),
+        "boot_id": BOOT_ID.read_text(encoding="ascii").strip(),
         "mode": mode,
         "local_console_access": local_access,
         "state_outcome": state_outcome,
         "remote_access": "inactive" if remote_inactive else "unexpected_active",
         "configuration_commit": "present" if configured else "absent",
+        "credential_action": credential_action,
+        "credential_persisted": CREDENTIAL_FILE.is_file(),
     })
     return 0 if local_access and remote_inactive else 1
 

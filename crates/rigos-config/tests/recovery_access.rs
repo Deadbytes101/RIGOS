@@ -1,0 +1,121 @@
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use uuid::Uuid;
+
+fn recovery_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access")
+}
+
+#[test]
+fn recovery_password_is_persisted_restored_and_redacted() {
+    let root = std::env::temp_dir().join(format!("rigos-recovery-access-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).expect("create recovery test directory");
+    let program = r#"
+import json
+import os
+import runpy
+import stat
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+root = Path(sys.argv[2])
+namespace = runpy.run_path(str(source), run_name='rigos_recovery_access_test')
+g = namespace['main'].__globals__
+g['RUNTIME'] = root / 'run'
+g['STATE'] = root / 'state'
+g['CREDENTIAL_DIRECTORY'] = root / 'state' / 'recovery'
+g['CREDENTIAL_FILE'] = g['CREDENTIAL_DIRECTORY'] / 'rigosadmin-password.hash'
+g['BOOT_ID'] = root / 'boot-id'
+g['BOOT_ID'].write_text('boot-test\n', encoding='ascii')
+g['RUNTIME'].mkdir()
+g['STATE'].mkdir()
+(g['RUNTIME'] / 'state-status.json').write_text('{"outcome":"ready"}', encoding='utf-8')
+valid_hash = '$y$j9T$syntheticSalt$syntheticHashValue'
+
+assert namespace['valid_password_hash'](valid_hash)
+for invalid in ('', '!', '*', '!locked', 'bad:hash', 'bad\nhash', '$6$missing'):
+    assert not namespace['valid_password_hash'](invalid)
+
+# Fresh setup prompts once, then persists the hash atomically with strict modes.
+live_ready = {'value': False}
+prompts = []
+persisted = []
+g['password_ready'] = lambda: live_ready['value']
+def prompt(_invalid):
+    prompts.append(True)
+    live_ready['value'] = True
+g['prompt_for_password'] = prompt
+g['current_password_hash'] = lambda: valid_hash if live_ready['value'] else None
+real_persist = g['persist_password_hash']
+def persist(value):
+    persisted.append(value)
+    real_persist(value)
+g['persist_password_hash'] = persist
+g['unit_active'] = lambda _name: False
+g['unit_enabled'] = lambda _name: False
+assert namespace['main']() == 0
+assert len(prompts) == 1 and persisted == [valid_hash]
+assert stat.S_IMODE(g['CREDENTIAL_DIRECTORY'].stat().st_mode) == 0o700
+assert stat.S_IMODE(g['CREDENTIAL_FILE'].stat().st_mode) == 0o600
+status = json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text())
+assert status['credential_action'] == 'created'
+assert status['credential_persisted'] is True
+assert valid_hash not in json.dumps(status)
+
+# Reboot simulation restores through chpasswd without setup UI or passwd.
+live_ready['value'] = False
+prompts.clear()
+calls = []
+class Result:
+    def __init__(self, returncode=0): self.returncode = returncode
+def fake_run(argv, **kwargs):
+    calls.append((argv, kwargs))
+    if argv == ['/usr/sbin/chpasswd', '--encrypted']:
+        assert kwargs['input'] == 'rigosadmin:' + valid_hash + '\n'
+        assert valid_hash not in argv
+        live_ready['value'] = True
+    return Result()
+g['subprocess'].run = fake_run
+g['persist_password_hash'] = real_persist
+assert namespace['main']() == 0
+assert not prompts
+assert not any('/usr/bin/passwd' in argv for argv, _kwargs in calls)
+status = json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text())
+assert status['credential_action'] == 'restored'
+assert valid_hash not in json.dumps(status)
+
+# Existing live credential migrates without a prompt.
+g['CREDENTIAL_FILE'].unlink()
+live_ready['value'] = True
+prompts.clear()
+assert namespace['main']() == 0
+assert not prompts and g['CREDENTIAL_FILE'].read_text().strip() == valid_hash
+
+# An invalid store is never sent to chpasswd and enters explicit replacement setup.
+g['CREDENTIAL_FILE'].write_text('!unsafe\n', encoding='ascii')
+g['CREDENTIAL_FILE'].chmod(0o600)
+live_ready['value'] = False
+invalid_flags = []
+def replacement(invalid):
+    invalid_flags.append(invalid)
+    live_ready['value'] = True
+g['prompt_for_password'] = replacement
+calls.clear()
+assert namespace['main']() == 0
+assert invalid_flags == [True]
+assert not any(argv == ['/usr/sbin/chpasswd', '--encrypted'] for argv, _kwargs in calls)
+assert valid_hash not in json.dumps(json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text()))
+"#;
+    let result = Command::new("python3")
+        .arg("-c")
+        .arg(program)
+        .arg(recovery_path())
+        .arg(&root)
+        .status()
+        .expect("run recovery access fixture");
+    let _ = fs::remove_dir_all(&root);
+    assert!(result.success(), "recovery access fixture failed");
+}

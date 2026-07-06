@@ -123,6 +123,8 @@ grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' "$temporary/root/etc/sy
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'first boot activation gate is missing'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'
+grep -Fq 'CREDENTIAL_DIRECTORY = STATE / "recovery"' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'persistent recovery credential store is missing'
+grep -Fq '["/usr/sbin/chpasswd", "--encrypted"]' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'encrypted credential restore is missing'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-lifecycle-cycles" ]] || die 'booted lifecycle cycle test is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
