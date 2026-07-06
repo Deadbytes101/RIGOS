@@ -10,8 +10,6 @@ Type=simple
 User=rigos
 Group=rigos
 ExecCondition=/usr/lib/rigos/rigos-miner-gate
-ExecCondition=/usr/lib/rigos/rigos-config gate
-SuccessExitStatus=1
 ExecStart=/usr/lib/rigos/xmrig --config=/var/lib/rigos/xmrig.json
 Restart=on-failure
 RestartSec=5s
