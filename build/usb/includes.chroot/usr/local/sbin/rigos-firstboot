@@ -7,90 +7,62 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-STATE = Path("/var/lib/rigos")
-ENGINE = "/usr/lib/rigos/rigos-config"
-STATE_STATUS = Path("/run/rigos/state-status.json")
-UI_STATUS = Path(
-    os.environ.get(
-        "RIGOS_FIRSTBOOT_UI_STATUS",
-        "/var/lib/rigos/firstboot-ui-status.json",
-    )
-)
-BOOT_ID_PATH = Path(
-    os.environ.get(
-        "RIGOS_FIRSTBOOT_BOOT_ID",
-        "/proc/sys/kernel/random/boot_id",
-    )
-)
-WHIPTAIL = os.environ.get("RIGOS_WHIPTAIL", "/usr/bin/whiptail")
-SYSTEMD_CAT = os.environ.get("RIGOS_SYSTEMD_CAT", "/usr/bin/systemd-cat")
-HOST_RE = re.compile(
-    r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
-    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$"
-)
-SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
-CURRENT_STAGE = "startup"
+os.environ.setdefault('TERM', 'linux')
+STATE = Path('/var/lib/rigos')
+ENGINE = '/usr/lib/rigos/rigos-config'
+STATE_STATUS = Path('/run/rigos/state-status.json')
+UI_STATUS = Path(os.environ.get('RIGOS_FIRSTBOOT_UI_STATUS', '/var/lib/rigos/firstboot-ui-status.json'))
+BOOT_ID_PATH = Path(os.environ.get('RIGOS_FIRSTBOOT_BOOT_ID', '/proc/sys/kernel/random/boot_id'))
+WHIPTAIL = os.environ.get('RIGOS_WHIPTAIL', '/usr/bin/whiptail')
+SYSTEMD_CAT = os.environ.get('RIGOS_SYSTEMD_CAT', '/usr/bin/systemd-cat')
+HOST_RE = re.compile('^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$')
+SLUG_RE = re.compile('^[A-Za-z0-9][A-Za-z0-9-]{0,63}$')
+CURRENT_STAGE = 'startup'
 CURRENT_DIALOG = None
 
-
 class FirstbootCancelled(Exception):
-    def __init__(self, reason: str, returncode: int | None = None):
+
+    def __init__(self, reason: str, returncode: int | None=None):
         super().__init__(reason)
         self.reason = reason
         self.returncode = returncode
 
-
 class FirstbootFailure(Exception):
-    def __init__(
-        self,
-        reason: str,
-        returncode: int | None = None,
-        signal_name: str | None = None,
-    ):
+
+    def __init__(self, reason: str, returncode: int | None=None, signal_name: str | None=None):
         super().__init__(reason)
         self.reason = reason
         self.returncode = returncode
         self.signal_name = signal_name
 
-
 class FirstbootInterrupted(Exception):
+
     def __init__(self, signal_number: int):
         super().__init__(signal_number)
         self.signal_number = signal_number
 
-
 class RebootRequested(Exception):
     pass
 
-
-def set_stage(stage: str, dialog_kind: str | None = None) -> None:
+def set_stage(stage: str, dialog_kind: str | None=None) -> None:
     global CURRENT_STAGE, CURRENT_DIALOG
     CURRENT_STAGE = stage
     CURRENT_DIALOG = dialog_kind
 
-
 def boot_id() -> str:
     try:
-        return BOOT_ID_PATH.read_text(encoding="ascii").strip()
+        return BOOT_ID_PATH.read_text(encoding='ascii').strip()
     except OSError:
-        return "unavailable"
-
+        return 'unavailable'
 
 def write_atomic_json(path: Path, value: dict) -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}-",
-        delete=False,
-    ) as stream:
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, prefix=f'.{path.name}-', delete=False) as stream:
         json.dump(value, stream, sort_keys=True)
-        stream.write("\n")
+        stream.write('\n')
         stream.flush()
         os.fsync(stream.fileno())
         temporary = Path(stream.name)
-    temporary.chmod(0o600)
+    temporary.chmod(384)
     os.replace(temporary, path)
     directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
     try:
@@ -98,662 +70,305 @@ def write_atomic_json(path: Path, value: dict) -> None:
     finally:
         os.close(directory)
 
-
 def journal(value: dict, priority: str) -> None:
     payload = json.dumps(value, sort_keys=True)
+    if not os.environ.get('INVOCATION_ID'):
+        print(payload, file=sys.stderr, flush=True)
+        return
     try:
-        result = subprocess.run(
-            [
-                SYSTEMD_CAT,
-                "--identifier=rigos-firstboot",
-                f"--priority={priority}",
-            ],
-            input=payload + "\n",
-            text=True,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        result = subprocess.run([SYSTEMD_CAT, '--identifier=rigos-firstboot', f'--priority={priority}'], input=payload + '\n', text=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode == 0:
             return
     except OSError:
         pass
     print(payload, file=sys.stderr, flush=True)
 
-
-def record_event(
-    outcome: str,
-    reason: str | None = None,
-    returncode: int | None = None,
-    signal_name: str | None = None,
-) -> None:
-    value = {
-        "schema": "rigos.firstboot-ui-status/v1",
-        "boot_id": boot_id(),
-        "outcome": outcome,
-        "stage": CURRENT_STAGE,
-        "dialog": CURRENT_DIALOG,
-        "reason": reason,
-        "return_code": returncode,
-        "signal": signal_name,
-    }
+def record_event(outcome: str, reason: str | None=None, returncode: int | None=None, signal_name: str | None=None) -> None:
+    value = {'schema': 'rigos.firstboot-ui-status/v1', 'boot_id': boot_id(), 'outcome': outcome, 'stage': CURRENT_STAGE, 'dialog': CURRENT_DIALOG, 'reason': reason, 'return_code': returncode, 'signal': signal_name}
     try:
         write_atomic_json(UI_STATUS, value)
     except OSError:
         fallback = dict(value)
-        fallback["status_write"] = "failed"
-        journal(fallback, "err")
+        fallback['status_write'] = 'failed'
+        journal(fallback, 'err')
         return
-    journal(value, "info" if outcome in {"running", "ready", "declined"} else "err")
-
+    journal(value, 'info' if outcome in {'running', 'ready', 'declined'} else 'err')
 
 def signal_name(returncode: int) -> str:
     try:
         return signal.Signals(-returncode).name
     except ValueError:
-        return f"SIGNAL_{-returncode}"
-
+        return f'SIGNAL_{-returncode}'
 
 def classify_dialog_result(result: subprocess.CompletedProcess, allow_no: bool) -> bool:
     if result.returncode == 0:
         return True
     if result.returncode < 0:
         name = signal_name(result.returncode)
-        raise FirstbootFailure("dialog_signal", result.returncode, name)
+        raise FirstbootFailure('dialog_signal', result.returncode, name)
     if result.returncode == 1:
         if allow_no:
-            record_event("declined", "user_selected_no", result.returncode)
+            record_event('declined', 'user_selected_no', result.returncode)
             return False
-        raise FirstbootCancelled("dialog_cancelled", result.returncode)
+        raise FirstbootCancelled('dialog_cancelled', result.returncode)
     if result.returncode == 255:
-        detail = (result.stderr or "").strip()
+        detail = (result.stderr or '').strip()
         if not detail:
-            raise FirstbootCancelled("dialog_escaped", result.returncode)
-        raise FirstbootFailure("whiptail_runtime_error", result.returncode)
-    raise FirstbootFailure("whiptail_unexpected_exit", result.returncode)
+            raise FirstbootCancelled('dialog_escaped', result.returncode)
+        raise FirstbootFailure('whiptail_runtime_error', result.returncode)
+    raise FirstbootFailure('whiptail_unexpected_exit', result.returncode)
 
-
-def dialog(*args: str, stage: str = "dialog") -> str:
-    kind = next((item[2:] for item in args if item.startswith("--")), "unknown")
-    set_stage(stage, kind)
-    record_event("running")
+def dialog(*args: str, stage: str | None=None) -> str:
+    kind = next((item[2:] for item in args if item.startswith('--')), 'unknown')
+    set_stage(stage or CURRENT_STAGE, kind)
+    record_event('running')
     try:
-        result = subprocess.run(
-            [WHIPTAIL, "--title", "RIGOS FIRST BOOT", *args],
-            check=False,
-            text=True,
-            stderr=subprocess.PIPE,
-        )
+        result = subprocess.run([WHIPTAIL, '--title', 'RIGOS FIRST BOOT', *args], check=False, text=True, stderr=subprocess.PIPE)
     except OSError:
-        raise FirstbootFailure("whiptail_exec_error") from None
+        raise FirstbootFailure('whiptail_exec_error') from None
     classify_dialog_result(result, allow_no=False)
-    record_event("running", "dialog_completed", result.returncode)
+    record_event('running', 'dialog_completed', result.returncode)
     return result.stderr.strip()
 
+def prompt(stage: str, label: str, default: str='', password: bool=False) -> str:
+    kind = '--passwordbox' if password else '--inputbox'
+    return dialog(kind, label, '10', '72', default, stage=stage)
 
-def prompt(
-    stage: str,
-    label: str,
-    default: str = "",
-    password: bool = False,
-) -> str:
-    kind = "--passwordbox" if password else "--inputbox"
-    return dialog(kind, label, "10", "72", default, stage=stage)
-
-
-def confirm(message: str, stage: str = "confirmation") -> bool:
-    set_stage(stage, "yesno")
-    record_event("running")
+def confirm(message: str, stage: str | None=None) -> bool:
+    set_stage(stage or CURRENT_STAGE, 'yesno')
+    record_event('running')
     try:
-        result = subprocess.run(
-            [
-                WHIPTAIL,
-                "--title",
-                "RIGOS FIRST BOOT",
-                "--yesno",
-                message,
-                "14",
-                "72",
-            ],
-            check=False,
-            text=True,
-            stderr=subprocess.PIPE,
-        )
+        result = subprocess.run([WHIPTAIL, '--title', 'RIGOS FIRST BOOT', '--yesno', message, '14', '72'], check=False, text=True, stderr=subprocess.PIPE)
     except OSError:
-        raise FirstbootFailure("whiptail_exec_error") from None
+        raise FirstbootFailure('whiptail_exec_error') from None
     accepted = classify_dialog_result(result, allow_no=True)
     if accepted:
-        record_event("running", "dialog_completed", result.returncode)
+        record_event('running', 'dialog_completed', result.returncode)
     return accepted
 
-
-def engine(*args: str, stdin: object | None = None) -> tuple[bool, dict]:
-    raw = None if stdin is None else (json.dumps(stdin) + "\n")
+def engine(*args: str, stdin: object | None=None) -> tuple[bool, dict]:
+    raw = None if stdin is None else json.dumps(stdin) + '\n'
     try:
-        result = subprocess.run(
-            [ENGINE, *args],
-            input=raw,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+        result = subprocess.run([ENGINE, *args], input=raw, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     except OSError:
-        return False, {
-            "code": "RIGOS_CONFIG_INVALID_VALUE",
-            "message": "configuration engine could not be executed",
-        }
+        return (False, {'code': 'RIGOS_CONFIG_INVALID_VALUE', 'message': 'configuration engine could not be executed'})
     source = result.stdout if result.returncode == 0 else result.stderr
     try:
         value = json.loads(source.strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
-        value = {
-            "code": "RIGOS_CONFIG_INVALID_VALUE",
-            "message": "configuration engine failed without a diagnostic",
-        }
-    return result.returncode == 0, value
-
+        value = {'code': 'RIGOS_CONFIG_INVALID_VALUE', 'message': 'configuration engine failed without a diagnostic'}
+    return (result.returncode == 0, value)
 
 def diagnostic_text(error: dict) -> str:
-    parts = [error.get("code", "RIGOS_CONFIG_INVALID_VALUE")]
-    location = error.get("file") or "rig.conf"
-    if error.get("line"):
+    parts = [error.get('code', 'RIGOS_CONFIG_INVALID_VALUE')]
+    location = error.get('file') or 'rig.conf'
+    if error.get('line'):
         location += f" line {error['line']}"
     parts.append(location)
-    if error.get("key"):
+    if error.get('key'):
         parts.append(f"Key {error['key']}")
-    parts.append(error.get("message", "Invalid configuration"))
-    return "\n".join(parts)
-
+    parts.append(error.get('message', 'Invalid configuration'))
+    return '\n'.join(parts)
 
 def manual_proposal() -> tuple[dict, str, str]:
-    node = prompt("node_name", "Node name", "rig01").strip()
-    timezone = prompt("timezone", "IANA timezone", "UTC").strip()
-    if not Path("/usr/share/zoneinfo", timezone).is_file():
-        raise FirstbootFailure("invalid_timezone")
-    endpoint = prompt(
-        "pool_endpoint",
-        "Pool endpoint host:port",
-        "gulf.moneroocean.stream:10128",
-    ).strip()
-    algorithm = prompt("algorithm", "XMRig algorithm", "rx/0").strip()
-    tls = dialog(
-        "--menu",
-        "TLS policy",
-        "12",
-        "60",
-        "2",
-        "required",
-        "TLS enabled",
-        "disabled",
-        "Plain Stratum",
-        stage="tls_policy",
-    )
-    threads = prompt("cpu_threads", "CPU threads auto or 1 to 1024", "auto").strip()
-    huge_pages = dialog(
-        "--menu",
-        "Huge pages",
-        "12",
-        "60",
-        "2",
-        "enabled",
-        "Enable huge pages",
-        "disabled",
-        "Disable huge pages",
-        stage="huge_pages",
-    )
-    start = dialog(
-        "--menu",
-        "Miner start policy",
-        "12",
-        "64",
-        "2",
-        "on_boot",
-        "Start automatically on boot",
-        "manual",
-        "Manual start only",
-        stage="miner_start_policy",
-    )
-    alias = prompt("identity_alias", "Local mining identity alias", "main-xmr").strip()
+    node = prompt('node_name', 'Node name', 'rig01').strip()
+    timezone = prompt('timezone', 'IANA timezone', 'UTC').strip()
+    if not Path('/usr/share/zoneinfo', timezone).is_file():
+        raise FirstbootFailure('invalid_timezone')
+    endpoint = prompt('pool_endpoint', 'Pool endpoint host:port', 'gulf.moneroocean.stream:10128').strip()
+    algorithm = prompt('algorithm', 'XMRig algorithm', 'rx/0').strip()
+    tls = dialog('--menu', 'TLS policy', '12', '60', '2', 'required', 'TLS enabled', 'disabled', 'Plain Stratum', stage='tls_policy')
+    threads = prompt('cpu_threads', 'CPU threads auto or 1 to 1024', 'auto').strip()
+    huge_pages = dialog('--menu', 'Huge pages', '12', '60', '2', 'enabled', 'Enable huge pages', 'disabled', 'Disable huge pages', stage='huge_pages')
+    start = dialog('--menu', 'Miner start policy', '12', '64', '2', 'on_boot', 'Start automatically on boot', 'manual', 'Manual start only', stage='miner_start_policy')
+    alias = prompt('identity_alias', 'Local mining identity alias', 'main-xmr').strip()
     if not SLUG_RE.fullmatch(node) or not SLUG_RE.fullmatch(alias):
-        raise FirstbootFailure("invalid_node_or_alias")
-    if endpoint.count(":") != 1:
-        raise FirstbootFailure("invalid_pool_endpoint")
-    host, port_text = endpoint.rsplit(":", 1)
-    if (
-        not HOST_RE.fullmatch(host)
-        or not port_text.isdigit()
-        or not 1 <= int(port_text) <= 65535
-    ):
-        raise FirstbootFailure("invalid_pool_endpoint")
-    if threads != "auto" and (
-        not threads.isdigit() or not 1 <= int(threads) <= 1024
-    ):
-        raise FirstbootFailure("invalid_cpu_threads")
-    proposal = {
-        "schema": "rigos.config-proposal/v1",
-        "profile": {
-            "node_name": node,
-            "timezone": timezone,
-            "flight_source": "interactive",
-            "flight_ref": None,
-            "miner_start_mode": start,
-        },
-        "flight_sheet": {
-            "schema": "rigos.flight-sheet/v1",
-            "name": "manual-xmrig",
-            "coin": "XMR",
-            "backend": "xmrig",
-            "algorithm": algorithm,
-            "pools": [
-                {
-                    "host": host.lower(),
-                    "port": int(port_text),
-                    "tls": tls == "required",
-                    "priority": 0,
-                }
-            ],
-            "identity_ref": alias,
-            "worker_template": "{node_name}",
-            "cpu": {
-                "threads": threads if threads == "auto" else int(threads),
-                "huge_pages": huge_pages == "enabled",
-                "max_threads_hint": 100,
-            },
-        },
-        "provenance": None,
-        "source_sha256": "manual",
-    }
-    return proposal, alias, ""
-
+        raise FirstbootFailure('invalid_node_or_alias')
+    if endpoint.count(':') != 1:
+        raise FirstbootFailure('invalid_pool_endpoint')
+    host, port_text = endpoint.rsplit(':', 1)
+    if not HOST_RE.fullmatch(host) or not port_text.isdigit() or (not 1 <= int(port_text) <= 65535):
+        raise FirstbootFailure('invalid_pool_endpoint')
+    if threads != 'auto' and (not threads.isdigit() or not 1 <= int(threads) <= 1024):
+        raise FirstbootFailure('invalid_cpu_threads')
+    proposal = {'schema': 'rigos.config-proposal/v1', 'profile': {'node_name': node, 'timezone': timezone, 'flight_source': 'interactive', 'flight_ref': None, 'miner_start_mode': start}, 'flight_sheet': {'schema': 'rigos.flight-sheet/v1', 'name': 'manual-xmrig', 'coin': 'XMR', 'backend': 'xmrig', 'algorithm': algorithm, 'pools': [{'host': host.lower(), 'port': int(port_text), 'tls': tls == 'required', 'priority': 0}], 'identity_ref': alias, 'worker_template': '{node_name}', 'cpu': {'threads': threads if threads == 'auto' else int(threads), 'huge_pages': huge_pages == 'enabled', 'max_threads_hint': 100}}, 'provenance': None, 'source_sha256': 'manual'}
+    return (proposal, alias, '')
 
 def prepare_import(path: str) -> tuple[dict, bool]:
     while True:
-        set_stage("prepare_import")
-        ok, result = engine("prepare", "--output", path)
+        set_stage('prepare_import')
+        ok, result = engine('prepare', '--output', path)
         if ok:
-            return json.loads(Path(path).read_text(encoding="utf-8")), False
-        if result.get("code") == "RIGOS_CONFIG_FILE_MISSING":
-            return manual_proposal()[0], True
-        if (
-            result.get("code") == "RIGOS_FLIGHT_SHEET_MISSING"
-            and "interactive" in result.get("message", "")
-        ):
-            found, choices = engine("discover")
+            return (json.loads(Path(path).read_text(encoding='utf-8')), False)
+        if result.get('code') == 'RIGOS_CONFIG_FILE_MISSING':
+            return (manual_proposal()[0], True)
+        if result.get('code') == 'RIGOS_FLIGHT_SHEET_MISSING' and 'interactive' in result.get('message', ''):
+            found, choices = engine('discover')
             if found:
-                items = [
-                    ("manual", "Configure manually"),
-                    ("none", "Do not configure mining now"),
-                ]
-                items += [
-                    (f"native:{name}", f"Native {name}")
-                    for name in choices.get("native", [])
-                ]
-                items += [
-                    (f"import:{name}", f"Import {name}")
-                    for name in choices.get("import", [])
-                ]
+                items = [('manual', 'Configure manually'), ('none', 'Do not configure mining now')]
+                items += [(f'native:{name}', f'Native {name}') for name in choices.get('native', [])]
+                items += [(f'import:{name}', f'Import {name}') for name in choices.get('import', [])]
                 flat = [value for pair in items for value in pair]
-                selected = dialog(
-                    "--menu",
-                    "Select Flight Sheet",
-                    "20",
-                    "76",
-                    str(min(12, len(items))),
-                    *flat,
-                    stage="flight_sheet_selection",
-                )
-                if selected == "manual":
-                    return manual_proposal()[0], True
-                if selected == "none":
-                    raise FirstbootCancelled("mining_left_unconfigured")
-                source, reference = selected.split(":", 1)
-                ok, prepared = engine(
-                    "prepare",
-                    "--output",
-                    path,
-                    "--flight-source",
-                    source,
-                    "--flight-ref",
-                    reference,
-                )
+                selected = dialog('--menu', 'Select Flight Sheet', '20', '76', str(min(12, len(items))), *flat, stage='flight_sheet_selection')
+                if selected == 'manual':
+                    return (manual_proposal()[0], True)
+                if selected == 'none':
+                    raise FirstbootCancelled('mining_left_unconfigured')
+                source, reference = selected.split(':', 1)
+                ok, prepared = engine('prepare', '--output', path, '--flight-source', source, '--flight-ref', reference)
                 if ok:
-                    return json.loads(Path(path).read_text(encoding="utf-8")), False
+                    return (json.loads(Path(path).read_text(encoding='utf-8')), False)
                 result = prepared
-        action = dialog(
-            "--menu",
-            diagnostic_text(result),
-            "20",
-            "76",
-            "4",
-            "retry",
-            "Retry import",
-            "manual",
-            "Continue with manual setup",
-            "diagnostics",
-            "Show diagnostics",
-            "reboot",
-            "Reboot",
-            stage="import_error_action",
-        )
-        if action == "retry":
+        action = dialog('--menu', diagnostic_text(result), '20', '76', '4', 'retry', 'Retry import', 'manual', 'Continue with manual setup', 'diagnostics', 'Show diagnostics', 'reboot', 'Reboot', stage='import_error_action')
+        if action == 'retry':
             continue
-        if action == "diagnostics":
-            dialog(
-                "--msgbox",
-                diagnostic_text(result),
-                "18",
-                "76",
-                stage="import_diagnostics",
-            )
+        if action == 'diagnostics':
+            dialog('--msgbox', diagnostic_text(result), '18', '76', stage='import_diagnostics')
             continue
-        if action == "reboot":
-            subprocess.run(["systemctl", "reboot"], check=False)
+        if action == 'reboot':
+            subprocess.run(['systemctl', 'reboot'], check=False)
             raise RebootRequested
-        if confirm(
-            "Discard invalid rigos.conf for this boot and continue manually\n\n"
-            "The source file will not be changed or deleted.",
-            stage="discard_invalid_import",
-        ):
-            return manual_proposal()[0], True
-
+        if confirm('Discard invalid rigos.conf for this boot and continue manually\n\nThe source file will not be changed or deleted.', stage='discard_invalid_import'):
+            return (manual_proposal()[0], True)
 
 def resolve_identity(proposal: dict) -> dict:
-    requested = proposal["flight_sheet"]["identity_ref"]
-    identity_dir = STATE / "identities"
+    requested = proposal['flight_sheet']['identity_ref']
+    identity_dir = STATE / 'identities'
     candidates = []
     if identity_dir.is_dir():
-        for path in sorted(identity_dir.glob("*.json"))[:64]:
+        for path in sorted(identity_dir.glob('*.json'))[:64]:
             try:
-                record = json.loads(path.read_text(encoding="utf-8"))
-                if record.get("schema") == "rigos.identity/v1":
+                record = json.loads(path.read_text(encoding='utf-8'))
+                if record.get('schema') == 'rigos.identity/v1':
                     candidates.append(record)
             except (OSError, json.JSONDecodeError):
                 continue
-    external = (proposal.get("provenance") or {}).get("external_reference")
-    mapping_path = STATE / "external-identity-map.json"
+    external = (proposal.get('provenance') or {}).get('external_reference')
+    mapping_path = STATE / 'external-identity-map.json'
     if external and mapping_path.is_file():
         try:
-            mapping_document = json.loads(mapping_path.read_text(encoding="utf-8"))
-            mappings = (
-                mapping_document.get("mappings", [])
-                if mapping_document.get("schema")
-                == "rigos.external-identity-map/v1"
-                else []
-            )
+            mapping_document = json.loads(mapping_path.read_text(encoding='utf-8'))
+            mappings = mapping_document.get('mappings', []) if mapping_document.get('schema') == 'rigos.external-identity-map/v1' else []
         except (OSError, json.JSONDecodeError):
             mappings = []
-        mapping = next(
-            (
-                item
-                for item in mappings
-                if item.get("source") == external.get("source")
-                and item.get("external_type") == external.get("external_type")
-                and item.get("external_value") == external.get("external_value")
-            ),
-            None,
-        )
-        mapped_identity = next(
-            (
-                item
-                for item in candidates
-                if mapping and item.get("alias") == mapping.get("identity_ref")
-            ),
-            None,
-        )
+        mapping = next((item for item in mappings if item.get('source') == external.get('source') and item.get('external_type') == external.get('external_type') and (item.get('external_value') == external.get('external_value'))), None)
+        mapped_identity = next((item for item in candidates if mapping and item.get('alias') == mapping.get('identity_ref')), None)
         if mapped_identity:
-            source_status = (
-                "same source hash"
-                if mapping.get("confirmed_source_sha256")
-                == proposal.get("source_sha256")
-                else "source hash changed"
-            )
-            if confirm(
-                "Reuse confirmed external identity mapping\n\n"
-                f"Local alias {mapped_identity['alias']}\n{source_status}\n"
-                f"Value suffix ****{mapped_identity['value'][-4:]}",
-                stage="reuse_external_identity",
-            ):
-                proposal["flight_sheet"]["identity_ref"] = mapped_identity["alias"]
+            source_status = 'same source hash' if mapping.get('confirmed_source_sha256') == proposal.get('source_sha256') else 'source hash changed'
+            set_stage('reuse_external_identity')
+            if confirm(f"Reuse confirmed external identity mapping\n\nLocal alias {mapped_identity['alias']}\n{source_status}\nValue suffix ****{mapped_identity['value'][-4:]}"):
+                proposal['flight_sheet']['identity_ref'] = mapped_identity['alias']
                 return mapped_identity
-    exact = next((item for item in candidates if item.get("alias") == requested), None)
-    if exact and confirm(
-        f"Reuse local identity alias {requested}\n\n"
-        f"Value suffix {exact['value'][-6:].rjust(len(exact['value'][-6:]) + 4, '*')}",
-        stage="reuse_local_identity",
-    ):
-        proposal["flight_sheet"]["identity_ref"] = exact["alias"]
+    exact = next((item for item in candidates if item.get('alias') == requested), None)
+    set_stage('reuse_local_identity')
+    if exact and confirm(f"Reuse local identity alias {requested}\n\nValue suffix {exact['value'][-6:].rjust(len(exact['value'][-6:]) + 4, '*')}"):
+        proposal['flight_sheet']['identity_ref'] = exact['alias']
         return exact
-    aliases = [
-        (
-            f"existing:{item['alias']}",
-            f"Use {item['alias']} suffix ****{item['value'][-4:]}",
-        )
-        for item in candidates
-    ]
-    choices = aliases + [
-        ("new", "Add a new local identity"),
-        ("none", "Leave mining unconfigured"),
-        ("reboot", "Cancel and reboot"),
-    ]
-    selected = dialog(
-        "--menu",
-        "Mining identity is unresolved",
-        "18",
-        "76",
-        str(min(12, len(choices))),
-        *[value for pair in choices for value in pair],
-        stage="identity_selection",
-    )
-    if selected.startswith("existing:"):
-        alias = selected.split(":", 1)[1]
-        selected_identity = next(item for item in candidates if item["alias"] == alias)
-        if not confirm(
-            f"Use local identity alias {alias} for this Flight Sheet\n\n"
-            f"Value suffix ****{selected_identity['value'][-4:]}",
-            stage="confirm_existing_identity",
-        ):
+    aliases = [(f"existing:{item['alias']}", f"Use {item['alias']} suffix ****{item['value'][-4:]}") for item in candidates]
+    choices = aliases + [('new', 'Add a new local identity'), ('none', 'Leave mining unconfigured'), ('reboot', 'Cancel and reboot')]
+    set_stage('identity_selection')
+    selected = dialog('--menu', 'Mining identity is unresolved', '18', '76', str(min(12, len(choices))), *[value for pair in choices for value in pair])
+    if selected.startswith('existing:'):
+        alias = selected.split(':', 1)[1]
+        selected_identity = next((item for item in candidates if item['alias'] == alias))
+        set_stage('confirm_existing_identity')
+        if not confirm(f"Use local identity alias {alias} for this Flight Sheet\n\nValue suffix ****{selected_identity['value'][-4:]}"):
             return resolve_identity(proposal)
-        proposal["flight_sheet"]["identity_ref"] = alias
+        proposal['flight_sheet']['identity_ref'] = alias
         return selected_identity
-    if selected == "none":
-        subprocess.run(["systemctl", "stop", "rigos-miner.service"], check=False)
-        raise FirstbootCancelled("mining_left_unconfigured")
-    if selected == "reboot":
-        subprocess.run(["systemctl", "reboot"], check=False)
+    if selected == 'none':
+        subprocess.run(['systemctl', 'stop', 'rigos-miner.service'], check=False)
+        raise FirstbootCancelled('mining_left_unconfigured')
+    if selected == 'reboot':
+        subprocess.run(['systemctl', 'reboot'], check=False)
         raise RebootRequested
-    alias = prompt(
-        "new_identity_alias",
-        "Local identity alias",
-        requested if SLUG_RE.fullmatch(requested) else "main-xmr",
-    ).strip()
-    value = prompt(
-        "new_identity_value",
-        "Mining identity value",
-        password=True,
-    ).strip()
-    if (
-        not SLUG_RE.fullmatch(alias)
-        or not value
-        or len(value) > 512
-        or any(character.isspace() or ord(character) < 32 for character in value)
-    ):
-        raise FirstbootFailure("invalid_identity")
-    proposal["flight_sheet"]["identity_ref"] = alias
-    return {
-        "schema": "rigos.identity/v1",
-        "alias": alias,
-        "kind": "mining_identity",
-        "value": value,
-        "created_locally": True,
-    }
-
+    alias = prompt('new_identity_alias', 'Local identity alias', requested if SLUG_RE.fullmatch(requested) else 'main-xmr').strip()
+    value = prompt('new_identity_value', 'Mining identity value', password=True).strip()
+    if not SLUG_RE.fullmatch(alias) or not value or len(value) > 512 or any((character.isspace() or ord(character) < 32 for character in value)):
+        raise FirstbootFailure('invalid_identity')
+    proposal['flight_sheet']['identity_ref'] = alias
+    return {'schema': 'rigos.identity/v1', 'alias': alias, 'kind': 'mining_identity', 'value': value, 'created_locally': True}
 
 def main() -> None:
-    set_stage("state_preflight")
+    set_stage('state_preflight')
     try:
-        state_outcome = json.loads(STATE_STATUS.read_text(encoding="utf-8"))["outcome"]
+        state_outcome = json.loads(STATE_STATUS.read_text(encoding='utf-8'))['outcome']
     except (OSError, KeyError, json.JSONDecodeError):
-        state_outcome = "unavailable"
-    if state_outcome != "ready":
-        dialog(
-            "--msgbox",
-            f"Persistent state status: {state_outcome}\n\n"
-            "Configuration and mining are blocked until the verified USB state is ready.",
-            "13",
-            "72",
-            stage="state_not_ready",
-        )
-        raise FirstbootFailure("state_not_ready")
-
-    set_stage("current_revision")
-    existing, current = engine("current")
-    if existing and current.get("outcome") == "configuration_committed":
-        set_stage("activation_retry")
-        activated, result = engine("activate")
+        state_outcome = 'unavailable'
+    if state_outcome != 'ready':
+        dialog('--msgbox', f'Persistent state status: {state_outcome}\n\nConfiguration and mining are blocked until the verified USB state is ready.', '13', '72', stage='state_not_ready')
+        raise FirstbootFailure('state_not_ready')
+    set_stage('current_revision')
+    existing, current = engine('current')
+    if existing and current.get('outcome') == 'configuration_committed':
+        set_stage('activation_retry')
+        activated, result = engine('activate')
         if not activated:
-            dialog(
-                "--msgbox",
-                "Configuration activation failed\n"
-                f"{diagnostic_text(result)}\n\n"
-                "The committed revision was preserved and mining remains stopped. "
-                "Reboot to retry activation.",
-                "18",
-                "76",
-                stage="activation_retry_failed",
-            )
-            raise FirstbootFailure("activation_retry_failed")
-        dialog(
-            "--msgbox",
-            "Existing configuration activated.\n"
-            f"Miner started: {result.get('miner_started', False)}",
-            "10",
-            "64",
-            stage="activation_retry_ready",
-        )
+            dialog('--msgbox', f'Configuration activation failed\n{diagnostic_text(result)}\n\nThe committed revision was preserved and mining remains stopped. Reboot to retry activation.', '18', '76', stage='activation_retry_failed')
+            raise FirstbootFailure('activation_retry_failed')
+        dialog('--msgbox', f"Existing configuration activated.\nMiner started: {result.get('miner_started', False)}", '10', '64', stage='activation_retry_ready')
         return
-
-    with tempfile.NamedTemporaryFile(
-        prefix="rigos-proposal-",
-        dir="/run/rigos",
-        delete=False,
-    ) as stream:
+    with tempfile.NamedTemporaryFile(prefix='rigos-proposal-', dir='/run/rigos', delete=False) as stream:
         proposal_path = stream.name
     os.unlink(proposal_path)
     try:
         proposal, _manual = prepare_import(proposal_path)
         identity = resolve_identity(proposal)
-        sheet = proposal["flight_sheet"]
-        profile = proposal["profile"]
-        primary = sheet["pools"][0]
-        summary = (
-            f"Node {profile['node_name']}\nFlight Sheet {sheet['name']}\n"
-            f"Pool {primary['host']}:{primary['port']}\n"
-            f"Fallback pools {len(sheet['pools']) - 1}\n"
-            f"Algorithm {sheet['algorithm']}\n"
-            f"TLS {'enabled' if primary['tls'] else 'disabled'}\n"
-            f"Identity {identity['alias']} suffix ****{identity['value'][-4:]}\n"
-            f"Start policy {profile['miner_start_mode']}\n"
-            f"Huge pages {sheet['cpu']['huge_pages']}"
-        )
-        if not confirm(
-            summary + "\n\nCommit this configuration locally?",
-            stage="commit_confirmation",
-        ):
-            raise FirstbootCancelled("configuration_not_confirmed")
-        set_stage("configuration_commit")
-        ok, result = engine("commit", stdin={"proposal": proposal, "identity": identity})
+        sheet = proposal['flight_sheet']
+        profile = proposal['profile']
+        primary = sheet['pools'][0]
+        summary = f"Node {profile['node_name']}\nFlight Sheet {sheet['name']}\nPool {primary['host']}:{primary['port']}\nFallback pools {len(sheet['pools']) - 1}\nAlgorithm {sheet['algorithm']}\nTLS {('enabled' if primary['tls'] else 'disabled')}\nIdentity {identity['alias']} suffix ****{identity['value'][-4:]}\nStart policy {profile['miner_start_mode']}\nHuge pages {sheet['cpu']['huge_pages']}"
+        if not confirm(summary + '\n\nCommit this configuration locally?', stage='commit_confirmation'):
+            raise FirstbootCancelled('configuration_not_confirmed')
+        set_stage('configuration_commit')
+        ok, result = engine('commit', stdin={'proposal': proposal, 'identity': identity})
         if not ok:
-            dialog(
-                "--msgbox",
-                "Configuration commit failed\n"
-                f"{diagnostic_text(result)}\n\nNo activation was attempted.",
-                "18",
-                "76",
-                stage="configuration_commit_failed",
-            )
-            raise FirstbootFailure("configuration_commit_failed")
-        set_stage("configuration_activation")
-        activated, activation = engine("activate")
+            dialog('--msgbox', f'Configuration commit failed\n{diagnostic_text(result)}\n\nNo activation was attempted.', '18', '76', stage='configuration_commit_failed')
+            raise FirstbootFailure('configuration_commit_failed')
+        set_stage('configuration_activation')
+        activated, activation = engine('activate')
         if not activated:
-            dialog(
-                "--msgbox",
-                "Configuration was committed but activation failed\n"
-                f"{diagnostic_text(activation)}\n\n"
-                "The revision was preserved and mining remains stopped. "
-                "Reboot to retry activation.",
-                "18",
-                "76",
-                stage="configuration_activation_failed",
-            )
-            raise FirstbootFailure("configuration_activation_failed")
-        dialog(
-            "--msgbox",
-            "Configuration saved and activated atomically.\n"
-            f"Miner started: {activation.get('miner_started', False)}",
-            "10",
-            "64",
-            stage="configuration_ready",
-        )
+            dialog('--msgbox', f'Configuration was committed but activation failed\n{diagnostic_text(activation)}\n\nThe revision was preserved and mining remains stopped. Reboot to retry activation.', '18', '76', stage='configuration_activation_failed')
+            raise FirstbootFailure('configuration_activation_failed')
+        dialog('--msgbox', f"Configuration saved and activated atomically.\nMiner started: {activation.get('miner_started', False)}", '10', '64', stage='configuration_ready')
     finally:
         try:
             os.unlink(proposal_path)
         except FileNotFoundError:
             pass
 
-
 def handle_signal(signal_number: int, _frame: object) -> None:
     name = signal.Signals(signal_number).name
-    record_event("failed", "process_signal", signal_name=name)
+    record_event('failed', 'process_signal', signal_name=name)
     raise FirstbootInterrupted(signal_number)
-
 
 def run() -> int:
     signal.signal(signal.SIGHUP, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
-    set_stage("startup")
-    record_event("running", "firstboot_started")
+    set_stage('startup')
+    record_event('running', 'firstboot_started')
     try:
         main()
     except FirstbootCancelled as error:
-        record_event("cancelled", error.reason, error.returncode)
-        print(
-            f"RIGOS firstboot cancelled stage={CURRENT_STAGE} reason={error.reason}",
-            file=sys.stderr,
-            flush=True,
-        )
+        record_event('cancelled', error.reason, error.returncode)
+        print(f'RIGOS firstboot cancelled stage={CURRENT_STAGE} reason={error.reason}', file=sys.stderr, flush=True)
         return 10
     except FirstbootFailure as error:
-        record_event(
-            "failed",
-            error.reason,
-            error.returncode,
-            error.signal_name,
-        )
-        print(
-            f"RIGOS firstboot failed stage={CURRENT_STAGE} reason={error.reason}",
-            file=sys.stderr,
-            flush=True,
-        )
+        record_event('failed', error.reason, error.returncode, error.signal_name)
+        print(f'RIGOS firstboot failed stage={CURRENT_STAGE} reason={error.reason}', file=sys.stderr, flush=True)
         return 20
     except FirstbootInterrupted as error:
         return 128 + error.signal_number
     except RebootRequested:
-        record_event("cancelled", "reboot_requested")
+        record_event('cancelled', 'reboot_requested')
         return 0
     except Exception as error:
-        reason = f"unexpected_{type(error).__name__}"
-        record_event("failed", reason)
-        print(
-            f"RIGOS firstboot failed stage={CURRENT_STAGE} reason={reason}",
-            file=sys.stderr,
-            flush=True,
-        )
+        reason = f'unexpected_{type(error).__name__}'
+        record_event('failed', reason)
+        print(f'RIGOS firstboot failed stage={CURRENT_STAGE} reason={reason}', file=sys.stderr, flush=True)
         return 20
-    set_stage("complete")
-    record_event("ready", "firstboot_completed")
+    set_stage('complete')
+    record_event('ready', 'firstboot_completed')
     return 0
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(run())
