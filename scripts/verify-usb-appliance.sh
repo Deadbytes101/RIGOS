@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 die(){ printf 'verify-usb-appliance: %s\n' "$*" >&2; exit 1; }
 [[ $# -eq 2 ]] || die 'usage: verify-usb-appliance.sh <image> <manifest>'
 image="$(readlink -f "$1")"; manifest="$(readlink -f "$2")"
@@ -92,6 +93,7 @@ python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
+python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
