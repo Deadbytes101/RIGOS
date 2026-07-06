@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+import json
+import os
+import re
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+
+CORE = Path("/usr/lib/rigos/rigos-state-init")
+RUNTIME = Path("/run/rigos")
+STATUS = RUNTIME / "state-status.json"
+ATTESTATION = RUNTIME / "boot-device.json"
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+PARTUUID_ROOT = Path("/dev/disk/by-partuuid")
+PARTUUID_RE = re.compile(r"^[0-9A-Fa-f-]{1,128}$")
+
+
+def read_json(path: Path) -> dict:
+    try:
+        raw = path.read_bytes()
+        if len(raw) > 64 * 1024:
+            return {}
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_status(value: dict) -> None:
+    RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=RUNTIME, prefix=".state-status-", delete=False
+    ) as stream:
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        temporary = Path(stream.name)
+    temporary.chmod(0o644)
+    os.replace(temporary, STATUS)
+    directory = os.open(RUNTIME, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def run_core() -> int:
+    return subprocess.run([str(CORE)], check=False).returncode
+
+
+def properties(output: str) -> dict[str, str]:
+    result = {}
+    for line in output.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            result[key] = value
+    return result
+
+
+def verified_state_device() -> tuple[Path | None, str | None]:
+    attestation = read_json(ATTESTATION)
+    try:
+        current_boot = BOOT_ID.read_text(encoding="ascii").strip()
+    except OSError as error:
+        return None, f"boot id unavailable: {error}"
+    state = attestation.get("state")
+    if (
+        attestation.get("schema") != "rigos.boot-device/v1"
+        or attestation.get("verification_outcome") != "verified"
+        or attestation.get("boot_id") != current_boot
+        or not isinstance(state, dict)
+    ):
+        return None, "current verified boot-device attestation is unavailable"
+    partuuid = state.get("partuuid")
+    if not isinstance(partuuid, str) or not PARTUUID_RE.fullmatch(partuuid):
+        return None, "attested state PARTUUID is invalid"
+    try:
+        device = (PARTUUID_ROOT / partuuid).resolve(strict=True)
+    except OSError as error:
+        return None, f"attested state PARTUUID is unavailable: {error}"
+    mounted = subprocess.run(
+        ["/usr/bin/findmnt", "--noheadings", "--source", str(device)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if mounted.returncode == 0:
+        return None, "verified state device is unexpectedly mounted before repair"
+    if mounted.returncode not in (1,):
+        return None, "state mount query failed"
+    observed = subprocess.run(
+        ["/usr/sbin/blkid", "-o", "export", str(device)],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if observed.returncode != 0:
+        return None, "verified state filesystem identity is unavailable"
+    values = properties(observed.stdout)
+    if (
+        values.get("TYPE") != "ext4"
+        or values.get("LABEL") not in ("RIGOS_STATE_SEED", "RIGOS_STATE")
+        or values.get("PARTUUID", "").lower() != partuuid.lower()
+    ):
+        return None, "verified state filesystem identity changed"
+    return device, None
+
+
+def mark_repair_required(message: str) -> None:
+    status = read_json(STATUS)
+    attestation = read_json(ATTESTATION)
+    state = attestation.get("state") if isinstance(attestation.get("state"), dict) else {}
+    status.update(
+        {
+            "schema": "rigos.state-status/v1",
+            "boot_id": BOOT_ID.read_text(encoding="ascii").strip(),
+            "outcome": "repair_required",
+            "action": None,
+            "message": message,
+            "device": state.get("path") or status.get("device"),
+            "partuuid": state.get("partuuid") or status.get("partuuid"),
+            "mountpoint": None,
+        }
+    )
+    write_status(status)
+
+
+def forced_check() -> bool:
+    device, error = verified_state_device()
+    if error is not None or device is None:
+        mark_repair_required(error or "verified state device is unavailable")
+        return False
+    result = subprocess.run(
+        ["/usr/sbin/e2fsck", "-f", "-p", str(device)],
+        check=False,
+    )
+    if result.returncode in (0, 1):
+        return True
+    mark_repair_required(
+        f"forced ext4 check requires owner intervention with exit code {result.returncode}"
+    )
+    return False
+
+
+def main() -> int:
+    retried_missing_device = False
+    repaired_filesystem = False
+    for _attempt in range(4):
+        result = run_core()
+        if result != 0:
+            return result
+        status = read_json(STATUS)
+        if status.get("outcome") == "ready":
+            return 0
+        message = str(status.get("message") or "")
+        if (
+            status.get("outcome") == "limited_capacity"
+            and not retried_missing_device
+            and "No such file or directory" in message
+        ):
+            retried_missing_device = True
+            time.sleep(1)
+            continue
+        if (
+            status.get("outcome") == "limited_capacity"
+            and not repaired_filesystem
+            and "e2fsck -f" in message
+        ):
+            repaired_filesystem = True
+            if forced_check():
+                continue
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
