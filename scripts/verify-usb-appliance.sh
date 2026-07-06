@@ -84,15 +84,18 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-profile-apply.service \
   usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/xmrig usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/xmrig usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
+python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
+python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
+grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state resume orchestrator is not wired'
 grep -Fqx 'd /run/rigos 0755 root root -' "$temporary/root/usr/lib/tmpfiles.d/rigos.conf" || die 'shared runtime directory contract is missing'
 if rg -q '^RuntimeDirectory=rigos$' "$temporary/root/etc/systemd/system"; then die 'a service owns the shared runtime directory'; fi
 if grep -Eq '^(ExecStartPre|Environment=PATH)=.*compat-bin' "$temporary/root/etc/systemd/system/rigos-state.service"; then die 'state unit executes compatibility code from the runtime directory'; fi
@@ -103,6 +106,7 @@ strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/lib/rig
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F -- '--tree' >/dev/null || die 'state initializer does not require hierarchical lsblk output'
 if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigos/compat-bin/lsblk' >/dev/null; then die 'state initializer executes compatibility code from the runtime directory'; fi
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-state-ready' "$temporary/root/etc/systemd/system/rigos-state-ready.service" || die 'state readiness verifier is not wired'
+if grep -Fq 'Wants=rigos-recovery-access.service' "$temporary/root/etc/systemd/system/rigos-state-ready.service"; then die 'state readiness retriggers interactive recovery access'; fi
 grep -Fq 'Requires=rigos-state-ready.service' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply bypasses state readiness'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-performance" ]] || die 'performance authority is missing or not executable'
 grep -Fq 'After=rigos-state-ready.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority ordering is missing'
@@ -113,7 +117,7 @@ strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F '/proc/sys/v
 strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'rigos.performance-status/v1' >/dev/null || die 'performance authority status contract is missing'
 if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'sysctl' >/dev/null; then die 'performance authority shells out to sysctl'; fi
 if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -Ei '(/dev/sd|/dev/nvme|cpu model)' >/dev/null; then die 'performance authority contains hardware-name or internal-disk targeting'; fi
-grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner policy gate is missing'
+grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner safety gate is missing'
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'first boot activation gate is missing'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'
