@@ -6,7 +6,6 @@ Before=rigos-firstboot.service rigos-hugepages.service rigos-miner.service
 
 [Service]
 Type=oneshot
-ExecStartPre=/usr/lib/rigos/rigos-config recover
 ExecStart=/usr/lib/rigos/rigos-config timezone
 RemainAfterExit=yes
 

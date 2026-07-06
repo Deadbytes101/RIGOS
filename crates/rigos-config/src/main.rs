@@ -45,13 +45,21 @@ enum Commands {
         #[arg(long, default_value = "/run/rigos/state-status.json")]
         status: PathBuf,
     },
-    Transact {
+    Commit {
+        #[arg(long, default_value = "/var/lib/rigos")]
+        state: PathBuf,
+    },
+    Activate {
         #[arg(long, default_value = "/var/lib/rigos")]
         state: PathBuf,
         #[arg(long, default_value = "/proc/cmdline")]
         cmdline: PathBuf,
     },
-    Recover {
+    Current {
+        #[arg(long, default_value = "/var/lib/rigos")]
+        state: PathBuf,
+    },
+    NeedsActivation {
         #[arg(long, default_value = "/var/lib/rigos")]
         state: PathBuf,
     },
@@ -108,15 +116,6 @@ struct Policy {
     miner_start_mode: MinerStartMode,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct RuntimeSnapshot {
-    schema: String,
-    boot_id: String,
-    previous_revision: Option<PathBuf>,
-    timezone: String,
-    miner_enabled: bool,
-    miner_active: bool,
-}
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match execute(cli) {
@@ -153,15 +152,24 @@ fn execute(cli: Cli) -> Result<Value, ConfigError> {
             attestation,
             status,
         } => with_verified_efi(&attestation, &status, discover),
-        Commands::Transact { state, cmdline } => {
+        Commands::Commit { state } => {
             let request = read_commit_request()?;
-            let (revision, miner_started) =
-                transact(&state, &cmdline, &request, &mut SystemRuntime)?;
-            Ok(json!({"outcome":"applied","revision":revision,"miner_started":miner_started}))
+            let (revision, created) = commit_once(&state, &request)?;
+            Ok(json!({"outcome":"configuration_committed","revision":revision,"created":created}))
         }
-        Commands::Recover { state } => {
-            recover_pending(&state, &mut SystemRuntime)?;
-            Ok(json!({"outcome":"recovered"}))
+        Commands::Activate { state, cmdline } => {
+            let (revision, miner_started) = activate(&state, &cmdline, &mut SystemRuntime)?;
+            Ok(json!({"outcome":"ready","revision":revision,"miner_started":miner_started}))
+        }
+        Commands::Current { state } => match current_revision(&state)? {
+            Some(revision) => Ok(json!({"outcome":"configuration_committed","revision":revision})),
+            None => Ok(json!({"outcome":"preflight_failed","reason":"not_provisioned"})),
+        },
+        Commands::NeedsActivation { state } => {
+            if activation_ready(&state)? {
+                std::process::exit(1);
+            }
+            Ok(json!({"outcome":"activation_required"}))
         }
         Commands::Gate { state, cmdline } => {
             let allowed = gate(&state, &cmdline)?;
@@ -434,37 +442,19 @@ fn discover(root: &Path) -> Result<Value, ConfigError> {
 }
 
 trait RuntimeOps {
-    fn timezone(&mut self) -> Result<String, ConfigError>;
     fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError>;
-    fn miner_enabled(&mut self) -> Result<bool, ConfigError>;
     fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError>;
     fn miner_active(&mut self) -> Result<bool, ConfigError>;
     fn stop_miner(&mut self) -> Result<(), ConfigError>;
     fn start_miner(&mut self) -> Result<(), ConfigError>;
+    fn restart_hugepages(&mut self) -> Result<(), ConfigError>;
 }
 
 struct SystemRuntime;
 
 impl RuntimeOps for SystemRuntime {
-    fn timezone(&mut self) -> Result<String, ConfigError> {
-        output("timedatectl", &["show", "--property=Timezone", "--value"])
-    }
     fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError> {
         run("timedatectl", &["set-timezone", timezone])
-    }
-    fn miner_enabled(&mut self) -> Result<bool, ConfigError> {
-        let status = Command::new("systemctl")
-            .args(["is-enabled", "--quiet", "rigos-miner.service"])
-            .status()
-            .map_err(io_failure)?;
-        match status.code() {
-            Some(0) => Ok(true),
-            Some(1) => Ok(false),
-            _ => Err(transaction_error(
-                "snapshot_enabled",
-                "could not read miner enabled state",
-            )),
-        }
     }
     fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError> {
         run(
@@ -495,212 +485,158 @@ impl RuntimeOps for SystemRuntime {
     fn start_miner(&mut self) -> Result<(), ConfigError> {
         run("systemctl", &["start", "rigos-miner.service"])
     }
+    fn restart_hugepages(&mut self) -> Result<(), ConfigError> {
+        run("systemctl", &["restart", "rigos-hugepages.service"])
+    }
 }
 
-fn transact(
-    state: &Path,
-    cmdline: &Path,
-    request: &CommitRequest,
-    runtime: &mut impl RuntimeOps,
-) -> Result<(String, bool), ConfigError> {
-    let pending = state.join(".pending-transaction.json");
-    if pending.exists() {
+fn current_revision(state: &Path) -> Result<Option<String>, ConfigError> {
+    let current = state.join("current");
+    let target = match fs::read_link(&current) {
+        Ok(target) => target,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_failure(error)),
+    };
+    let revision = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| transaction_error("current", "current revision pointer is invalid"))?
+        .to_owned();
+    Uuid::parse_str(&revision)
+        .map_err(|_| transaction_error("current", "current revision identifier is invalid"))?;
+    if !state.join("current/policy.json").is_file() || !state.join("current/xmrig.json").is_file() {
         return Err(transaction_error(
-            "snapshot",
-            "an incomplete configuration transaction already exists",
+            "current",
+            "current revision target is incomplete",
         ));
     }
-    let snapshot = RuntimeSnapshot {
-        schema: "rigos.runtime-snapshot/v1".into(),
-        boot_id: fs::read_to_string("/proc/sys/kernel/random/boot_id")
-            .map_err(io_failure)?
-            .trim()
-            .to_owned(),
-        previous_revision: fs::read_link(state.join("current")).ok(),
-        timezone: runtime.timezone()?,
-        miner_enabled: runtime.miner_enabled()?,
-        miner_active: runtime.miner_active()?,
-    };
-    write_private_json(&pending, &snapshot)?;
-    let operation = (|| {
-        runtime.stop_miner().map_err(|_| {
-            transaction_error(
-                "stop_before_commit",
-                "miner could not be stopped before commit",
-            )
-        })?;
-        if runtime.miner_active()? {
-            return Err(transaction_error(
-                "stop_before_commit",
-                "miner remained active before commit",
-            ));
-        }
-        let revision =
-            commit_revision(state, &request.proposal, &request.identity).map_err(|_| {
-                transaction_error("pointer_swap", "configuration revision commit failed")
-            })?;
-        let started = apply_new_runtime(&request.proposal.profile, cmdline, runtime)?;
-        Ok((revision, started))
-    })();
+    Ok(Some(revision))
+}
+
+fn commit_once(state: &Path, request: &CommitRequest) -> Result<(String, bool), ConfigError> {
+    if let Some(revision) = current_revision(state)? {
+        return Ok((revision, false));
+    }
+    let revision = commit_revision(state, &request.proposal, &request.identity)
+        .map_err(|_| transaction_error("commit", "configuration revision commit failed"))?;
+    write_firstboot_result(state, "configuration_committed", &revision, None)?;
+    Ok((revision, true))
+}
+
+fn activate(
+    state: &Path,
+    cmdline: &Path,
+    runtime: &mut impl RuntimeOps,
+) -> Result<(String, bool), ConfigError> {
+    let revision = current_revision(state)?
+        .ok_or_else(|| transaction_error("preflight", "configuration has not been committed"))?;
+    let policy: Policy = read_json(&state.join("current/policy.json"))?;
+    let operation = apply_activation_runtime(&policy, cmdline, runtime);
     match operation {
-        Ok(result) => {
-            fs::remove_file(&pending).map_err(io_failure)?;
-            Ok(result)
+        Ok(started) => {
+            write_activation_status(state, "ready", &revision, None)?;
+            write_firstboot_result(state, "ready", &revision, None)?;
+            Ok((revision, started))
         }
-        Err(failure) => {
-            let rollback = rollback_transaction(state, &snapshot, runtime);
-            if rollback.is_ok() {
-                let _ = fs::remove_file(&pending);
-            }
-            match rollback {
-                Ok(()) => Err(failure),
-                Err(rollback_failure) => Err(transaction_error(
-                    failure.diagnostic.key.as_deref().unwrap_or("unknown"),
-                    format!(
-                        "{}; rollback failed at {}",
-                        failure.diagnostic.message,
-                        rollback_failure
-                            .diagnostic
-                            .key
-                            .as_deref()
-                            .unwrap_or("unknown")
-                    ),
-                )),
-            }
+        Err(error) => {
+            let _ = runtime.stop_miner();
+            let stage = error.diagnostic.key.as_deref().unwrap_or("unknown");
+            write_activation_status(state, "activation_failed", &revision, Some(stage))?;
+            write_firstboot_result(state, "activation_failed", &revision, Some(stage))?;
+            Err(error)
         }
     }
 }
 
-fn apply_new_runtime(
-    profile: &rigos_config::RigProfile,
+fn apply_activation_runtime(
+    policy: &Policy,
     cmdline: &Path,
     runtime: &mut impl RuntimeOps,
 ) -> Result<bool, ConfigError> {
-    runtime
-        .set_timezone(&profile.timezone)
-        .map_err(|_| transaction_error("timezone", "timezone apply failed"))?;
-    let enabled = profile.miner_start_mode == MinerStartMode::OnBoot;
-    runtime
-        .set_miner_enabled(enabled)
-        .map_err(|_| transaction_error("enabled_state", "miner enabled state apply failed"))?;
-    let started = enabled && !cmdline_blocks_mining(cmdline);
-    if started {
-        runtime
-            .start_miner()
-            .map_err(|_| transaction_error("miner_start", "miner start failed"))?;
-        if !runtime.miner_active()? {
+    (|| {
+        runtime.stop_miner().map_err(|_| {
+            transaction_error("stop_before_activation", "miner could not be stopped")
+        })?;
+        if runtime.miner_active()? {
             return Err(transaction_error(
-                "miner_start",
-                "miner did not become active",
+                "stop_before_activation",
+                "miner remained active before activation",
             ));
         }
-    }
-    Ok(started)
+        runtime
+            .set_timezone(&policy.timezone)
+            .map_err(|_| transaction_error("timezone", "timezone apply failed"))?;
+        let enabled = policy.miner_start_mode == MinerStartMode::OnBoot;
+        runtime
+            .set_miner_enabled(enabled)
+            .map_err(|_| transaction_error("enabled_state", "miner policy apply failed"))?;
+        runtime
+            .restart_hugepages()
+            .map_err(|_| transaction_error("hugepages", "huge page authority restart failed"))?;
+        let started = enabled && !cmdline_blocks_mining(cmdline);
+        if started {
+            runtime
+                .start_miner()
+                .map_err(|_| transaction_error("miner_start", "miner start failed"))?;
+            if !runtime.miner_active()? {
+                return Err(transaction_error(
+                    "miner_start",
+                    "miner did not become active",
+                ));
+            }
+        }
+        Ok(started)
+    })()
+}
+
+fn write_activation_status(
+    state: &Path,
+    outcome: &str,
+    revision: &str,
+    stage: Option<&str>,
+) -> Result<(), ConfigError> {
+    write_atomic_json(
+        &state.join("activation-status.json"),
+        &json!({"schema":"rigos.activation-status/v1","outcome":outcome,"revision":revision,"failure_stage":stage}),
+    )
+}
+
+fn write_firstboot_result(
+    state: &Path,
+    outcome: &str,
+    revision: &str,
+    stage: Option<&str>,
+) -> Result<(), ConfigError> {
+    write_atomic_json(
+        &state.join("firstboot-status.json"),
+        &json!({"schema":"rigos.firstboot-status/v1","outcome":outcome,"revision":revision,"failure_stage":stage}),
+    )
+}
+
+fn activation_ready(state: &Path) -> Result<bool, ConfigError> {
+    let Some(revision) = current_revision(state)? else {
+        return Ok(false);
+    };
+    let status: Value = match read_json(&state.join("activation-status.json")) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    Ok(
+        status.get("schema").and_then(Value::as_str) == Some("rigos.activation-status/v1")
+            && status.get("outcome").and_then(Value::as_str) == Some("ready")
+            && status.get("revision").and_then(Value::as_str) == Some(revision.as_str()),
+    )
 }
 
 fn state_allows_config(outcome: &str) -> bool {
     matches!(outcome, "ready" | "grown")
 }
 
-fn rollback_transaction(
-    state: &Path,
-    snapshot: &RuntimeSnapshot,
-    runtime: &mut impl RuntimeOps,
-) -> Result<(), ConfigError> {
-    let mut first_error = None;
-    if runtime.stop_miner().is_err() {
-        first_error = Some(transaction_error(
-            "rollback_stop",
-            "miner could not be stopped",
-        ));
-    }
-    if first_error.is_none()
-        && restore_pointer(state, snapshot.previous_revision.as_deref()).is_err()
-    {
-        first_error = Some(transaction_error(
-            "rollback_pointer",
-            "previous revision could not be restored",
-        ));
-    }
-    let same_boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
-        .map(|value| value.trim() == snapshot.boot_id)
-        .unwrap_or(false);
-    if first_error.is_none() {
-        if let Err(error) = restore_runtime(snapshot, same_boot, runtime) {
-            first_error = Some(error);
-        }
-    }
-    if let Some(error) = first_error {
-        let _ = runtime.stop_miner();
-        return Err(error);
-    }
-    Ok(())
-}
-
-fn restore_runtime(
-    snapshot: &RuntimeSnapshot,
-    restore_running: bool,
-    runtime: &mut impl RuntimeOps,
-) -> Result<(), ConfigError> {
-    runtime.set_timezone(&snapshot.timezone).map_err(|_| {
-        transaction_error(
-            "rollback_timezone",
-            "previous timezone could not be restored",
-        )
-    })?;
-    runtime
-        .set_miner_enabled(snapshot.miner_enabled)
-        .map_err(|_| {
-            transaction_error(
-                "rollback_enabled_state",
-                "previous enabled state could not be restored",
-            )
-        })?;
-    if restore_running && snapshot.miner_active {
-        runtime.start_miner().map_err(|_| {
-            transaction_error(
-                "rollback_running_state",
-                "previous running state could not be restored",
-            )
-        })?;
-    }
-    Ok(())
-}
-
-fn recover_pending(state: &Path, runtime: &mut impl RuntimeOps) -> Result<(), ConfigError> {
-    let pending = state.join(".pending-transaction.json");
-    if !pending.is_file() {
-        return Ok(());
-    }
-    let snapshot: RuntimeSnapshot = read_json(&pending)?;
-    rollback_transaction(state, &snapshot, runtime)?;
-    fs::remove_file(pending).map_err(io_failure)
-}
-
-fn restore_pointer(state: &Path, previous: Option<&Path>) -> Result<(), ConfigError> {
-    if let Some(previous) = previous {
-        let temporary = state.join(format!(".rollback-{}", Uuid::new_v4()));
-        create_symlink(previous, &temporary)?;
-        fs::rename(temporary, state.join("current")).map_err(io_failure)?;
-    } else {
-        for name in [
-            "current",
-            "policy.json",
-            "xmrig.json",
-            "flight-sheets",
-            "identities",
-            "external-identity-map.json",
-        ] {
-            let _ = fs::remove_file(state.join(name));
-        }
-    }
-    Ok(())
-}
-
 fn gate(state: &Path, cmdline: &Path) -> Result<bool, ConfigError> {
     let policy: Policy = read_json(&state.join("current/policy.json"))?;
     let blocked = cmdline_blocks_mining(cmdline);
-    Ok(policy.miner_start_mode == MinerStartMode::OnBoot
+    Ok(activation_ready(state)?
+        && policy.miner_start_mode == MinerStartMode::OnBoot
         && !blocked
         && state.join("current/xmrig.json").is_file())
 }
@@ -721,20 +657,6 @@ fn apply_timezone(timezone: &str) -> Result<(), ConfigError> {
         ));
     }
     run("timedatectl", &["set-timezone", timezone])
-}
-
-fn output(program: &str, arguments: &[&str]) -> Result<String, ConfigError> {
-    let result = Command::new(program)
-        .args(arguments)
-        .output()
-        .map_err(io_failure)?;
-    if !result.status.success() {
-        return Err(transaction_error(
-            "runtime_query",
-            format!("runtime query {program} failed"),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&result.stdout).trim().to_owned())
 }
 
 fn transaction_error(stage: &str, message: impl Into<String>) -> ConfigError {
@@ -798,6 +720,16 @@ fn write_private_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Config
     serde_json::to_writer_pretty(file, value)
         .map_err(|_| diagnostic("RIGOS_CONFIG_INVALID_VALUE", "proposal write failed"))
 }
+fn write_atomic_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| diagnostic("RIGOS_CONFIG_INVALID_VALUE", "state path has no parent"))?;
+    let temporary = parent.join(format!(".status-{}", Uuid::new_v4()));
+    write_private_json(&temporary, value)?;
+    fs::rename(&temporary, path).map_err(io_failure)?;
+    let directory = fs::File::open(parent).map_err(io_failure)?;
+    directory.sync_all().map_err(io_failure)
+}
 fn run(program: &str, arguments: &[&str]) -> Result<(), ConfigError> {
     if Command::new(program)
         .args(arguments)
@@ -830,18 +762,6 @@ fn io_failure(value: io::Error) -> ConfigError {
         format!("I/O operation failed: {value}"),
     )
 }
-#[cfg(unix)]
-fn create_symlink(target: &Path, link: &Path) -> Result<(), ConfigError> {
-    std::os::unix::fs::symlink(target, link).map_err(io_failure)
-}
-#[cfg(not(unix))]
-fn create_symlink(_target: &Path, _link: &Path) -> Result<(), ConfigError> {
-    Err(diagnostic(
-        "RIGOS_CONFIG_INVALID_VALUE",
-        "rollback requires Unix symlinks",
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,16 +839,10 @@ mod tests {
     }
 
     impl RuntimeOps for FakeRuntime {
-        fn timezone(&mut self) -> Result<String, ConfigError> {
-            Ok(self.timezone.clone())
-        }
         fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError> {
             self.fail("timezone")?;
             self.timezone = timezone.into();
             Ok(())
-        }
-        fn miner_enabled(&mut self) -> Result<bool, ConfigError> {
-            Ok(self.enabled)
         }
         fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError> {
             self.fail("enabled_state")?;
@@ -948,26 +862,46 @@ mod tests {
             self.active = true;
             Ok(())
         }
+        fn restart_hugepages(&mut self) -> Result<(), ConfigError> {
+            self.fail("hugepages")
+        }
     }
 
     #[test]
-    fn runtime_failure_stages_restore_previous_side_effects() {
-        let profile = rigos_config::RigProfile {
-            node_name: "rig01".into(),
+    fn activation_orders_hugepages_before_miner() {
+        let policy = Policy {
             timezone: "Asia/Bangkok".into(),
-            flight_source: FlightSource::Interactive,
-            flight_ref: None,
             miner_start_mode: MinerStartMode::OnBoot,
         };
-        let snapshot = RuntimeSnapshot {
-            schema: "rigos.runtime-snapshot/v1".into(),
-            boot_id: "same".into(),
-            previous_revision: None,
+        let mut runtime = FakeRuntime {
             timezone: "UTC".into(),
-            miner_enabled: false,
-            miner_active: true,
+            enabled: false,
+            active: false,
+            fail_once: None,
+            events: vec![],
         };
-        for stage in ["timezone", "enabled_state", "miner_start"] {
+        assert!(
+            apply_activation_runtime(&policy, Path::new("missing-cmdline"), &mut runtime).unwrap()
+        );
+        assert_eq!(
+            runtime.events,
+            [
+                "stop",
+                "timezone",
+                "enabled_state",
+                "hugepages",
+                "miner_start"
+            ]
+        );
+    }
+
+    #[test]
+    fn activation_failure_leaves_miner_stopped() {
+        let policy = Policy {
+            timezone: "Asia/Bangkok".into(),
+            miner_start_mode: MinerStartMode::OnBoot,
+        };
+        for stage in ["timezone", "enabled_state", "hugepages", "miner_start"] {
             let mut runtime = FakeRuntime {
                 timezone: "UTC".into(),
                 enabled: false,
@@ -975,35 +909,12 @@ mod tests {
                 fail_once: Some(stage),
                 events: vec![],
             };
-            let error = apply_new_runtime(&profile, Path::new("missing-cmdline"), &mut runtime)
-                .unwrap_err();
+            let error =
+                apply_activation_runtime(&policy, Path::new("missing-cmdline"), &mut runtime)
+                    .unwrap_err();
             assert_eq!(error.diagnostic.key.as_deref(), Some(stage));
-            restore_runtime(&snapshot, true, &mut runtime).unwrap();
-            assert_eq!(runtime.timezone, "UTC");
-            assert!(!runtime.enabled);
-            assert!(runtime.active);
+            runtime.stop_miner().unwrap();
+            assert!(!runtime.active);
         }
-    }
-
-    #[test]
-    fn rollback_failure_forces_miner_stopped() {
-        let snapshot = RuntimeSnapshot {
-            schema: "rigos.runtime-snapshot/v1".into(),
-            boot_id: "same".into(),
-            previous_revision: None,
-            timezone: "UTC".into(),
-            miner_enabled: true,
-            miner_active: true,
-        };
-        let mut runtime = FakeRuntime {
-            timezone: "Asia/Bangkok".into(),
-            enabled: true,
-            active: true,
-            fail_once: Some("timezone"),
-            events: vec![],
-        };
-        assert!(restore_runtime(&snapshot, true, &mut runtime).is_err());
-        runtime.stop_miner().unwrap();
-        assert!(!runtime.active);
     }
 }

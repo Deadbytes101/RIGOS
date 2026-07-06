@@ -100,7 +100,7 @@ VERSION_ID="${RIGOS_IMAGE_VERSION}"
 VERSION_CODENAME="usb-appliance-preview"
 EOF
 
-chmod 0755 "$live/config/hooks/live/"* "$live/config/includes.chroot/usr/local/sbin/rigos-firstboot"
+chmod 0755 "$live/config/hooks/live/"* "$live/config/includes.chroot/usr/local/sbin/rigos-firstboot" "$live/config/includes.chroot/usr/local/sbin/rigos-recovery-access"
 find "$live/config/includes.chroot/etc/systemd/system" -type f -exec chmod 0644 {} +
 find "$live/config/includes.chroot" -type f ! -path '*/usr/local/sbin/*' ! -path '*/usr/lib/rigos/rigos*' ! -path '*/usr/lib/rigos/xmrig' -exec chmod go-w {} +
 

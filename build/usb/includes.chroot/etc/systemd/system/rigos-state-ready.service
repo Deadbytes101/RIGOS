@@ -1,8 +1,9 @@
 [Unit]
 Description=Verify RIGOS persistent state readiness
 DefaultDependencies=no
-After=rigos-state.service
+After=rigos-state.service rigos-recovery-access.service
 Requires=rigos-state.service
+Wants=rigos-recovery-access.service
 Before=local-fs.target rigos-profile-apply.service rigos-firstboot.service rigos-hugepages.service rigos-miner.service
 
 [Service]

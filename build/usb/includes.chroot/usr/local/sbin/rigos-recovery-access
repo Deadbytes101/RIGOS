@@ -1,0 +1,87 @@
+#!/usr/bin/python3
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+RUNTIME = Path("/run/rigos")
+STATE = Path("/var/lib/rigos")
+
+
+def password_ready() -> bool:
+    result = subprocess.run(
+        ["/usr/bin/passwd", "--status", "rigosadmin"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    fields = result.stdout.split()
+    return result.returncode == 0 and len(fields) >= 2 and fields[1] == "P"
+
+
+def unit_active(name: str) -> bool:
+    return subprocess.run(
+        ["/usr/bin/systemctl", "is-active", "--quiet", name], check=False
+    ).returncode == 0
+
+
+def unit_enabled(name: str) -> bool:
+    return subprocess.run(
+        ["/usr/bin/systemctl", "is-enabled", "--quiet", name], check=False
+    ).returncode == 0
+
+
+def write_status(value: dict) -> None:
+    RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=RUNTIME, prefix=".recovery-access-", delete=False
+    ) as stream:
+        json.dump(value, stream, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        temporary = Path(stream.name)
+    temporary.chmod(0o644)
+    os.replace(temporary, RUNTIME / "recovery-access-status.json")
+    directory = os.open(RUNTIME, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def main() -> int:
+    if not password_ready():
+        subprocess.run(
+            ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox",
+             "Set the local rig administrator password next. This enables tty1 diagnostics only.",
+             "11", "72"],
+            check=False,
+        )
+        subprocess.run(["/usr/bin/passwd", "rigosadmin"], check=True)
+    local_access = password_ready()
+    try:
+        state_outcome = json.loads((RUNTIME / "state-status.json").read_text(encoding="utf-8")).get("outcome", "unavailable")
+    except (OSError, json.JSONDecodeError):
+        state_outcome = "unavailable"
+    remote_active = any(unit_active(name) for name in ("ssh.service", "sshd.service"))
+    remote_enabled = any(unit_enabled(name) for name in ("ssh.service", "sshd.service"))
+    remote_inactive = not remote_active and not remote_enabled
+    configured = (STATE / "current").is_symlink()
+    mode = "operational" if state_outcome == "ready" and remote_inactive else "recovery"
+    write_status({
+        "schema": "rigos.recovery-access-status/v1",
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip(),
+        "mode": mode,
+        "local_console_access": local_access,
+        "state_outcome": state_outcome,
+        "remote_access": "inactive" if remote_inactive else "unexpected_active",
+        "configuration_commit": "present" if configured else "absent",
+    })
+    return 0 if local_access and remote_inactive else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

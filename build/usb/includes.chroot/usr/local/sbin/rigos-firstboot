@@ -182,29 +182,24 @@ def resolve_identity(proposal: dict) -> dict:
     return {"schema": "rigos.identity/v1", "alias": alias, "kind": "mining_identity", "value": value, "created_locally": True}
 
 
-def ensure_administrator_password() -> None:
-    status = subprocess.run(["passwd", "--status", "rigosadmin"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    fields = status.stdout.split()
-    if status.returncode == 0 and len(fields) >= 2 and fields[1] == "P":
-        return
-    dialog("--msgbox", "Set the local administrator password next. It remains on this machine and enables local recovery diagnostics.", "11", "72")
-    subprocess.run(["passwd", "rigosadmin"], check=True)
-    verified = subprocess.run(["passwd", "--status", "rigosadmin"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    verified_fields = verified.stdout.split()
-    if verified.returncode != 0 or len(verified_fields) < 2 or verified_fields[1] != "P":
-        raise SystemExit("Local administrator password was not established.")
-
-
 def main() -> None:
-    ensure_administrator_password()
     status_path = Path("/run/rigos/state-status.json")
     try:
         state_outcome = json.loads(status_path.read_text(encoding="utf-8"))["outcome"]
     except (OSError, KeyError, json.JSONDecodeError):
         state_outcome = "unavailable"
-    if state_outcome not in {"ready", "grown"}:
+    if state_outcome != "ready":
         dialog("--msgbox", f"Persistent state status: {state_outcome}\n\nConfiguration and mining are blocked until the verified USB state is ready.", "13", "72")
         raise SystemExit(1)
+
+    existing, current = engine("current")
+    if existing and current.get("outcome") == "configuration_committed":
+        activated, result = engine("activate")
+        if not activated:
+            dialog("--msgbox", f"Configuration activation failed\n{diagnostic_text(result)}\n\nThe committed revision was preserved and mining remains stopped. Reboot to retry activation.", "18", "76")
+            raise SystemExit(1)
+        dialog("--msgbox", f"Existing configuration activated.\nMiner started: {result.get('miner_started', False)}", "10", "64")
+        return
 
     with tempfile.NamedTemporaryFile(prefix="rigos-proposal-", dir="/run/rigos", delete=False) as stream:
         proposal_path = stream.name
@@ -224,11 +219,15 @@ def main() -> None:
         )
         if not confirm(summary + "\n\nCommit this configuration locally?"):
             raise SystemExit("Configuration not confirmed; no changes were written.")
-        ok, result = engine("transact", stdin={"proposal": proposal, "identity": identity})
+        ok, result = engine("commit", stdin={"proposal": proposal, "identity": identity})
         if not ok:
-            dialog("--msgbox", f"Configuration transaction failed\n{diagnostic_text(result)}\n\nPrevious runtime state was restored or mining was left stopped for recovery.", "18", "76")
+            dialog("--msgbox", f"Configuration commit failed\n{diagnostic_text(result)}\n\nNo activation was attempted.", "18", "76")
             raise SystemExit(1)
-        dialog("--msgbox", f"Configuration saved atomically.\nMiner started: {result.get('miner_started', False)}", "10", "64")
+        activated, activation = engine("activate")
+        if not activated:
+            dialog("--msgbox", f"Configuration was committed but activation failed\n{diagnostic_text(activation)}\n\nThe revision was preserved and mining remains stopped. Reboot to retry activation.", "18", "76")
+            raise SystemExit(1)
+        dialog("--msgbox", f"Configuration saved and activated atomically.\nMiner started: {activation.get('miner_started', False)}", "10", "64")
     finally:
         try:
             os.unlink(proposal_path)

@@ -1,0 +1,18 @@
+[Unit]
+Description=Establish local RIGOS recovery access
+After=rigos-state.service
+Wants=rigos-state.service
+Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rigos-recovery-access
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target

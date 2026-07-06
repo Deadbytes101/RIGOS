@@ -4,10 +4,10 @@ After=network-online.target rigos-state-ready.service rigos-profile-apply.servic
 Wants=network-online.target
 Requires=rigos-state-ready.service
 Before=getty@tty1.service
-ConditionPathExists=!/var/lib/rigos/policy.json
 
 [Service]
 Type=oneshot
+ExecCondition=/usr/lib/rigos/rigos-config needs-activation
 ExecStart=/usr/local/sbin/rigos-firstboot
 StandardInput=tty
 StandardOutput=tty

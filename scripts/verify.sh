@@ -11,7 +11,7 @@ cargo run --locked -p rigos-schema --bin generate-schemas -- --check
 cargo build --workspace --release --locked
 
 bash -n scripts/*.sh build/usb/hooks/*.chroot
-python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access
 
 grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
 grep -Fq 'RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN' crates/rigos-config/src/main.rs
@@ -21,8 +21,13 @@ grep -Fq 'boot_id' crates/rigos-state/src/main.rs
 grep -Fq 'major_minor' crates/rigos-state/src/main.rs
 grep -Fq 'ptuuid' crates/rigos-state/src/main.rs
 grep -Fq 'partuuid' crates/rigos-state/src/main.rs
-grep -Fq '.pending-transaction.json' crates/rigos-config/src/main.rs
-grep -Fq 'engine("transact"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+grep -Fq 'activation-status.json' crates/rigos-config/src/main.rs
+if rg -q 'rollback|pending-transaction' crates/rigos-config/src/main.rs; then
+  echo "configuration activation still contains pointer rollback machinery" >&2
+  exit 1
+fi
+grep -Fq 'engine("commit"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+grep -Fq 'engine("activate"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 grep -Fq 'rigos-hugepages.service' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 grep -Fq '/proc/sys/vm/nr_hugepages' crates/rigos-performance/src/lib.rs
@@ -93,9 +98,8 @@ import tempfile
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
-main_source = source[source.index("def main() -> None:"):]
-if main_source.index("ensure_administrator_password()") > main_source.index('if state_outcome not in {"ready", "grown"}'):
-    raise SystemExit("administrator password is established after the state gate")
+if "passwd" in source or "ensure_administrator_password" in source:
+    raise SystemExit("first boot still owns recovery password establishment")
 
 namespace = runpy.run_path(sys.argv[1], run_name="rigos_firstboot_identity_verify")
 with tempfile.TemporaryDirectory() as temporary:
