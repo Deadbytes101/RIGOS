@@ -2,7 +2,7 @@
 
 Local-first CPU appliance delivered as a bootable USB image.
 
-Current development preview is `RIGOS 0.0.4-alpha.5`.
+Current development preview is `RIGOS 0.0.4-alpha.6`.
 
 The persistent appliance uses a raw MBR disk image for Legacy BIOS and removable-media UEFI boot.
 
@@ -23,9 +23,11 @@ The recovery ISO is stateless and does not grow the state partition.
 0.0.4-alpha.3  fixed console order but kept the first boot screen hidden
 0.0.4-alpha.4  keeps the first boot screen on tty and captures answers separately
 0.0.4-alpha.5  adds local rig profiles and portable XMRig Flight Sheets
+0.0.4-alpha.6  adds visible machine-wide huge page authority
 ```
 
-Alpha five is isolated on its development branch. Alpha four physical state validation remains separate.
+Alpha five is frozen at its physically validated image and Alpha six develops
+performance authority on a separate branch.
 
 ## Verification
 

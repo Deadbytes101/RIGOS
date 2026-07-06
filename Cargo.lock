@@ -846,6 +846,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rigos-performance"
+version = "0.0.1"
+dependencies = [
+ "chrono",
+ "clap",
+ "rigos-schema",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "rigos-pool"
 version = "0.0.1"
 dependencies = [

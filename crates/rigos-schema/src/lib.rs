@@ -19,6 +19,43 @@ pub const COMPONENT_PROVENANCE_SCHEMA: &str = "rigos.component-provenance/v1";
 pub const IMAGE_LAYOUT_SCHEMA: &str = "rigos.image-layout/v1";
 pub const IMAGE_BUILD_MANIFEST_SCHEMA: &str = "rigos.image-build-manifest/v1";
 pub const STATE_LAYOUT_SCHEMA: &str = "rigos.state-layout/v1";
+pub const PERFORMANCE_STATUS_SCHEMA: &str = "rigos.performance-status/v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HugePageAuthorityStatusV1 {
+    Ready,
+    Disabled,
+    DegradedInsufficientMemory,
+    DegradedPartialAllocation,
+    DegradedUnavailable,
+    DegradedUnsupported,
+    DegradedReleaseIncomplete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct HugePageAuthorityV1 {
+    pub requested: bool,
+    pub target_pages: u64,
+    pub attempted_pages: u64,
+    pub actual_pages: u64,
+    pub huge_page_size_bytes: u64,
+    pub memory_available_before_bytes: u64,
+    pub reserve_bytes: u64,
+    pub allocation_percent_of_target: f64,
+    pub status: HugePageAuthorityStatusV1,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PerformanceStatusV1 {
+    pub schema: String,
+    pub boot_id: String,
+    pub generated_at: String,
+    pub config_revision: String,
+    pub algorithm: Option<String>,
+    pub huge_pages: HugePageAuthorityV1,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ReleaseInfoV1 {
@@ -312,6 +349,10 @@ pub fn schemas() -> BTreeMap<&'static str, serde_json::Value> {
     output.insert(
         "state-layout-v1.schema.json",
         serde_json::to_value(schema_for!(StateLayoutV1)).unwrap(),
+    );
+    output.insert(
+        "performance-status-v1.schema.json",
+        serde_json::to_value(schema_for!(PerformanceStatusV1)).unwrap(),
     );
     output.insert(
         "rig-profile-v1.schema.json",

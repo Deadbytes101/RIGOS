@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "HugePageAuthorityStatusV1": {
+      "enum": [
+        "ready",
+        "disabled",
+        "degraded_insufficient_memory",
+        "degraded_partial_allocation",
+        "degraded_unavailable",
+        "degraded_unsupported",
+        "degraded_release_incomplete"
+      ],
+      "type": "string"
+    },
+    "HugePageAuthorityV1": {
+      "properties": {
+        "actual_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "allocation_percent_of_target": {
+          "format": "double",
+          "type": "number"
+        },
+        "attempted_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "huge_page_size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memory_available_before_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested": {
+          "type": "boolean"
+        },
+        "reserve_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/HugePageAuthorityStatusV1"
+        },
+        "target_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requested",
+        "target_pages",
+        "attempted_pages",
+        "actual_pages",
+        "huge_page_size_bytes",
+        "memory_available_before_bytes",
+        "reserve_bytes",
+        "allocation_percent_of_target",
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "algorithm": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "boot_id": {
+      "type": "string"
+    },
+    "config_revision": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "huge_pages": {
+      "$ref": "#/$defs/HugePageAuthorityV1"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "boot_id",
+    "generated_at",
+    "config_revision",
+    "huge_pages"
+  ],
+  "title": "PerformanceStatusV1",
+  "type": "object"
+}

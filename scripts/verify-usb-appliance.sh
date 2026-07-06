@@ -75,11 +75,12 @@ cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
 unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
   etc/rigos-release etc/os-release \
   etc/systemd/system/rigos-state.service \
+  etc/systemd/system/rigos-hugepages.service \
   etc/systemd/system/rigos-miner.service \
   etc/systemd/system/rigos-profile-apply.service \
   usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-config usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
@@ -93,6 +94,15 @@ strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/bin/pyt
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/lib/rigos/lsblk-compat' >/dev/null || die 'state initializer does not use the packaged compatibility wrapper'
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F -- '--tree' >/dev/null || die 'state initializer does not require hierarchical lsblk output'
 if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigos/compat-bin/lsblk' >/dev/null; then die 'state initializer executes compatibility code from the runtime directory'; fi
+[[ -x "$temporary/root/usr/lib/rigos/rigos-performance" ]] || die 'performance authority is missing or not executable'
+grep -Fq 'After=rigos-state.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority ordering is missing'
+grep -Fq 'Before=rigos-miner.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority is not ordered before miner'
+grep -Fq 'Requires=rigos-state.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority dependencies are missing'
+grep -Fq 'Requires=rigos-state.service rigos-hugepages.service' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner does not require huge page authority'
+strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F '/proc/sys/vm/nr_hugepages' >/dev/null || die 'performance authority does not use direct kernel huge page control'
+strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'rigos.performance-status/v1' >/dev/null || die 'performance authority status contract is missing'
+if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'sysctl' >/dev/null; then die 'performance authority shells out to sysctl'; fi
+if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -Ei '(/dev/sd|/dev/nvme|cpu model)' >/dev/null; then die 'performance authority contains hardware-name or internal-disk targeting'; fi
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner policy gate is missing'
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
 grep -Fq 'rigos-config recover' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'pending transaction recovery is missing'

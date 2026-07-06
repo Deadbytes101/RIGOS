@@ -1,7 +1,7 @@
-# RIGOS 0.0.4-alpha.5 USB Appliance
+# RIGOS 0.0.4-alpha.6 USB Appliance
 
 The authoritative persistent artifact is
-`rigos-usb-amd64-0.0.4-alpha.5.img`.
+`rigos-usb-amd64-0.0.4-alpha.6.img`.
 
 It is a raw MBR image for Rufus DD mode or `dd`.
 
@@ -25,11 +25,11 @@ grow partition 4 after proving the exact boot USB, deterministic MBR disk
 signature, partition starts, partition types, active flag, filesystem labels
 and parent block-device topology.
 
-`rigos-recovery-amd64-0.0.4-alpha.5.iso` is stateless recovery media. It is not
+`rigos-recovery-amd64-0.0.4-alpha.6.iso` is stateless recovery media. It is not
 a persistent appliance and never runs the state grow helper.
 
-Alpha five preserves the verified alpha four terminal stream contract and adds
-local-only rig profiles, portable XMRig Flight Sheets and offline import.
+Alpha six preserves the Alpha five local configuration contract and adds
+machine-wide huge page authority with visible requested-versus-actual status.
 
 Build from a tracked-clean commit:
 
@@ -37,7 +37,7 @@ Build from a tracked-clean commit:
 podman build -t rigos-usb-builder -f build/usb/Dockerfile .
 podman run --rm --privileged \
   -v "$PWD:/source" -v /var/tmp/rigos-build:/work rigos-usb-builder
-sha256sum -c dist/usb/rigos-usb-amd64-0.0.4-alpha.5.img.sha256
+sha256sum -c dist/usb/rigos-usb-amd64-0.0.4-alpha.6.img.sha256
 ```
 
 The builder exports `HEAD` with `git archive`. Untracked workspace files cannot
@@ -51,7 +51,8 @@ Historical evidence:
 0.0.4-alpha.3  booted normally but stdout piping hid every whiptail screen
 0.0.4-alpha.4  terminal stream repair awaiting image and physical retest
 0.0.4-alpha.5  local profile and Flight Sheet engine awaiting image test
+0.0.4-alpha.6  huge page authority awaiting source and physical gates
 ```
 
-Alpha five is not a release candidate. Physical boot, state, internal disk,
+Alpha six is not a release candidate. Physical boot, state, internal disk,
 pool, power-loss and USB write gates still apply.

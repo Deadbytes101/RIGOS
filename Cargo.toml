@@ -11,6 +11,7 @@ members = [
   "crates/rigos-pool",
   "crates/rigos-state",
   "crates/rigos-config",
+  "crates/rigos-performance",
 ]
 resolver = "2"
 

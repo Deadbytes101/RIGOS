@@ -6,7 +6,8 @@ use rigos_machine::{MACHINE_SCHEMA, MachineContext};
 use rigos_miner::MinerBackend;
 use rigos_schema::{
     ABOUT_SCHEMA, AboutReportV1, COMPONENT_PROVENANCE_SCHEMA, ComponentProvenanceV1, DOCTOR_SCHEMA,
-    LICENSES_SCHEMA, LicenseEntryV1, LicensesReportV1, ReleaseInfoV1, doctor,
+    DoctorCheckV1, HugePageAuthorityStatusV1, LICENSES_SCHEMA, LicenseEntryV1, LicensesReportV1,
+    PERFORMANCE_STATUS_SCHEMA, PerformanceStatusV1, ReleaseInfoV1, doctor,
 };
 use rigos_xmrig::{MINER_SCHEMA, XmrigBackend};
 use serde::Serialize;
@@ -131,7 +132,9 @@ fn execute(cli: Cli) -> ExitCode {
         Command::Doctor(output) => {
             let machine = rigos_machine::inspect(&ctx);
             let miner = backend.discover(&ctx);
-            let data = doctor(&machine.diagnostics, &miner.diagnostics);
+            let mut data = doctor(&machine.diagnostics, &miner.diagnostics);
+            data.checks.push(load_huge_page_check());
+            data.checks.sort_by(|left, right| left.id.cmp(&right.id));
             let diagnostics: Vec<Diagnostic> = machine
                 .diagnostics
                 .into_iter()
@@ -185,6 +188,98 @@ fn execute(cli: Cli) -> ExitCode {
                 ),
             ),
         },
+    }
+}
+
+fn performance_status_path() -> PathBuf {
+    std::env::var_os("RIGOS_PERFORMANCE_STATUS_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run/rigos/performance-status.json"))
+}
+
+fn boot_id_path() -> PathBuf {
+    std::env::var_os("RIGOS_BOOT_ID_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/proc/sys/kernel/random/boot_id"))
+}
+
+fn current_revision_path() -> PathBuf {
+    std::env::var_os("RIGOS_CURRENT_REVISION_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/var/lib/rigos/current"))
+}
+
+fn load_huge_page_check() -> DoctorCheckV1 {
+    let status = match fs::read(performance_status_path()) {
+        Ok(value) => value,
+        Err(error) => {
+            return failed_huge_page_check(format!("performance status unavailable: {error}"));
+        }
+    };
+    let boot_id = match fs::read_to_string(boot_id_path()) {
+        Ok(value) if !value.trim().is_empty() => value.trim().to_owned(),
+        Ok(_) => return failed_huge_page_check("boot ID is empty".into()),
+        Err(error) => return failed_huge_page_check(format!("boot ID unavailable: {error}")),
+    };
+    let revision = match fs::read_link(current_revision_path()) {
+        Ok(value) => match value.file_name().and_then(|value| value.to_str()) {
+            Some(value) if !value.is_empty() => value.to_owned(),
+            _ => return failed_huge_page_check("current revision target is invalid".into()),
+        },
+        Err(error) => {
+            return failed_huge_page_check(format!("current revision unavailable: {error}"));
+        }
+    };
+    evaluate_huge_page_check(&status, &boot_id, &revision)
+}
+
+fn evaluate_huge_page_check(status: &[u8], boot_id: &str, revision: &str) -> DoctorCheckV1 {
+    let status: PerformanceStatusV1 = match serde_json::from_slice(status) {
+        Ok(value) => value,
+        Err(error) => return failed_huge_page_check(format!("invalid status JSON: {error}")),
+    };
+    if status.schema != PERFORMANCE_STATUS_SCHEMA {
+        return failed_huge_page_check("performance status schema mismatch".into());
+    }
+    if status.boot_id != boot_id {
+        return failed_huge_page_check("performance status is from another boot".into());
+    }
+    if status.config_revision != revision {
+        return failed_huge_page_check("performance status uses another config revision".into());
+    }
+    let level = match status.huge_pages.status {
+        HugePageAuthorityStatusV1::Ready | HugePageAuthorityStatusV1::Disabled => "pass",
+        _ => "warning",
+    };
+    DoctorCheckV1 {
+        id: "performance.huge_pages".into(),
+        status: level.into(),
+        summary: format!(
+            "{} {} of {} pages",
+            huge_page_status_name(&status.huge_pages.status),
+            status.huge_pages.actual_pages,
+            status.huge_pages.target_pages
+        ),
+    }
+}
+
+fn huge_page_status_name(status: &HugePageAuthorityStatusV1) -> &'static str {
+    match status {
+        HugePageAuthorityStatusV1::Ready => "ready",
+        HugePageAuthorityStatusV1::Disabled => "disabled",
+        HugePageAuthorityStatusV1::DegradedInsufficientMemory => "degraded_insufficient_memory",
+        HugePageAuthorityStatusV1::DegradedPartialAllocation => "degraded_partial_allocation",
+        HugePageAuthorityStatusV1::DegradedUnavailable => "degraded_unavailable",
+        HugePageAuthorityStatusV1::DegradedUnsupported => "degraded_unsupported",
+        HugePageAuthorityStatusV1::DegradedReleaseIncomplete => "degraded_release_incomplete",
+    }
+}
+
+fn failed_huge_page_check(summary: String) -> DoctorCheckV1 {
+    DoctorCheckV1 {
+        id: "performance.huge_pages".into(),
+        status: "fail".into(),
+        summary,
     }
 }
 
@@ -387,5 +482,55 @@ mod tests {
         assert!(validate_provenance(value.clone()).is_ok());
         value.rigos_receives_donation = true;
         assert!(validate_provenance(value).is_err());
+    }
+
+    #[test]
+    fn doctor_exposes_ready_degraded_and_stale_huge_page_truth() {
+        let status = |kind| PerformanceStatusV1 {
+            schema: PERFORMANCE_STATUS_SCHEMA.into(),
+            boot_id: "boot-a".into(),
+            generated_at: "2026-07-06T00:00:00.000Z".into(),
+            config_revision: "revision-a".into(),
+            algorithm: Some("rx/0".into()),
+            huge_pages: rigos_schema::HugePageAuthorityV1 {
+                requested: true,
+                target_pages: 1280,
+                attempted_pages: 1280,
+                actual_pages: 1280,
+                huge_page_size_bytes: 2 * 1024 * 1024,
+                memory_available_before_bytes: 4 * 1024 * 1024 * 1024,
+                reserve_bytes: 1024 * 1024 * 1024,
+                allocation_percent_of_target: 100.0,
+                status: kind,
+                reason: None,
+            },
+        };
+        let ready = serde_json::to_vec(&status(HugePageAuthorityStatusV1::Ready)).unwrap();
+        assert_eq!(
+            evaluate_huge_page_check(&ready, "boot-a", "revision-a").status,
+            "pass"
+        );
+        for kind in [
+            HugePageAuthorityStatusV1::DegradedInsufficientMemory,
+            HugePageAuthorityStatusV1::DegradedPartialAllocation,
+            HugePageAuthorityStatusV1::DegradedUnavailable,
+            HugePageAuthorityStatusV1::DegradedUnsupported,
+            HugePageAuthorityStatusV1::DegradedReleaseIncomplete,
+        ] {
+            let degraded = serde_json::to_vec(&status(kind)).unwrap();
+            assert_eq!(
+                evaluate_huge_page_check(&degraded, "boot-a", "revision-a").status,
+                "warning"
+            );
+        }
+        let disabled = serde_json::to_vec(&status(HugePageAuthorityStatusV1::Disabled)).unwrap();
+        assert_eq!(
+            evaluate_huge_page_check(&disabled, "boot-a", "revision-a").status,
+            "pass"
+        );
+        assert_eq!(
+            evaluate_huge_page_check(&ready, "boot-b", "revision-a").status,
+            "fail"
+        );
     }
 }

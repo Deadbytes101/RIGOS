@@ -24,6 +24,13 @@ grep -Fq 'partuuid' crates/rigos-state/src/main.rs
 grep -Fq '.pending-transaction.json' crates/rigos-config/src/main.rs
 grep -Fq 'engine("transact"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
+grep -Fq 'rigos-hugepages.service' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
+grep -Fq '/proc/sys/vm/nr_hugepages' crates/rigos-performance/src/lib.rs
+grep -Fq 'PERFORMANCE_STATUS_SCHEMA' crates/rigos-performance/src/lib.rs
+if rg -n 'Command::new\([^)]*sysctl|/dev/(sd|nvme)|cpu model' crates/rigos-performance; then
+  echo "performance authority violates the kernel-only hardware-neutral contract" >&2
+  exit 1
+fi
 if rg -n '(HIVE_HOST_URL|API_HOST_URLS|RIG_PASSWD|HSSH_SRV)=' configs docs/local-rig-config.md; then
   echo "Hive cloud or rig credential field leaked into RIGOS configuration" >&2
   exit 1

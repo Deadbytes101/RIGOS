@@ -1,8 +1,8 @@
 [Unit]
 Description=RIGOS managed XMRig
-After=network-online.target rigos-state.service rigos-profile-apply.service
+After=network-online.target rigos-state.service rigos-profile-apply.service rigos-hugepages.service
 Wants=network-online.target
-Requires=rigos-state.service
+Requires=rigos-state.service rigos-hugepages.service
 ConditionPathExists=/var/lib/rigos/xmrig.json
 
 [Service]
