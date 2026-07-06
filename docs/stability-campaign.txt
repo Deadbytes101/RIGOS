@@ -1,0 +1,4 @@
+RIGOS STABILITY RELEASE GATE
+
+Source verification must pass before image build.
+Physical verification must pass before stable versioning.
