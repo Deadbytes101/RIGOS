@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import sys
+from pathlib import Path
+
+MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
+def emit(outcome: str, reason: str | None = None) -> None:
+    value = {
+        "schema": "rigos.miner-gate/v1",
+        "outcome": outcome,
+        "reason": reason,
+    }
+    stream = sys.stdout if outcome == "allowed" else sys.stderr
+    print(json.dumps(value, sort_keys=True), file=stream)
+
+
+def read_object(path: Path) -> dict:
+    raw = path.read_bytes()
+    if len(raw) > MAX_JSON_BYTES:
+        raise ValueError("JSON state exceeds its size limit")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("JSON state is not an object")
+    return value
+
+
+def deny(reason: str) -> int:
+    emit("denied", reason)
+    return 2
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--state", type=Path, default=Path("/var/lib/rigos"))
+    parser.add_argument("--cmdline", type=Path, default=Path("/proc/cmdline"))
+    args = parser.parse_args()
+
+    policy_path = args.state / "current" / "policy.json"
+    xmrig_path = args.state / "current" / "xmrig.json"
+
+    try:
+        policy = read_object(policy_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return deny("policy_unreadable")
+
+    if policy.get("schema") != "rigos.policy/v1":
+        return deny("policy_schema_invalid")
+    if policy.get("miner_start_mode") != "on_boot":
+        return deny("manual_start_policy")
+
+    try:
+        flags = args.cmdline.read_text(encoding="utf-8").split()
+    except OSError:
+        return deny("kernel_cmdline_unreadable")
+    if "rigos.nomine=1" in flags:
+        return deny("nomine_requested")
+    if "rigos.stateless=1" in flags:
+        return deny("stateless_mode")
+
+    try:
+        read_object(xmrig_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return deny("xmrig_config_unreadable")
+
+    emit("allowed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
