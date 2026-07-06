@@ -12,7 +12,11 @@ cargo build --workspace --release --locked
 
 bash -n scripts/*.sh build/usb/hooks/*.chroot
 sh -n build/usb/includes.chroot/usr/lib/rigos/rigos-lifecycle-cycles
-python3 -m py_compile build/usb/includes.chroot/usr/local/sbin/rigos-firstboot build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access
+python3 -m py_compile \
+  build/usb/includes.chroot/usr/local/sbin/rigos-firstboot \
+  build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access \
+  build/usb/includes.chroot/usr/local/sbin/rigos-state-orchestrate \
+  build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate
 
 grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
 grep -Fq 'RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN' crates/rigos-config/src/main.rs
@@ -35,7 +39,12 @@ fi
 grep -Fq 'engine("commit"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'engine("activate"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 grep -Fq 'engine("current"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
+grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' build/usb/includes.chroot/etc/systemd/system/rigos-state.service
+grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
+if grep -Fq 'Wants=rigos-recovery-access.service' build/usb/includes.chroot/etc/systemd/system/rigos-state-ready.service; then
+  echo "state readiness retriggers interactive recovery access" >&2
+  exit 1
+fi
 grep -Fq 'rigos-hugepages.service' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 grep -Fq '/proc/sys/vm/nr_hugepages' crates/rigos-performance/src/lib.rs
 grep -Fq 'PERFORMANCE_STATUS_SCHEMA' crates/rigos-performance/src/lib.rs
@@ -142,6 +151,32 @@ with tempfile.TemporaryDirectory() as temporary:
     selected = namespace["resolve_identity"](proposal)
     if selected["alias"] != "mapped-local" or proposal["flight_sheet"]["identity_ref"] != "mapped-local":
         raise SystemExit("selected identity alias did not update the proposal")
+PY
+
+python3 - <<'PY'
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+
+gate = Path("build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate")
+with tempfile.TemporaryDirectory() as temporary:
+    root = Path(temporary)
+    revision = root / "state" / "revisions" / "r1"
+    revision.mkdir(parents=True)
+    (root / "state" / "current").symlink_to(Path("revisions") / "r1")
+    (revision / "policy.json").write_text(json.dumps({"schema":"rigos.policy/v1","timezone":"UTC","miner_start_mode":"on_boot"}), encoding="utf-8")
+    (revision / "xmrig.json").write_text(json.dumps({"autosave":False,"pools":[]}), encoding="utf-8")
+    (root / "state" / "activation-status.json").write_text(json.dumps({"schema":"rigos.activation-status/v1","outcome":"activation_failed","revision":"r1","failure_stage":"miner_start"}), encoding="utf-8")
+    cmdline = root / "cmdline"
+    cmdline.write_text("boot=live console=tty0\n", encoding="utf-8")
+    allowed = subprocess.run([sys.executable if False else "python3", str(gate), "--state", str(root / "state"), "--cmdline", str(cmdline)], check=False)
+    if allowed.returncode != 0:
+        raise SystemExit("miner gate denied an activation-required on_boot revision")
+    cmdline.write_text("boot=live rigos.nomine=1 console=tty0\n", encoding="utf-8")
+    denied = subprocess.run(["python3", str(gate), "--state", str(root / "state"), "--cmdline", str(cmdline)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if denied.returncode != 2:
+        raise SystemExit("miner gate did not preserve the nomine safety block")
 PY
 
 if ! rg -q 'label: dos' scripts/build-usb-image.sh; then
