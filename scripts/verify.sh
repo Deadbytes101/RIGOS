@@ -16,7 +16,35 @@ python3 -m py_compile \
   build/usb/includes.chroot/usr/local/sbin/rigos-firstboot \
   build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access \
   build/usb/includes.chroot/usr/local/sbin/rigos-state-orchestrate \
-  build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate
+  build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
+  scripts/verify-systemd-ordering.py
+python3 scripts/verify-systemd-ordering.py
+python3 - <<'PY'
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+source = Path("build/usb/includes.chroot/etc/systemd/system")
+with tempfile.TemporaryDirectory() as temporary:
+    target = Path(temporary)
+    for unit in source.glob("rigos-*.service"):
+        shutil.copy2(unit, target / unit.name)
+    ready = target / "rigos-state-ready.service"
+    text = ready.read_text(encoding="utf-8")
+    text = text.replace("[Unit]\n", "[Unit]\nDefaultDependencies=no\n", 1)
+    text = text.replace("Before=rigos-profile", "Before=local-fs.target rigos-profile", 1)
+    text = text.replace("WantedBy=multi-user.target", "WantedBy=local-fs.target")
+    ready.write_text(text, encoding="utf-8")
+    result = subprocess.run(
+        ["python3", "scripts/verify-systemd-ordering.py", str(target)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if result.returncode == 0:
+        raise SystemExit("ordering verifier accepted the historical local-fs cycle")
+PY
 
 grep -Fq 'RIGOS_CONFIG_DUPLICATE_KEY' crates/rigos-config/src/lib.rs
 grep -Fq 'RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN' crates/rigos-config/src/main.rs
