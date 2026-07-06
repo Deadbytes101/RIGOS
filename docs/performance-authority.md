@@ -8,6 +8,8 @@ The boot order is:
 
 ```text
 rigos-state.service
+rigos-recovery-access.service
+rigos-state-ready.service
 rigos-profile-apply.service
 rigos-hugepages.service
 rigos-miner.service
@@ -27,6 +29,38 @@ The authoritative runtime record is:
 It uses `rigos.performance-status/v1` and records the boot ID, config revision,
 algorithm, target, safe attempt, actual kernel pages, memory inputs and a stable
 status. `rigosctl doctor` rejects records from another boot or config revision.
+On a fresh node without a `current` revision it records `not_provisioned`, reads
+the current kernel allocation and exits successfully without writing huge-page
+state or controlling the miner. A broken target behind an existing `current`
+pointer remains a hard failure.
+
+## Lifecycle gate
+
+`/run/rigos` is a shared root-owned tmpfiles directory. Services may publish
+atomic status files there but do not own or remove the shared parent. Persistent
+state is accepted only after `rigos-state-ready` matches the current boot ID,
+attested PARTUUID and major:minor, ext4 label, mount source and the complete
+`rw,nosuid,nodev,noexec,noatime` option set.
+
+Local `rigosadmin` password establishment is a separate tty1 recovery phase.
+It does not create a revision, alter mining configuration or enable remote
+access. A state failure leaves tty1 diagnostics available while profile,
+firstboot, huge pages and miner remain gated.
+
+Configuration commit and activation are separate. A successful commit creates
+one durable revision. Activation failure preserves that revision, records
+`activation_failed`, leaves the miner stopped and retries only activation on
+the next invocation. `ready` is tied to the current revision.
+
+On a configured physical node, run the packaged lifecycle stress gate:
+
+```bash
+sudo /usr/lib/rigos/rigos-lifecycle-cycles 20
+```
+
+It must retain the same current pointer and revision count, preserve
+`/run/rigos`, avoid `226/NAMESPACE`, and complete all profile, huge-page and
+miner restart cycles.
 
 Expected degraded states return success so the miner may continue. Unreadable
 configuration, unverifiable machine truth or failure to atomically publish and
@@ -52,6 +86,8 @@ rigosctl doctor --json
 The gate requires current status matching kernel read-back, XMRig huge-page use
 greater than zero, accepted shares with zero rejected shares, successful
 reapplication after reboot and unchanged internal-disk layout.
+Acceptance evidence must come from a fully wiped and reflashed USB; revisions
+created during manual recovery are not valid evidence.
 
 ## Reserved Alpha.6 interfaces
 

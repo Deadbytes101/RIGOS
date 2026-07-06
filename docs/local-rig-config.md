@@ -36,4 +36,6 @@ Parsing and validation finish before persistent or service mutation. Invalid inp
 
 Configuration commits capture the current timezone and miner enabled/running state, stop XMRig, create a complete revision and atomically switch the current pointer. Timezone, unit policy and miner start are then applied in order. Failure restores the previous pointer and runtime snapshot; if restoration is incomplete XMRig remains stopped and the pending transaction is retained for boot recovery. `rigos.nomine=1` blocks mining for one boot without changing persistent policy.
 
-State outcomes `ready` and `grown` permit import. `limited_capacity` and every blocked outcome are negative gates with zero config, timezone or miner mutation. Positive physical Alpha.5 validation depends on the separate state issue reaching a persistent ready state.
+Only state outcome `ready` permits import. The status records `action=grown` or
+`action=unchanged` separately. `limited_capacity` and every blocked outcome are
+negative gates with zero config, timezone or miner mutation.

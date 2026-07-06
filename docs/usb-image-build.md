@@ -30,6 +30,9 @@ a persistent appliance and never runs the state grow helper.
 
 Alpha six preserves the Alpha five local configuration contract and adds
 machine-wide huge page authority with visible requested-versus-actual status.
+It also requires exact persistent-state readiness, separate local-console
+recovery access, idempotent commit/activation, and appliance-visible
+`/usr/local/sbin/rigosctl`.
 
 Build from a tracked-clean commit:
 
