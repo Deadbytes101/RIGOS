@@ -82,12 +82,14 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-profile-apply.service \
   usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/xmrig usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/xmrig usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
+rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
+[[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
 if rg -q '^RuntimeDirectory=rigos$' "$temporary/root/etc/systemd/system"; then die 'a service owns the shared runtime directory'; fi
 if grep -Eq '^(ExecStartPre|Environment=PATH)=.*compat-bin' "$temporary/root/etc/systemd/system/rigos-state.service"; then die 'state unit executes compatibility code from the runtime directory'; fi

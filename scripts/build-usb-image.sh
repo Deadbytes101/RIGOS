@@ -36,6 +36,8 @@ cp build/usb/hooks/010-rigos.chroot "$live/config/hooks/live/010-rigos.hook.chro
 cp -a build/usb/bootloaders/. "$live/config/bootloaders/"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigosd" "$live/config/includes.chroot/usr/lib/rigos/rigosd"
 ln -s rigosd "$live/config/includes.chroot/usr/lib/rigos/rigosctl"
+mkdir -p "$live/config/includes.chroot/usr/local/sbin"
+ln -s ../../lib/rigos/rigosctl "$live/config/includes.chroot/usr/local/sbin/rigosctl"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigos-state-init" "$live/config/includes.chroot/usr/lib/rigos/rigos-state-init"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigos-state-ready" "$live/config/includes.chroot/usr/lib/rigos/rigos-state-ready"
 install -D -m 0755 "$CARGO_TARGET_DIR/release/rigos-config" "$live/config/includes.chroot/usr/lib/rigos/rigos-config"
