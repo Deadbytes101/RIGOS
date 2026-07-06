@@ -14,6 +14,7 @@ fn state_service_wires_debian_lsblk_compatibility() {
     let service_path =
         repo_path("build/usb/includes.chroot/etc/systemd/system/rigos-state.service");
     let wrapper_path = repo_path("build/usb/includes.chroot/usr/lib/rigos/lsblk-compat");
+    let tmpfiles_path = repo_path("build/usb/includes.chroot/usr/lib/tmpfiles.d/rigos.conf");
     let state_source_path = repo_path("crates/rigos-state/src/main.rs");
     let service = fs::read_to_string(&service_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", service_path.display()));
@@ -21,10 +22,13 @@ fn state_service_wires_debian_lsblk_compatibility() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", wrapper_path.display()));
     let state_source = fs::read_to_string(&state_source_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", state_source_path.display()));
+    let tmpfiles = fs::read_to_string(&tmpfiles_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", tmpfiles_path.display()));
 
-    assert!(service.contains("RuntimeDirectory=rigos"));
-    assert!(service.contains("RuntimeDirectoryMode=0755"));
-    assert!(!service.contains("ExecStartPre="));
+    assert!(!service.contains("RuntimeDirectory=rigos"));
+    assert!(service.contains("systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf"));
+    assert_eq!(tmpfiles.trim(), "d /run/rigos 0755 root root -");
+    assert!(!service.contains("ExecStartPre=/usr/bin/install"));
     assert!(!service.contains("Environment=PATH="));
     assert!(!service.contains("/run/rigos/compat-bin/lsblk"));
     assert!(wrapper.contains("/usr/bin/lsblk"));

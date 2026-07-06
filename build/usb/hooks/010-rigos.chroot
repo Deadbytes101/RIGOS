@@ -4,8 +4,9 @@ set -eu
 useradd --system --home-dir /var/lib/rigos --shell /usr/sbin/nologin --user-group rigos
 useradd --create-home --shell /bin/bash --groups sudo rigosadmin
 passwd --lock rigosadmin
-install -d -o rigos -g rigos -m 0750 /var/lib/rigos /run/rigos
+install -d -o rigos -g rigos -m 0750 /var/lib/rigos
 install -d -m 0755 /usr/lib/rigos
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf
 
 chmod 0755 /usr/local/sbin/rigos-firstboot /usr/lib/rigos/rigos-state-init /usr/lib/rigos/rigos-config /usr/lib/rigos/rigos-performance /usr/lib/rigos/xmrig
 systemctl enable NetworkManager.service rigos-state.service rigos-profile-apply.service rigos-hugepages.service rigos-firstboot.service rigos-miner.service tmp.mount

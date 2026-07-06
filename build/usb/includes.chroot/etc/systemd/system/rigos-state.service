@@ -1,13 +1,12 @@
 [Unit]
 Description=Mount RIGOS persistent state
 DefaultDependencies=no
-After=systemd-udev-settle.service local-fs-pre.target
+After=systemd-udevd.service local-fs-pre.target
 Before=local-fs.target rigos-firstboot.service rigos-miner.service
 
 [Service]
 Type=oneshot
-RuntimeDirectory=rigos
-RuntimeDirectoryMode=0755
+ExecStartPre=/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf
 ExecStart=/usr/lib/rigos/rigos-state-init
 RemainAfterExit=yes
 

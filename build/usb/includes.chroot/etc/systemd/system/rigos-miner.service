@@ -25,8 +25,6 @@ RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=no
 ReadWritePaths=/var/lib/rigos
-RuntimeDirectory=rigos
-RuntimeDirectoryMode=0750
 
 [Install]
 WantedBy=multi-user.target
