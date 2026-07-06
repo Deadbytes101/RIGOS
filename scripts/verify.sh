@@ -36,9 +36,40 @@ if rg -q 'rollback|pending-transaction' crates/rigos-config/src/main.rs; then
   echo "configuration activation still contains pointer rollback machinery" >&2
   exit 1
 fi
-grep -Fq 'engine("commit"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-grep -Fq 'engine("activate"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
-grep -Fq 'engine("current"' build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
+
+python3 - "$firstboot" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+commands = set()
+
+for node in ast.walk(tree):
+    if not isinstance(node, ast.Call):
+        continue
+    if not isinstance(node.func, ast.Name):
+        continue
+    if node.func.id != "engine":
+        continue
+    if not node.args:
+        continue
+
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        commands.add(first.value)
+
+required = {"commit", "activate", "current"}
+missing = sorted(required - commands)
+
+if missing:
+    raise SystemExit(
+        "firstboot is missing required engine calls: " + ", ".join(missing)
+    )
+PY
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' build/usb/includes.chroot/etc/systemd/system/rigos-state.service
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' build/usb/includes.chroot/etc/systemd/system/rigos-miner.service
 if grep -Fq 'Wants=rigos-recovery-access.service' build/usb/includes.chroot/etc/systemd/system/rigos-state-ready.service; then
@@ -57,7 +88,6 @@ if rg -n '(HIVE_HOST_URL|API_HOST_URLS|RIG_PASSWD|HSSH_SRV)=' configs docs/local
   exit 1
 fi
 
-firstboot=build/usb/includes.chroot/usr/local/sbin/rigos-firstboot
 if rg -q -- '--output-fd' "$firstboot"; then
   echo "first boot redirects whiptail result onto the screen stream" >&2
   exit 1

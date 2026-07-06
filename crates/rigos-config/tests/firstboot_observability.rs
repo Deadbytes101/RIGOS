@@ -28,7 +28,8 @@ boot_id_path.write_text('boot-test\n', encoding='ascii')
 os.environ['RIGOS_FIRSTBOOT_UI_STATUS'] = str(status_path)
 os.environ['RIGOS_FIRSTBOOT_BOOT_ID'] = str(boot_id_path)
 namespace = runpy.run_path(str(source), run_name='rigos_firstboot_observability_test')
-namespace['journal'] = lambda _value, _priority: None
+globals_ = namespace['run'].__globals__
+globals_['journal'] = lambda _value, _priority: None
 
 class Result:
     def __init__(self, returncode, stderr=''):
@@ -41,11 +42,11 @@ def status():
 
 
 def run_dialog(returncode, stderr=''):
-    namespace['subprocess'].run = lambda *_args, **_kwargs: Result(returncode, stderr)
-    namespace['main'] = lambda: namespace['dialog'](
+    globals_['subprocess'].run = lambda *_args, **_kwargs: Result(returncode, stderr)
+    globals_['main'] = lambda: globals_['dialog'](
         '--menu', 'synthetic', '10', '60', '1', 'item', 'value', stage='synthetic_dialog'
     )
-    return namespace['run']()
+    return globals_['run']()
 
 assert run_dialog(1) == 10
 value = status()
@@ -70,14 +71,14 @@ assert value['outcome'] == 'failed'
 assert value['reason'] == 'dialog_signal'
 assert value['signal'] == 'SIGHUP'
 
-namespace['subprocess'].run = lambda *_args, **_kwargs: Result(1)
-assert namespace['confirm']('synthetic confirmation', stage='synthetic_confirmation') is False
+globals_['subprocess'].run = lambda *_args, **_kwargs: Result(1)
+assert globals_['confirm']('synthetic confirmation', stage='synthetic_confirmation') is False
 value = status()
 assert value['outcome'] == 'declined'
 assert value['reason'] == 'user_selected_no'
 
-namespace['main'] = lambda: None
-assert namespace['run']() == 0
+globals_['main'] = lambda: None
+assert globals_['run']() == 0
 value = status()
 assert value['outcome'] == 'ready'
 assert value['reason'] == 'firstboot_completed'
