@@ -47,3 +47,29 @@ fn recovery_access_does_not_hang_up_the_following_firstboot_session() {
         "recovery access must not hang up tty1 before firstboot starts"
     );
 }
+
+#[test]
+fn state_ready_stays_out_of_the_local_fs_transaction() {
+    let unit = unit("rigos-state-ready.service");
+
+    assert!(
+        !unit.lines().any(|line| line == "DefaultDependencies=no"),
+        "state-ready must use normal service dependencies"
+    );
+    assert!(
+        !unit
+            .lines()
+            .any(|line| line.contains("Before=local-fs.target")),
+        "state-ready must not order before local-fs"
+    );
+    assert!(
+        unit.lines().any(|line| line == "WantedBy=multi-user.target"),
+        "state-ready must be installed under multi-user"
+    );
+    assert!(
+        unit.lines().any(|line| {
+            line == "After=rigos-state.service rigos-recovery-access.service"
+        }),
+        "state-ready must follow state mount and recovery access"
+    );
+}
