@@ -40,7 +40,11 @@ fn explicit_public_config_wins_when_runtime_uses_xmrig_short_config_option() {
         "Name:\txmrig\nUid:\t1000 1000 1000 1000\n",
     )
     .unwrap();
-    fs::write(pid_dir.join("cgroup"), "0::/system.slice/rigos-miner.service\n").unwrap();
+    fs::write(
+        pid_dir.join("cgroup"),
+        "0::/system.slice/rigos-miner.service\n",
+    )
+    .unwrap();
     fs::write(
         pid_dir.join("stat"),
         "42 (xmrig) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 100 0\n",
@@ -63,12 +67,17 @@ fn explicit_public_config_wins_when_runtime_uses_xmrig_short_config_option() {
     let snapshot = result.value.unwrap();
     assert!(snapshot.running);
     assert_eq!(snapshot.config.path, Some(expected_path));
-    assert!(matches!(snapshot.config.parse_state, ConfigParseState::Valid));
+    assert!(matches!(
+        snapshot.config.parse_state,
+        ConfigParseState::Valid
+    ));
     assert_eq!(snapshot.config.algorithm.as_deref(), Some("rx/0"));
     assert_eq!(snapshot.config.thread_hint, Some(2));
     assert_eq!(snapshot.config.huge_pages_requested, Some(true));
     assert_eq!(snapshot.config.pools, vec!["pool.test:1"]);
-    assert!(!serde_json::to_string(&snapshot)
-        .unwrap()
-        .contains("PRIVATE_SENTINEL"));
+    assert!(
+        !serde_json::to_string(&snapshot)
+            .unwrap()
+            .contains("PRIVATE_SENTINEL")
+    );
 }
