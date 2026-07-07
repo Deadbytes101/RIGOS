@@ -5,6 +5,7 @@ on:
     branches:
       - fix/alpha8-physical-findings
     paths:
+      - .github/workflows/alpha8-apply.yml
       - .alpha8-patch-trigger
 
 permissions:
