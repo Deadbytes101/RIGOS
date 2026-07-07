@@ -395,6 +395,7 @@ def run() -> int:
     except RebootRequested:
         record_event('cancelled', 'reboot_requested')
         return 0
+    set_stage('complete')
     record_event('ready', 'firstboot_completed')
     return 0
 
