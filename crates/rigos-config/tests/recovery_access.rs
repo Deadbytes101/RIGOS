@@ -8,6 +8,11 @@ fn recovery_path() -> PathBuf {
         .join("../../build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access")
 }
 
+fn alpha8_runtime_check_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/check-alpha8-runtime.py")
+}
+
 #[test]
 fn recovery_password_is_persisted_restored_and_redacted() {
     let root = std::env::temp_dir().join(format!("rigos-recovery-access-{}", Uuid::new_v4()));
@@ -118,4 +123,13 @@ assert valid_hash not in json.dumps(json.loads((g['RUNTIME'] / 'recovery-access-
         .expect("run recovery access fixture");
     let _ = fs::remove_dir_all(&root);
     assert!(result.success(), "recovery access fixture failed");
+}
+
+#[test]
+fn alpha8_runtime_authority_is_exact_and_fail_closed() {
+    let result = Command::new("python3")
+        .arg(alpha8_runtime_check_path())
+        .status()
+        .expect("run Alpha8 runtime authority fixture");
+    assert!(result.success(), "Alpha8 runtime authority fixture failed");
 }
