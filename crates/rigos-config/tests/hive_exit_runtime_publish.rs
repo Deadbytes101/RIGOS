@@ -139,7 +139,7 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
     assert_eq!(public["threads"], 2);
     assert_eq!(public["cpu"]["max-threads-hint"], 100);
     assert_eq!(public["cpu"]["rx"], serde_json::json!([-1, -1]));
-    assert!(public["randomx"]["huge-pages"] == true);
+    assert_eq!(public["randomx"]["huge-pages"].as_bool(), Some(true));
     assert_eq!(public["pools"][0]["url"], "pool.test:1");
     assert_eq!(public["rigos-public-view"]["construction"], "allowlist");
     let public_text = serde_json::to_string(&public).unwrap();
