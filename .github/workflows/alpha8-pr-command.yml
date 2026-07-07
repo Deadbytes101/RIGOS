@@ -1,45 +1,14 @@
-name: Alpha8 PR Command
+name: Disabled Alpha8 PR Command
 
 on:
-  issue_comment:
-    types:
-      - created
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: read
+  contents: read
 
 jobs:
-  apply-and-verify:
-    if: >-
-      github.event.issue.pull_request &&
-      github.event.issue.number == 11 &&
-      github.event.comment.body == '/apply-alpha8-physical-fixes'
+  disabled:
+    if: false
     runs-on: ubuntu-latest
     steps:
-      - name: Check out Alpha8 branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/alpha8-physical-findings
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Apply exact source patch
-        run: python3 scripts/apply-alpha8-physical-fixes.py
-
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@1.85.1
-        with:
-          components: rustfmt, clippy
-
-      - name: Verify source
-        run: ./scripts/verify.sh
-
-      - name: Commit verified source
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "alpha8 harden physical appliance findings"
-          git push origin HEAD:fix/alpha8-physical-findings
+      - run: echo disabled
