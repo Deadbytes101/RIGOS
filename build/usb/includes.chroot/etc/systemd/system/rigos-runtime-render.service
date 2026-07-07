@@ -7,7 +7,7 @@ ConditionPathExists=/var/lib/rigos/current
 
 [Service]
 Type=oneshot
-ExecStart=/usr/lib/rigos/rigos-runtime-publish
+ExecStart=/usr/lib/rigos/rigos-runtime-authority
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
