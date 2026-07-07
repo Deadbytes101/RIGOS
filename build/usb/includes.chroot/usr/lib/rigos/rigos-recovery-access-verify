@@ -1,0 +1,55 @@
+#!/usr/bin/python3
+import json
+import os
+import sys
+from pathlib import Path
+
+RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
+BOOT_ID = Path(os.environ.get("RIGOS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
+STATUS = RUNTIME / "recovery-access-status.json"
+MAX_STATUS_BYTES = 64 * 1024
+
+
+def emit(outcome: str, reason: str | None = None) -> None:
+    value = {
+        "schema": "rigos.recovery-access-gate/v1",
+        "outcome": outcome,
+        "reason": reason,
+    }
+    print(json.dumps(value, sort_keys=True), file=sys.stdout if outcome == "allowed" else sys.stderr)
+
+
+def deny(reason: str) -> int:
+    emit("denied", reason)
+    return 2
+
+
+def main() -> int:
+    try:
+        boot_id = BOOT_ID.read_text(encoding="ascii").strip()
+        raw = STATUS.read_bytes()
+        if not boot_id or not raw or len(raw) > MAX_STATUS_BYTES:
+            return deny("recovery_status_unreadable")
+        status = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return deny("recovery_status_unreadable")
+
+    if not isinstance(status, dict):
+        return deny("recovery_status_invalid")
+    if status.get("schema") != "rigos.recovery-access-status/v1":
+        return deny("recovery_schema_mismatch")
+    if status.get("boot_id") != boot_id:
+        return deny("recovery_status_stale")
+    if status.get("local_console_access") is not True:
+        return deny("local_credential_unavailable")
+    if status.get("credential_persisted") is not True:
+        return deny("credential_not_persisted")
+    if status.get("credential_action") not in ("existing", "created", "restored"):
+        return deny("credential_action_invalid")
+
+    emit("allowed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

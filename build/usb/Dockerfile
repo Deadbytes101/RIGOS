@@ -7,5 +7,11 @@ RUN apt-get update \
       ripgrep rsync squashfs-tools syslinux-common syslinux-utils udev uuid-runtime xorriso zstd \
  && rm -rf /var/lib/apt/lists/*
 
+ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"
+
+RUN command -v cargo \
+ && cargo --version \
+ && rustc --version
+
 WORKDIR /source
-ENTRYPOINT ["./scripts/build-usb-image.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "python3 ./scripts/check-alpha8-ssh-hotfix.py && exec ./scripts/build-usb-image.sh"]

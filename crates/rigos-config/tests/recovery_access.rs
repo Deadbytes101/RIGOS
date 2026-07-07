@@ -8,6 +8,16 @@ fn recovery_path() -> PathBuf {
         .join("../../build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access")
 }
 
+fn alpha8_runtime_check_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/check-alpha8-runtime.py")
+}
+
+fn repo_path(path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path)
+}
+
 #[test]
 fn recovery_password_is_persisted_restored_and_redacted() {
     let root = std::env::temp_dir().join(format!("rigos-recovery-access-{}", Uuid::new_v4()));
@@ -118,4 +128,39 @@ assert valid_hash not in json.dumps(json.loads((g['RUNTIME'] / 'recovery-access-
         .expect("run recovery access fixture");
     let _ = fs::remove_dir_all(&root);
     assert!(result.success(), "recovery access fixture failed");
+}
+
+#[test]
+fn alpha8_runtime_authority_is_exact_and_fail_closed() {
+    let result = Command::new("python3")
+        .arg(alpha8_runtime_check_path())
+        .status()
+        .expect("run Alpha8 runtime authority fixture");
+    assert!(result.success(), "Alpha8 runtime authority fixture failed");
+}
+
+#[test]
+fn alpha8_appliance_wiring_is_explicit() {
+    let hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot"))
+        .expect("read appliance hook");
+    assert!(hook.contains("ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd"));
+    assert!(hook.contains("ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl"));
+    assert!(hook.contains("rigos-runtime-render.service"));
+    assert!(hook.contains("systemctl disable ssh.socket"));
+
+    let miner = fs::read_to_string(repo_path(
+        "build/usb/includes.chroot/etc/systemd/system/rigos-miner.service.d/runtime-render.conf",
+    ))
+    .expect("read miner runtime override");
+    assert!(miner.contains("Requires=rigos-runtime-render.service"));
+    assert!(miner.contains("ConditionPathExists=/var/lib/rigos/current"));
+    assert!(miner.contains("ExecCondition=+/usr/lib/rigos/rigos-runtime-render"));
+    assert!(miner.contains("ExecCondition=/usr/lib/rigos/rigos-runtime-gate"));
+    assert!(miner.contains("--config=/run/rigos/xmrig.json"));
+
+    let ssh = fs::read_to_string(repo_path(
+        "build/usb/includes.chroot/etc/systemd/system/ssh.service.d/rigos-observe.conf",
+    ))
+    .expect("read SSH observer override");
+    assert!(ssh.contains("Wants=rigos-remote-access-observe.service"));
 }

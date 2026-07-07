@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+import argparse
+import json
+import sys
+from pathlib import Path
+
+MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
+def emit(outcome: str, reason: str | None = None) -> None:
+    value = {
+        "schema": "rigos.runtime-gate/v1",
+        "outcome": outcome,
+        "reason": reason,
+    }
+    print(json.dumps(value, sort_keys=True), file=sys.stdout if outcome == "allowed" else sys.stderr)
+
+
+def read_object(path: Path) -> dict:
+    raw = path.read_bytes()
+    if len(raw) > MAX_JSON_BYTES:
+        raise ValueError("JSON exceeds size limit")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("JSON root is not an object")
+    return value
+
+
+def deny(reason: str) -> int:
+    emit("denied", reason)
+    return 2
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--state", type=Path, default=Path("/var/lib/rigos"))
+    parser.add_argument("--runtime", type=Path, default=Path("/run/rigos"))
+    args = parser.parse_args()
+    try:
+        revision = (args.state / "current").resolve(strict=True).name
+        status = read_object(args.runtime / "runtime-config-status.json")
+        config = read_object(args.runtime / "xmrig.json")
+    except (OSError, ValueError, json.JSONDecodeError):
+        return deny("runtime_truth_unreadable")
+    if status.get("schema") != "rigos.runtime-config-status/v1" or status.get("outcome") != "ready":
+        return deny("runtime_status_invalid")
+    if status.get("revision") != revision:
+        return deny("runtime_revision_stale")
+    pools = config.get("pools")
+    cpu = config.get("cpu")
+    if not isinstance(pools, list) or not pools or not isinstance(cpu, dict):
+        return deny("runtime_config_invalid")
+    exact_threads = status.get("exact_threads")
+    profile = status.get("profile")
+    if exact_threads is not None:
+        if not isinstance(exact_threads, int) or exact_threads < 1 or not isinstance(profile, str):
+            return deny("runtime_thread_truth_invalid")
+        entries = cpu.get(profile)
+        if not isinstance(entries, list) or len(entries) != exact_threads:
+            return deny("runtime_thread_profile_mismatch")
+    emit("allowed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

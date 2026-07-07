@@ -7,6 +7,7 @@ live-boot
 live-config
 linux-image-amd64
 network-manager
+openssh-server
 python3
 systemd-sysv
 sudo

@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+import copy
+import grp
+import hashlib
+import json
+import os
+import tempfile
+from pathlib import Path
+
+STATE = Path(os.environ.get("RIGOS_STATE_PATH", "/var/lib/rigos"))
+RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
+PRIVATE_CONFIG = RUNTIME / "xmrig.json"
+PUBLIC_CONFIG = RUNTIME / "xmrig-public.json"
+STATUS = RUNTIME / "runtime-config-status.json"
+MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
+def read_object(path: Path) -> dict:
+    raw = path.read_bytes()
+    if len(raw) > MAX_JSON_BYTES:
+        raise RuntimeError(f"JSON exceeds size limit: {path}")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise RuntimeError(f"JSON root is not an object: {path}")
+    return value
+
+
+def fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def atomic_json(path: Path, value: dict, mode: int, gid: int | None = None) -> None:
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        os.fchmod(descriptor, mode)
+        if gid is not None:
+            os.fchown(descriptor, 0, gid)
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=True) as stream:
+            json.dump(value, stream, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        path.chmod(mode)
+        fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def exact_profile_name(algorithm: str) -> str:
+    if algorithm in ("rx", "rx/0"):
+        return "rx"
+    if algorithm.startswith("rx/"):
+        return algorithm
+    raise RuntimeError("explicit threads require a RandomX algorithm")
+
+
+def render() -> tuple[dict, dict, dict]:
+    current = (STATE / "current").resolve(strict=True)
+    if current.parent != (STATE / "revisions").resolve(strict=True):
+        raise RuntimeError("current revision is outside the revisions directory")
+    policy = read_object(current / "policy.json")
+    if policy.get("schema") != "rigos.policy/v1":
+        raise RuntimeError("policy schema mismatch")
+    sheet_name = policy.get("active_flight_sheet")
+    if not isinstance(sheet_name, str) or not sheet_name or "/" in sheet_name or ".." in sheet_name:
+        raise RuntimeError("active flight sheet name is invalid")
+    sheet = read_object(current / "flight-sheets" / f"{sheet_name}.json")
+    if sheet.get("schema") != "rigos.flight-sheet/v1" or sheet.get("backend") != "xmrig":
+        raise RuntimeError("flight sheet schema or backend mismatch")
+    committed = read_object(current / "xmrig.json")
+    runtime = copy.deepcopy(committed)
+    cpu = runtime.get("cpu")
+    if not isinstance(cpu, dict):
+        raise RuntimeError("committed XMRig CPU policy is missing")
+    algorithm = sheet.get("algorithm")
+    if not isinstance(algorithm, str) or not algorithm:
+        raise RuntimeError("flight sheet algorithm is invalid")
+    pools = runtime.get("pools")
+    if not isinstance(pools, list) or not pools:
+        raise RuntimeError("committed XMRig pools are missing")
+    if any(not isinstance(pool, dict) or pool.get("algo") != algorithm for pool in pools):
+        raise RuntimeError("committed pool algorithm disagrees with the flight sheet")
+    sheet_cpu = sheet.get("cpu")
+    if not isinstance(sheet_cpu, dict):
+        raise RuntimeError("flight sheet CPU policy is missing")
+    threads = sheet_cpu.get("threads")
+    profile = None
+    exact_threads = None
+    if isinstance(threads, int) and not isinstance(threads, bool):
+        if not 1 <= threads <= 1024:
+            raise RuntimeError("explicit thread count is out of range")
+        profile = exact_profile_name(algorithm)
+        cpu["max-threads-hint"] = sheet_cpu.get("max_threads_hint", 100)
+        cpu[profile] = [-1] * threads
+        exact_threads = threads
+    elif threads != "auto":
+        raise RuntimeError("threads must be auto or an integer")
+    public = copy.deepcopy(runtime)
+    for pool in public.get("pools", []):
+        if isinstance(pool, dict):
+            pool.pop("user", None)
+            pool.pop("pass", None)
+    http = public.get("http")
+    if isinstance(http, dict):
+        http.pop("access-token", None)
+    public["rigos-public-view"] = {
+        "schema": "rigos.xmrig-public-config/v1",
+        "identity_redacted": True,
+        "source_revision": current.name,
+    }
+    status = {
+        "schema": "rigos.runtime-config-status/v1",
+        "outcome": "ready",
+        "revision": current.name,
+        "algorithm": algorithm,
+        "thread_mode": "exact" if exact_threads is not None else "auto",
+        "exact_threads": exact_threads,
+        "profile": profile,
+        "private_sha256": hashlib.sha256(
+            (json.dumps(runtime, sort_keys=True) + "\n").encode("utf-8")
+        ).hexdigest(),
+        "identity_redacted_public_view": True,
+    }
+    return runtime, public, status
+
+
+def main() -> int:
+    runtime, public, status = render()
+    gid = None
+    if os.environ.get("RIGOS_RENDER_SKIP_CHOWN") != "1":
+        gid = grp.getgrnam("rigos").gr_gid
+    atomic_json(PRIVATE_CONFIG, runtime, 0o640, gid)
+    atomic_json(PUBLIC_CONFIG, public, 0o644)
+    atomic_json(STATUS, status, 0o644)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
