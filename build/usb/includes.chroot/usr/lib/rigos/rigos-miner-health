@@ -17,6 +17,7 @@ JOURNALCTL = os.environ.get("RIGOS_JOURNALCTL", "/usr/bin/journalctl")
 STATUS = RUNTIME / "miner-health-status.json"
 WINDOW_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_WINDOW_SECONDS", "180"))
 WARMUP_SECONDS = int(os.environ.get("RIGOS_MINER_WARMUP_SECONDS", "240"))
+MAX_JOURNAL_LINES = 500
 
 EXTERNAL_MARKERS = (
     "connect error",
@@ -129,7 +130,7 @@ def active_seconds(properties: dict[str, str]) -> int | None:
     return max(0, int(uptime - entered / 1_000_000))
 
 
-def recent_journal() -> str:
+def recent_journal() -> tuple[str, bool]:
     result = command([
         JOURNALCTL,
         "-b",
@@ -137,11 +138,13 @@ def recent_journal() -> str:
         "rigos-miner.service",
         "--since",
         f"-{WINDOW_SECONDS} seconds",
+        "--lines",
+        str(MAX_JOURNAL_LINES),
         "--no-pager",
         "-o",
         "cat",
     ])
-    return result.stdout if result.returncode == 0 else ""
+    return result.stdout, result.returncode == 0
 
 
 def last_share_counts(text: str) -> tuple[int | None, int | None]:
@@ -160,6 +163,7 @@ def classify(
     rendered_outcome: str | None,
     rendered_revision: str | None,
     journal: str,
+    journal_available: bool,
 ) -> tuple[str, str | None]:
     if properties.get("ActiveState") != "active" or properties.get("SubState") != "running":
         return "failed", "miner_unit_not_running"
@@ -173,14 +177,16 @@ def classify(
         return "blocked", "current_revision_unavailable"
     if rendered_outcome != "ready" or rendered_revision != canonical_revision:
         return "blocked", "runtime_revision_mismatch"
+    if not journal_available:
+        return "unknown", "journal_unavailable"
 
     lowered = journal.lower()
     if "miner    speed" in lowered:
         return "ready", None
-    if active_for is not None and active_for < WARMUP_SECONDS:
-        return "warming_up", None
     if any(marker in lowered for marker in EXTERNAL_MARKERS):
         return "waiting_external", "pool_or_network_unavailable"
+    if active_for is not None and active_for < WARMUP_SECONDS:
+        return "warming_up", None
     return "degraded", "no_recent_speed_evidence"
 
 
@@ -198,7 +204,7 @@ def main() -> int:
         active_for = active_seconds(properties)
         canonical = current_revision()
         rendered_outcome, rendered_revision = runtime_revision()
-        journal = recent_journal()
+        journal, journal_available = recent_journal()
         accepted, rejected = last_share_counts(journal)
         state, reason = classify(
             properties,
@@ -208,7 +214,9 @@ def main() -> int:
             rendered_outcome,
             rendered_revision,
             journal,
+            journal_available,
         )
+        lowered_journal = journal.lower()
         value = {
             "schema": "rigos.miner-health-status/v1",
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
@@ -232,8 +240,12 @@ def main() -> int:
             },
             "evidence": {
                 "window_seconds": WINDOW_SECONDS,
-                "recent_speed": "miner    speed" in journal.lower(),
-                "external_wait_marker": any(marker in journal.lower() for marker in EXTERNAL_MARKERS),
+                "journal_available": journal_available,
+                "journal_line_limit": MAX_JOURNAL_LINES,
+                "recent_speed": "miner    speed" in lowered_journal,
+                "external_wait_marker": any(
+                    marker in lowered_journal for marker in EXTERNAL_MARKERS
+                ),
                 "accepted_shares": accepted,
                 "rejected_shares": rejected,
             },
