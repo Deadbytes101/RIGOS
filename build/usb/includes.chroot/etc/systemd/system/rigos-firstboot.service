@@ -8,7 +8,7 @@ Before=getty@tty1.service
 [Service]
 Type=oneshot
 ExecCondition=/usr/lib/rigos/rigos-config needs-activation
-ExecStart=/usr/local/sbin/rigos-firstboot
+ExecStart=/usr/local/sbin/rigos-firstboot-seeded
 StandardInput=tty
 StandardOutput=tty
 StandardError=tty
