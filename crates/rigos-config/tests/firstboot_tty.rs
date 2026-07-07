@@ -9,6 +9,12 @@ fn unit(name: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
 }
 
+fn appliance_file(path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../build/usb/includes.chroot")
+        .join(path)
+}
+
 #[test]
 fn firstboot_releases_tty1_to_getty_after_exit() {
     let unit = unit("rigos-firstboot.service");
@@ -16,6 +22,19 @@ fn firstboot_releases_tty1_to_getty_after_exit() {
     assert!(
         unit.lines().any(|line| line == "Before=getty@tty1.service"),
         "firstboot must finish before tty1 getty starts"
+    );
+    assert!(
+        unit.lines()
+            .any(|line| line == "ExecStart=/usr/local/sbin/rigos-firstboot-seeded"),
+        "firstboot must launch the offline identity seed resolver"
+    );
+    assert!(
+        appliance_file("usr/local/sbin/rigos-firstboot-seeded").is_file(),
+        "seeded firstboot launcher is missing"
+    );
+    assert!(
+        appliance_file("usr/lib/rigos/rigos-identity-seed").is_file(),
+        "identity seed verifier is missing"
     );
     assert!(
         !unit
