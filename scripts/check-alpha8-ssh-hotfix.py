@@ -9,8 +9,15 @@ HOOK = ROOT / "build/usb/hooks/010-rigos.chroot"
 EXPECTED_POLICY_SHA256 = "d59b6bcc078a047d1f1cc90ef6ed9205476d91f874be809009bdd442ef66b8c3"
 
 
+def normalized_lf_bytes(path: Path) -> bytes:
+    raw = path.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raise RuntimeError("Alpha8 SSH policy must be UTF-8 without BOM")
+    return raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def main() -> int:
-    policy = POLICY.read_bytes()
+    policy = normalized_lf_bytes(POLICY)
     observed = hashlib.sha256(policy).hexdigest()
     if observed != EXPECTED_POLICY_SHA256:
         raise RuntimeError(
