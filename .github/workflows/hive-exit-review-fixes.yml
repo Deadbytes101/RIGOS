@@ -1,0 +1,47 @@
+name: Apply Hive Exit Review Fixes
+
+on:
+  push:
+    branches:
+      - stability/hive-exit-gates
+    paths:
+      - scripts/apply-hive-exit-review-fixes.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: stability/hive-exit-gates
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.85.1
+        with:
+          components: rustfmt
+
+      - name: Apply exact source patches
+        run: python3 scripts/apply-hive-exit-review-fixes.py
+
+      - name: Verify patched sources
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p rigos-xmrig --lib
+          python3 scripts/check-alpha8-runtime.py
+          git diff --check
+
+      - name: Commit verified review fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rigos-xmrig/src/lib.rs \
+                  build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-render \
+                  scripts/check-alpha8-runtime.py
+          git diff --cached --quiet && exit 0
+          git commit -m "stability enforce public inspector boundary"
+          git push origin HEAD:stability/hive-exit-gates
