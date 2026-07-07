@@ -11,6 +11,7 @@
 *.ps1 text eol=crlf
 
 build/usb/hooks/* text eol=lf
+build/usb/package-lists/rigos.list.chroot text eol=lf
 build/usb/includes.chroot/usr/local/bin/* text eol=lf
 build/usb/includes.chroot/usr/local/sbin/rigos-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-* text eol=lf
