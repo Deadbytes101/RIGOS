@@ -90,7 +90,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-profile-apply.service \
   usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/xmrig \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/xmrig \
   usr/local/bin/rigosd usr/local/bin/rigosctl \
   usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate \
   usr/share/rigos >/dev/null
@@ -102,6 +102,7 @@ python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-health"
 sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-publish"
+sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-authority"
 python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
@@ -130,11 +131,13 @@ if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -F 'sysctl' 
 if strings "$temporary/root/usr/lib/rigos/rigos-performance" | grep -Ei '(/dev/sd|/dev/nvme|cpu model)' >/dev/null; then die 'performance authority contains hardware-name or internal-disk targeting'; fi
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' "$temporary/root/etc/systemd/system/rigos-miner.service" || die 'miner safety gate is missing'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-runtime-render" ]] || die 'legacy runtime renderer is missing'
-[[ -x "$temporary/root/usr/lib/rigos/rigos-runtime-publish" ]] || die 'runtime publication authority is missing'
-grep -Fq 'ExecStart=/usr/lib/rigos/rigos-runtime-publish' "$temporary/root/etc/systemd/system/rigos-runtime-render.service" || die 'runtime publication authority is not wired'
-grep -Fq 'ExecCondition=+/usr/lib/rigos/rigos-runtime-publish' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'miner does not republish runtime truth before start'
+[[ -x "$temporary/root/usr/lib/rigos/rigos-runtime-publish" ]] || die 'runtime allowlist publisher is missing'
+[[ -x "$temporary/root/usr/lib/rigos/rigos-runtime-authority" ]] || die 'serialized runtime authority is missing'
+grep -Fq 'ExecStart=/usr/lib/rigos/rigos-runtime-authority' "$temporary/root/etc/systemd/system/rigos-runtime-render.service" || die 'serialized runtime authority is not wired'
+grep -Fq 'ExecCondition=+/usr/lib/rigos/rigos-runtime-authority' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'miner does not serialize runtime publication before start'
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-runtime-gate' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'runtime gate is missing from miner override'
 grep -Fq 'ExecStart=/usr/lib/rigos/xmrig -c /run/rigos/xmrig.json' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'managed miner does not use the short private runtime config option'
+grep -Fq 'flock -x -w 30' "$temporary/root/usr/lib/rigos/rigos-runtime-authority" || die 'runtime publication lock is missing'
 grep -Fq 'construction: "allowlist"' "$temporary/root/usr/lib/rigos/rigos-runtime-publish" || die 'public runtime allowlist marker is missing'
 grep -Fq '.render-stage.XXXXXX' "$temporary/root/usr/lib/rigos/rigos-runtime-publish" || die 'private runtime staging directory is missing'
 grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/local/bin/rigosd" || die 'rigosd does not default to the public runtime view'
