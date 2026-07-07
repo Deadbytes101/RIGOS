@@ -9,8 +9,7 @@ fn recovery_path() -> PathBuf {
 }
 
 fn alpha8_runtime_check_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../scripts/check-alpha8-runtime.py")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/check-alpha8-runtime.py")
 }
 
 fn repo_path(path: &str) -> PathBuf {
