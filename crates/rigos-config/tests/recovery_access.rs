@@ -163,7 +163,17 @@ fn alpha8_appliance_wiring_is_explicit() {
         "build/usb/includes.chroot/etc/systemd/system/rigos-runtime-render.service",
     ))
     .expect("read runtime authority service");
-    assert!(runtime_service.contains("ExecStart=/usr/lib/rigos/rigos-runtime-publish"));
+    assert!(runtime_service.contains("ExecStart=/usr/lib/rigos/rigos-runtime-authority"));
+
+    let authority = repo_path(
+        "build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-authority",
+    );
+    let mode = fs::metadata(authority).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_ne!(mode.mode() & 0o111, 0);
+    }
 
     let miner = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/rigos-miner.service.d/runtime-render.conf",
@@ -171,7 +181,7 @@ fn alpha8_appliance_wiring_is_explicit() {
     .expect("read miner runtime override");
     assert!(miner.contains("Requires=rigos-runtime-render.service"));
     assert!(miner.contains("ConditionPathExists=/var/lib/rigos/current"));
-    assert!(miner.contains("ExecCondition=+/usr/lib/rigos/rigos-runtime-publish"));
+    assert!(miner.contains("ExecCondition=+/usr/lib/rigos/rigos-runtime-authority"));
     assert!(miner.contains("ExecCondition=/usr/lib/rigos/rigos-runtime-gate"));
     assert!(miner.contains("ExecStart=/usr/lib/rigos/xmrig -c /run/rigos/xmrig.json"));
     assert!(!miner.contains("--config=/run/rigos/xmrig.json"));
