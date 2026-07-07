@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - stability/hive-exit-gates
-    paths:
-      - scripts/apply-hive-exit-review-fixes.py
 
 permissions:
   contents: write
