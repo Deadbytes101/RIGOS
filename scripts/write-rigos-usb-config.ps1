@@ -51,7 +51,10 @@ if ([string]::IsNullOrEmpty($DriveLetter)) {
     }
     $DriveLetter = [string]$volume.DriveLetter
 }
-$DriveLetter = $DriveLetter.TrimEnd(':')
+$DriveLetter = $DriveLetter.Trim().TrimEnd(':')
+if ($DriveLetter -notmatch '^[A-Za-z]$') {
+    throw "DriveLetter must contain one drive letter"
+}
 $volume = Get-Volume -DriveLetter $DriveLetter
 if ($volume.FileSystemLabel -ne 'EFI_SYSTEM') {
     throw "$DriveLetter`: is not the RIGOS EFI_SYSTEM volume"
@@ -60,11 +63,15 @@ if ($volume.FileSystemLabel -ne 'EFI_SYSTEM') {
 if ([string]::IsNullOrEmpty($IdentityValue)) {
     $IdentityValue = Read-Host "Paste the public mining identity or wallet address"
 }
+$unsafeCharacters = @(
+    $IdentityValue.ToCharArray() |
+        Where-Object { [int]$_ -lt 33 -or [int]$_ -gt 126 }
+)
 if (
     [string]::IsNullOrEmpty($IdentityValue) -or
     $IdentityValue.Length -gt 512 -or
     $IdentityValue -match '\s' -or
-    $IdentityValue.ToCharArray() | Where-Object { [int]$_ -lt 33 -or [int]$_ -gt 126 }
+    $unsafeCharacters.Count -ne 0
 ) {
     throw "IdentityValue must be 1 to 512 visible ASCII characters with no whitespace"
 }
