@@ -71,7 +71,9 @@ fn recovery_service_accepts_legacy_exit_one_only_with_post_validation() {
     ))
     .unwrap();
 
-    assert!(unit.contains("Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service ssh.service"));
+    assert!(unit.contains(
+        "Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service ssh.service"
+    ));
     assert!(unit.contains("SuccessExitStatus=1"));
     assert!(unit.contains(
         "ExecStartPost=/usr/bin/python3 /usr/lib/rigos/rigos-recovery-access-verify"
