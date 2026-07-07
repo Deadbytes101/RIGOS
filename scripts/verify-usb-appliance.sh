@@ -88,7 +88,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-miner-health.timer \
   etc/systemd/system/rigos-runtime-render.service \
   etc/systemd/system/rigos-profile-apply.service \
-  usr/bin/python3 usr/bin/python3.11 \
+  usr/bin/jq usr/bin/python3 usr/bin/python3.11 \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
   usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/xmrig \
   usr/local/bin/rigosd usr/local/bin/rigosctl \
@@ -96,6 +96,7 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
+[[ -x "$temporary/root/usr/bin/jq" ]] || die 'jq runtime dependency is missing from the appliance'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
@@ -138,6 +139,7 @@ grep -Fq 'ExecCondition=+/usr/lib/rigos/rigos-runtime-authority' "$temporary/roo
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-runtime-gate' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'runtime gate is missing from miner override'
 grep -Fq 'ExecStart=/usr/lib/rigos/xmrig -c /run/rigos/xmrig.json' "$temporary/root/etc/systemd/system/rigos-miner.service.d/runtime-render.conf" || die 'managed miner does not use the short private runtime config option'
 grep -Fq 'flock -x -w 30' "$temporary/root/usr/lib/rigos/rigos-runtime-authority" || die 'runtime publication lock is missing'
+grep -Fq 'jq_bin=${RIGOS_JQ:-/usr/bin/jq}' "$temporary/root/usr/lib/rigos/rigos-runtime-publish" || die 'runtime publisher does not use the absolute jq dependency'
 grep -Fq 'construction: "allowlist"' "$temporary/root/usr/lib/rigos/rigos-runtime-publish" || die 'public runtime allowlist marker is missing'
 grep -Fq '.render-stage.XXXXXX' "$temporary/root/usr/lib/rigos/rigos-runtime-publish" || die 'private runtime staging directory is missing'
 grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/local/bin/rigosd" || die 'rigosd does not default to the public runtime view'
