@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::fs;
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use uuid::Uuid;
@@ -53,14 +53,11 @@ fn run_observer(
         .status()
         .unwrap();
     assert!(status.success());
-    serde_json::from_slice(
-        &fs::read(root.join("run/miner-health-status.json")).unwrap(),
-    )
-    .unwrap()
+    serde_json::from_slice(&fs::read(root.join("run/miner-health-status.json")).unwrap()).unwrap()
 }
 
 #[test]
-fn miner_health_distinguishes_ready_external_wait_degraded_and_blocked() {
+fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown() {
     let root = std::env::temp_dir().join(format!("rigos-miner-health-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join("run")).unwrap();
     fs::create_dir_all(root.join("state/revisions/r1")).unwrap();
@@ -74,12 +71,21 @@ fn miner_health_distinguishes_ready_external_wait_degraded_and_blocked() {
     let systemctl_fixture = root.join("systemctl.txt");
     fs::write(
         &systemctl_fixture,
-        "ActiveState=active\nSubState=running\nMainPID=123\nNRestarts=2\nResult=success\nExecMainStatus=0\nActiveEnterTimestampMonotonic=100000000\n",
+        concat!(
+            "ActiveState=active\n",
+            "SubState=running\n",
+            "MainPID=123\n",
+            "NRestarts=2\n",
+            "Result=success\n",
+            "ExecMainStatus=0\n",
+            "ActiveEnterTimestampMonotonic=100000000\n"
+        ),
     )
     .unwrap();
     let journal_fixture = root.join("journal.txt");
     let systemctl = root.join("systemctl");
     let journalctl = root.join("journalctl");
+    let journalctl_fail = root.join("journalctl-fail");
     write_executable(
         &systemctl,
         "#!/bin/sh\ncat \"$RIGOS_SYSTEMCTL_FIXTURE\"\n",
@@ -88,10 +94,14 @@ fn miner_health_distinguishes_ready_external_wait_degraded_and_blocked() {
         &journalctl,
         "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n",
     );
+    write_executable(&journalctl_fail, "#!/bin/sh\nexit 1\n");
 
     fs::write(
         &journal_fixture,
-        "miner    speed 10s/60s/15m 340.0 341.0 n/a H/s\ncpu accepted (7/0) diff 10000\n",
+        concat!(
+            "miner    speed 10s/60s/15m 340.0 341.0 n/a H/s\n",
+            "cpu accepted (7/0) diff 10000\n"
+        ),
     )
     .unwrap();
     let ready = run_observer(
@@ -129,6 +139,17 @@ fn miner_health_distinguishes_ready_external_wait_degraded_and_blocked() {
     assert_eq!(degraded["state"], "degraded");
     assert_eq!(degraded["reason"], "no_recent_speed_evidence");
 
+    let unknown = run_observer(
+        &root,
+        &systemctl,
+        &journalctl_fail,
+        &systemctl_fixture,
+        &journal_fixture,
+    );
+    assert_eq!(unknown["state"], "unknown");
+    assert_eq!(unknown["reason"], "journal_unavailable");
+    assert_eq!(unknown["evidence"]["journal_available"], false);
+
     write_runtime_status(&root.join("run/runtime-config-status.json"), "r2");
     let blocked = run_observer(
         &root,
@@ -161,8 +182,16 @@ fn miner_restart_policy_is_bounded_and_observer_never_mutates_service() {
     ))
     .unwrap();
     assert!(observer.contains("\"remediation\": \"observe_only\""));
+    assert!(observer.contains("MAX_JOURNAL_LINES = 500"));
     assert!(!observer.contains("systemctl restart"));
     assert!(!observer.contains("systemctl kill"));
+
+    let service = fs::read_to_string(repo_path(
+        "build/usb/includes.chroot/etc/systemd/system/rigos-miner-health.service",
+    ))
+    .unwrap();
+    assert!(!service.contains("Wants=rigos-miner.service"));
+    assert!(!service.contains("Requires=rigos-miner.service"));
 
     let timer = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/rigos-miner-health.timer",
