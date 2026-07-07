@@ -1,7 +1,6 @@
 [Unit]
 Description=Observe RIGOS miner health truth
 After=rigos-state-ready.service rigos-runtime-render.service rigos-miner.service
-Wants=rigos-miner.service
 
 [Service]
 Type=oneshot
