@@ -48,8 +48,18 @@ def verify_runtime_authority(root: Path) -> None:
                 "huge-pages": True,
                 "max-threads-hint": 2,
             },
-            "pools": [{"url": "pool.test:1", "algo": "rx/0"}],
-            "http": {"enabled": False},
+            "pools": [
+                {
+                    "url": "pool.test:1",
+                    "algo": "rx/0",
+                    "user": "fixture-private-identity",
+                    "pass": "fixture-worker",
+                }
+            ],
+            "http": {
+                "enabled": False,
+                "access-token": "fixture-private-token",
+            },
         },
     )
     environment = os.environ.copy()
@@ -64,6 +74,21 @@ def verify_runtime_authority(root: Path) -> None:
     config = json.loads((runtime / "xmrig.json").read_text(encoding="utf-8"))
     assert config["cpu"]["max-threads-hint"] == 100
     assert config["cpu"]["rx"] == [-1, -1]
+    assert config["pools"][0]["user"] == "fixture-private-identity"
+
+    public = json.loads((runtime / "xmrig-public.json").read_text(encoding="utf-8"))
+    assert public["algo"] == "rx/0"
+    assert public["threads"] == 2
+    assert public["randomx"]["huge-pages"] is True
+    assert public["rigos-public-view"]["identity_redacted"] is True
+    assert "user" not in public["pools"][0]
+    assert "pass" not in public["pools"][0]
+    assert "access-token" not in public["http"]
+    public_text = json.dumps(public, sort_keys=True)
+    assert "fixture-private-identity" not in public_text
+    assert "fixture-worker" not in public_text
+    assert "fixture-private-token" not in public_text
+
     status = json.loads(
         (runtime / "runtime-config-status.json").read_text(encoding="utf-8")
     )
@@ -142,7 +167,7 @@ def main() -> int:
         root = Path(temporary)
         verify_runtime_authority(root)
         verify_remote_truth(root)
-    print("RIGOS Alpha8 runtime and remote truth verification passed")
+    print("RIGOS runtime, redacted inspector, and remote truth verification passed")
     return 0
 
 
