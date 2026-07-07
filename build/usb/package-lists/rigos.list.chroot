@@ -5,6 +5,7 @@ e2fsprogs
 fdisk
 gdisk
 jq
+kmod
 live-boot
 live-config
 linux-image-amd64
