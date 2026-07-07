@@ -6,11 +6,9 @@ useradd --create-home --shell /bin/bash --groups sudo rigosadmin
 passwd --lock rigosadmin
 install -d -o rigos -g rigos -m 0750 /var/lib/rigos
 install -d -m 0755 /usr/lib/rigos /usr/local/bin
-ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd
-ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf
 
-chmod 0755 /usr/local/sbin/rigos-firstboot /usr/local/sbin/rigos-recovery-access /usr/local/sbin/rigos-state-orchestrate /usr/lib/rigos/rigos-miner-gate /usr/lib/rigos/rigos-miner-health /usr/lib/rigos/rigos-runtime-render /usr/lib/rigos/rigos-runtime-gate /usr/lib/rigos/rigos-state-init /usr/lib/rigos/rigos-state-ready /usr/lib/rigos/rigos-config /usr/lib/rigos/rigos-performance /usr/lib/rigos/rigos-lifecycle-cycles /usr/lib/rigos/rigos-identity-seed /usr/lib/rigos/xmrig
+chmod 0755 /usr/local/bin/rigosd /usr/local/bin/rigosctl /usr/local/sbin/rigos-firstboot /usr/local/sbin/rigos-recovery-access /usr/local/sbin/rigos-state-orchestrate /usr/lib/rigos/rigos-miner-gate /usr/lib/rigos/rigos-miner-health /usr/lib/rigos/rigos-runtime-render /usr/lib/rigos/rigos-runtime-gate /usr/lib/rigos/rigos-state-init /usr/lib/rigos/rigos-state-ready /usr/lib/rigos/rigos-config /usr/lib/rigos/rigos-performance /usr/lib/rigos/rigos-lifecycle-cycles /usr/lib/rigos/rigos-identity-seed /usr/lib/rigos/xmrig
 systemctl enable NetworkManager.service ssh.service rigos-state.service rigos-recovery-access.service rigos-state-ready.service rigos-profile-apply.service rigos-runtime-render.service rigos-hugepages.service rigos-firstboot.service rigos-miner.service rigos-miner-health.timer tmp.mount
 systemctl disable ssh.socket 2>/dev/null || true
 systemctl disable apt-daily.timer apt-daily-upgrade.timer logrotate.timer fstrim.timer 2>/dev/null || true
