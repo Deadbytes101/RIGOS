@@ -26,7 +26,7 @@ RestrictNamespaces=yes
 LockPersonality=yes
 CapabilityBoundingSet=CAP_SYS_MODULE CAP_SYS_RAWIO
 AmbientCapabilities=CAP_SYS_MODULE CAP_SYS_RAWIO
-ReadWritePaths=/run/rigos /dev/cpu
+ReadWritePaths=/run/rigos -/dev/cpu
 
 [Install]
 WantedBy=multi-user.target
