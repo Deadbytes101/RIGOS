@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "build/usb/includes.chroot/etc/ssh/sshd_config.d/00-rigos.conf"
 PACKAGES = ROOT / "build/usb/package-lists/rigos.list.chroot"
 HOOK = ROOT / "build/usb/hooks/010-rigos.chroot"
+DOCKERFILE = ROOT / "build/usb/Dockerfile"
 EXPECTED_POLICY_SHA256 = "d59b6bcc078a047d1f1cc90ef6ed9205476d91f874be809009bdd442ef66b8c3"
 
 
@@ -29,6 +30,15 @@ def main() -> int:
     hook = HOOK.read_text(encoding="utf-8")
     if "ssh.service" not in hook or "systemctl disable ssh.socket" not in hook:
         raise RuntimeError("deterministic SSH service wiring is missing")
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    if 'ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"' not in dockerfile:
+        raise RuntimeError("builder Cargo PATH is not explicit")
+    if 'ENTRYPOINT ["/bin/bash", "-c",' not in dockerfile:
+        raise RuntimeError("builder entrypoint must use a non-login shell")
+    if '"bash", "-lc"' in dockerfile or '"/bin/bash", "-lc"' in dockerfile:
+        raise RuntimeError("builder entrypoint must not use a login shell")
+    if "cargo --version" not in dockerfile or "rustc --version" not in dockerfile:
+        raise RuntimeError("builder toolchain verification is missing")
     print("RIGOS Alpha8 SSH hotfix verification passed")
     return 0
 
