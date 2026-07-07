@@ -146,6 +146,7 @@ fn alpha8_appliance_wiring_is_explicit() {
     assert!(hook.contains("chmod 0755 /usr/local/bin/rigosd /usr/local/bin/rigosctl"));
     assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd"));
     assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl"));
+    assert!(hook.contains("/usr/lib/rigos/rigos-runtime-publish"));
     assert!(hook.contains("rigos-runtime-render.service"));
     assert!(hook.contains("systemctl disable ssh.socket"));
 
@@ -158,15 +159,22 @@ fn alpha8_appliance_wiring_is_explicit() {
         assert!(wrapper.contains(&format!("exec /usr/lib/rigos/{command}")));
     }
 
+    let runtime_service = fs::read_to_string(repo_path(
+        "build/usb/includes.chroot/etc/systemd/system/rigos-runtime-render.service",
+    ))
+    .expect("read runtime authority service");
+    assert!(runtime_service.contains("ExecStart=/usr/lib/rigos/rigos-runtime-publish"));
+
     let miner = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/rigos-miner.service.d/runtime-render.conf",
     ))
     .expect("read miner runtime override");
     assert!(miner.contains("Requires=rigos-runtime-render.service"));
     assert!(miner.contains("ConditionPathExists=/var/lib/rigos/current"));
-    assert!(miner.contains("ExecCondition=+/usr/lib/rigos/rigos-runtime-render"));
+    assert!(miner.contains("ExecCondition=+/usr/lib/rigos/rigos-runtime-publish"));
     assert!(miner.contains("ExecCondition=/usr/lib/rigos/rigos-runtime-gate"));
-    assert!(miner.contains("--config=/run/rigos/xmrig.json"));
+    assert!(miner.contains("ExecStart=/usr/lib/rigos/xmrig -c /run/rigos/xmrig.json"));
+    assert!(!miner.contains("--config=/run/rigos/xmrig.json"));
 
     let ssh = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/ssh.service.d/rigos-observe.conf",
