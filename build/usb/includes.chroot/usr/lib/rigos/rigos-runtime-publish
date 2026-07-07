@@ -4,6 +4,11 @@ set -eu
 
 runtime=${RIGOS_RUNTIME_PATH:-/run/rigos}
 renderer=${RIGOS_RUNTIME_RENDERER:-/usr/lib/rigos/rigos-runtime-render}
+jq_bin=${RIGOS_JQ:-/usr/bin/jq}
+if [ ! -x "$jq_bin" ]; then
+    echo "rigos-runtime-publish: required jq runtime is missing: $jq_bin" >&2
+    exit 127
+fi
 mkdir -p "$runtime"
 chmod 0755 "$runtime"
 stage=$(mktemp -d "$runtime/.render-stage.XXXXXX")
@@ -21,23 +26,23 @@ trap cleanup EXIT HUP INT TERM
 
 RIGOS_RUNTIME_PATH="$stage" "$renderer"
 
-jq -e '
+"$jq_bin" -e '
   .schema == "rigos.runtime-config-status/v1" and
   .outcome == "ready" and
   (.revision | type == "string") and
   (.algorithm | type == "string")
 ' "$stage/runtime-config-status.json" >/dev/null
 
-algorithm=$(jq -r '.algorithm' "$stage/runtime-config-status.json")
-revision=$(jq -r '.revision' "$stage/runtime-config-status.json")
-thread_count=$(jq -r '.exact_threads // empty' "$stage/runtime-config-status.json")
-profile=$(jq -r '.profile // empty' "$stage/runtime-config-status.json")
+algorithm=$("$jq_bin" -r '.algorithm' "$stage/runtime-config-status.json")
+revision=$("$jq_bin" -r '.revision' "$stage/runtime-config-status.json")
+thread_count=$("$jq_bin" -r '.exact_threads // empty' "$stage/runtime-config-status.json")
+profile=$("$jq_bin" -r '.profile // empty' "$stage/runtime-config-status.json")
 
 public_tmp=$(mktemp "$runtime/.xmrig-public.XXXXXX")
 status_tmp=$(mktemp "$runtime/.runtime-status.XXXXXX")
 config_tmp=$(mktemp "$runtime/.xmrig-runtime.XXXXXX")
 
-jq \
+"$jq_bin" \
   --arg algorithm "$algorithm" \
   --arg revision "$revision" \
   --arg profile "$profile" \
@@ -85,7 +90,7 @@ jq \
     end
 ' "$stage/xmrig.json" >"$public_tmp"
 
-jq '. + {
+"$jq_bin" '. + {
   identity_redacted_public_view: true,
   public_view_construction: "allowlist"
 }' "$stage/runtime-config-status.json" >"$status_tmp"
