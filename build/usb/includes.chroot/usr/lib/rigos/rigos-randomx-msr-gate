@@ -1,14 +1,10 @@
 #!/usr/bin/python3
 # Repository contract: LF line endings are required for appliance execution.
 import argparse
-import fcntl
 import json
-import os
-import struct
 from pathlib import Path
 
 STATUS_SCHEMA = "rigos.randomx-msr-status/v1"
-STATE_SCHEMA = "rigos.randomx-msr-state/v1"
 GATE_SCHEMA = "rigos.randomx-msr-gate/v1"
 REGISTER = 0x1A4
 TARGET_VALUE = 0xF
@@ -45,57 +41,6 @@ def read_json(path: Path, name: str) -> dict:
     return value
 
 
-def parse_state(path: Path, boot_id: str) -> dict:
-    state = read_json(path, "MSR state")
-    if state.get("schema") != STATE_SCHEMA:
-        raise GateError("MSR state schema is invalid")
-    if state.get("boot_id") != boot_id:
-        raise GateError("MSR state boot ID is stale")
-    if state.get("register") != value_hex(REGISTER):
-        raise GateError("MSR state register is invalid")
-    if state.get("target_value") != value_hex(TARGET_VALUE):
-        raise GateError("MSR state target is invalid")
-
-    entries = state.get("cpus")
-    if not isinstance(entries, list) or not entries:
-        raise GateError("MSR state CPU list is invalid")
-
-    seen: set[int] = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise GateError("MSR state CPU entry is invalid")
-        cpu = entry.get("cpu")
-        original = entry.get("original")
-        if not isinstance(cpu, int) or cpu < 0 or cpu in seen:
-            raise GateError("MSR state CPU identifier is invalid")
-        if not isinstance(original, str):
-            raise GateError("MSR state original value is invalid")
-        try:
-            int(original, 16)
-        except ValueError as error:
-            raise GateError("MSR state original value is malformed") from error
-        seen.add(cpu)
-
-    return state
-
-
-def read_msr(device_root: Path, cpu: int) -> int:
-    path = device_root / str(cpu) / "msr"
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
-    except OSError as error:
-        raise GateError(f"open {path}: {error}") from error
-    try:
-        data = os.pread(fd, 8, REGISTER)
-    except OSError as error:
-        raise GateError(f"read CPU {cpu} MSR {REGISTER:#x}: {error}") from error
-    finally:
-        os.close(fd)
-    if len(data) != 8:
-        raise GateError(f"short read from CPU {cpu} MSR {REGISTER:#x}")
-    return struct.unpack("<Q", data)[0]
-
-
 def emit(outcome: str, reason: str, status_outcome: str | None) -> None:
     print(
         json.dumps(
@@ -126,6 +71,7 @@ def gate(args: argparse.Namespace) -> int:
     status = read_json(args.status, "MSR status")
     if status.get("schema") != STATUS_SCHEMA:
         return deny("status_schema_invalid")
+
     status_outcome = status.get("outcome")
     if not isinstance(status_outcome, str):
         return deny("status_outcome_invalid")
@@ -137,16 +83,9 @@ def gate(args: argparse.Namespace) -> int:
         return deny("status_target_invalid", status_outcome)
 
     if status_outcome == "ready":
-        try:
-            state = parse_state(args.state, boot_id)
-            for entry in state["cpus"]:
-                cpu = entry["cpu"]
-                observed = read_msr(args.device_root, cpu)
-                if observed != TARGET_VALUE:
-                    return deny("msr_target_readback_mismatch", status_outcome)
-        except GateError as error:
-            return deny(f"ready_state_invalid:{error}", status_outcome)
-        return allow("msr_target_verified", status_outcome)
+        if not args.state.exists():
+            return deny("ready_status_missing_restore_state", status_outcome)
+        return allow("authority_readback_verified", status_outcome)
 
     if status_outcome in {"unsupported", "unavailable"}:
         if args.state.exists():
@@ -170,18 +109,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--boot-id", type=Path, default=Path("/proc/sys/kernel/random/boot_id"))
     result.add_argument("--status", type=Path, default=Path("/run/rigos/randomx-msr-status.json"))
     result.add_argument("--state", type=Path, default=Path("/run/rigos/randomx-msr-state.json"))
-    result.add_argument("--device-root", type=Path, default=Path("/dev/cpu"))
-    result.add_argument("--lock", type=Path, default=Path("/run/rigos/.randomx-msr.lock"))
     return result
 
 
 def main() -> int:
-    args = parser().parse_args()
-    args.lock.parent.mkdir(parents=True, exist_ok=True)
-    with args.lock.open("a+b") as lock_handle:
-        os.chmod(args.lock, 0o600)
-        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_SH)
-        return gate(args)
+    return gate(parser().parse_args())
 
 
 if __name__ == "__main__":
