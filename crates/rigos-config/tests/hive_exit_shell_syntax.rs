@@ -20,7 +20,7 @@ fn runtime_authority_shells_are_lf_and_parse_cleanly() {
             !bytes.contains(&b'\r'),
             "shell authority contains CR/CRLF line endings: {path}"
         );
-        let status = Command::new("sh")
+        let status = Command::new("/bin/sh")
             .arg("-n")
             .arg(&full_path)
             .status()
