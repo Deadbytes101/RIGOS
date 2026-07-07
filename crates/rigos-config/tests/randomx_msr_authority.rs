@@ -124,14 +124,22 @@ fn supported_cpu_apply_is_idempotent_and_restore_recovers_original_values() {
     fs::create_dir_all(root.join("run")).unwrap();
     write_cpuinfo(&root.join("cpuinfo"), 42);
     fs::write(root.join("online"), "0-1\n").unwrap();
-    fs::write(root.join("boot_id"), "00000000-0000-0000-0000-000000000001\n").unwrap();
+    fs::write(
+        root.join("boot_id"),
+        "00000000-0000-0000-0000-000000000001\n",
+    )
+    .unwrap();
     let cpu0 = root.join("dev/cpu/0/msr");
     let cpu1 = root.join("dev/cpu/1/msr");
     create_msr(&cpu0, 0x10);
     create_msr(&cpu1, 0x20);
 
     let applied = run_authority(&root, "apply");
-    assert!(applied.status.success(), "{}", String::from_utf8_lossy(&applied.stderr));
+    assert!(
+        applied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&applied.stderr)
+    );
     assert_eq!(read_msr(&cpu0), TARGET);
     assert_eq!(read_msr(&cpu1), TARGET);
     let first = status(&root);
@@ -153,7 +161,11 @@ fn supported_cpu_apply_is_idempotent_and_restore_recovers_original_values() {
     assert_eq!(second["reason"], "already_applied");
 
     let restored = run_authority(&root, "restore");
-    assert!(restored.status.success(), "{}", String::from_utf8_lossy(&restored.stderr));
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
     assert_eq!(read_msr(&cpu0), 0x10);
     assert_eq!(read_msr(&cpu1), 0x20);
     assert!(!root.join("run/state.json").exists());
@@ -170,10 +182,18 @@ fn unsupported_cpu_is_truthful_and_never_requires_msr_devices() {
     fs::create_dir_all(root.join("run")).unwrap();
     write_cpuinfo(&root.join("cpuinfo"), 58);
     fs::write(root.join("online"), "0-3\n").unwrap();
-    fs::write(root.join("boot_id"), "00000000-0000-0000-0000-000000000002\n").unwrap();
+    fs::write(
+        root.join("boot_id"),
+        "00000000-0000-0000-0000-000000000002\n",
+    )
+    .unwrap();
 
     let output = run_authority(&root, "apply");
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let value = status(&root);
     assert_eq!(value["outcome"], "unsupported");
     assert_eq!(value["reason"], "cpu_not_allowlisted");
@@ -188,14 +208,22 @@ fn partial_write_failure_rolls_back_every_recoverable_cpu_and_keeps_state() {
     fs::create_dir_all(root.join("run")).unwrap();
     write_cpuinfo(&root.join("cpuinfo"), 42);
     fs::write(root.join("online"), "0-1\n").unwrap();
-    fs::write(root.join("boot_id"), "00000000-0000-0000-0000-000000000003\n").unwrap();
+    fs::write(
+        root.join("boot_id"),
+        "00000000-0000-0000-0000-000000000003\n",
+    )
+    .unwrap();
     let cpu0 = root.join("dev/cpu/0/msr");
     create_msr(&cpu0, 0x55);
     fs::create_dir_all(root.join("dev/cpu/1")).unwrap();
     symlink("/dev/full", root.join("dev/cpu/1/msr")).unwrap();
 
     let output = run_authority(&root, "apply");
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(read_msr(&cpu0), 0x55);
     let value = status(&root);
     assert_eq!(value["outcome"], "degraded");
