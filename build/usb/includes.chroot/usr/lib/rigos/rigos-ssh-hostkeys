@@ -1,0 +1,179 @@
+#!/usr/bin/python3
+import json
+import os
+import stat
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+STATE = Path(os.environ.get("RIGOS_STATE_PATH", "/var/lib/rigos"))
+RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
+BOOT_ID = Path(os.environ.get("RIGOS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
+KEYGEN = os.environ.get("RIGOS_SSH_KEYGEN", "/usr/bin/ssh-keygen")
+STORE = STATE / "ssh-hostkeys"
+STATUS = RUNTIME / "ssh-hostkeys-status.json"
+KEY_SPECS = (
+    ("ed25519", ()),
+    ("rsa", ("-b", "3072")),
+)
+
+
+def fail(reason: str) -> int:
+    print(f"rigos-ssh-hostkeys: {reason}", file=sys.stderr)
+    return 2
+
+
+def fsync_path(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    data = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        fsync_path(path.parent)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def run_keygen(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [KEYGEN, *arguments],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=20,
+        check=False,
+    )
+
+
+def public_identity(path: Path) -> tuple[str, str]:
+    private = path
+    public = Path(f"{path}.pub")
+    if private.is_symlink() or public.is_symlink():
+        raise RuntimeError("host_key_symlink")
+    if not private.is_file() or not public.is_file():
+        raise RuntimeError("host_key_incomplete")
+    private_mode = stat.S_IMODE(private.stat().st_mode)
+    if private_mode != 0o600:
+        raise RuntimeError("host_key_private_mode")
+
+    derived = run_keygen(["-y", "-f", str(private)])
+    if derived.returncode != 0:
+        raise RuntimeError("host_key_private_invalid")
+    expected = public.read_text(encoding="ascii").strip().split()
+    actual = derived.stdout.strip().split()
+    if len(expected) < 2 or len(actual) < 2 or expected[:2] != actual[:2]:
+        raise RuntimeError("host_key_pair_mismatch")
+
+    fingerprint = run_keygen(["-l", "-E", "sha256", "-f", str(public)])
+    if fingerprint.returncode != 0:
+        raise RuntimeError("host_key_public_invalid")
+    fields = fingerprint.stdout.strip().split()
+    if len(fields) < 2 or not fields[1].startswith("SHA256:"):
+        raise RuntimeError("host_key_fingerprint_invalid")
+    return expected[0], fields[1]
+
+
+def validate_store() -> list[dict]:
+    if STORE.is_symlink() or not STORE.is_dir():
+        raise RuntimeError("host_key_store_unsafe")
+    if stat.S_IMODE(STORE.stat().st_mode) != 0o700:
+        raise RuntimeError("host_key_store_mode")
+
+    identities = []
+    for key_type, _extra in KEY_SPECS:
+        algorithm, fingerprint = public_identity(STORE / f"ssh_host_{key_type}_key")
+        identities.append({
+            "type": key_type,
+            "algorithm": algorithm,
+            "fingerprint": fingerprint,
+        })
+    return identities
+
+
+def create_store() -> None:
+    temporary = STATE / f".ssh-hostkeys.{uuid.uuid4().hex}"
+    temporary.mkdir(mode=0o700)
+    try:
+        for key_type, extra in KEY_SPECS:
+            destination = temporary / f"ssh_host_{key_type}_key"
+            result = run_keygen([
+                "-q",
+                "-t",
+                key_type,
+                *extra,
+                "-N",
+                "",
+                "-C",
+                "rigos-host",
+                "-f",
+                str(destination),
+            ])
+            if result.returncode != 0:
+                raise RuntimeError(f"host_key_generate_{key_type}")
+            destination.chmod(0o600)
+            Path(f"{destination}.pub").chmod(0o644)
+            fsync_path(destination)
+            fsync_path(Path(f"{destination}.pub"))
+        fsync_path(temporary)
+        os.replace(temporary, STORE)
+        fsync_path(STATE)
+    finally:
+        if temporary.exists():
+            for child in temporary.iterdir():
+                child.unlink()
+            temporary.rmdir()
+
+
+def main() -> int:
+    try:
+        if STATE.is_symlink() or not STATE.is_dir():
+            return fail("state_path_unsafe")
+        RUNTIME.mkdir(parents=True, exist_ok=True)
+        boot_id = BOOT_ID.read_text(encoding="ascii").strip()
+        if not boot_id:
+            return fail("boot_id_unavailable")
+
+        created = False
+        if not STORE.exists():
+            create_store()
+            created = True
+
+        identities = validate_store()
+        atomic_json(STATUS, {
+            "schema": "rigos.ssh-hostkeys-status/v1",
+            "outcome": "ready",
+            "boot_id": boot_id,
+            "persistent": True,
+            "created": created,
+            "keys": identities,
+        })
+        print(json.dumps({
+            "schema": "rigos.ssh-hostkeys-gate/v1",
+            "outcome": "allowed",
+            "created": created,
+            "keys": identities,
+        }, sort_keys=True))
+        return 0
+    except (OSError, UnicodeError, RuntimeError, subprocess.SubprocessError) as error:
+        return fail(str(error))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
