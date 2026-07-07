@@ -1,0 +1,168 @@
+#!/usr/bin/python3
+import argparse
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+RUNTIME = Path('/run/rigos')
+STATE_STATUS = RUNTIME / 'state-status.json'
+ATTESTATION = RUNTIME / 'boot-device.json'
+STATE_INIT = '/usr/lib/rigos/rigos-state-init'
+SLUG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,63}$')
+MAX_SEED_BYTES = 4096
+MAX_VALUE_BYTES = 512
+
+
+def fail(code: str, message: str, rc: int = 2) -> int:
+    print(json.dumps({'code': code, 'message': message}, sort_keys=True), file=sys.stderr)
+    return rc
+
+
+def read_json(path: Path):
+    with path.open('r', encoding='utf-8') as stream:
+        return json.load(stream)
+
+
+def ready_state() -> bool:
+    try:
+        status = read_json(STATE_STATUS)
+    except (OSError, json.JSONDecodeError):
+        return False
+    return status.get('outcome') in {'ready', 'grown'}
+
+
+def fresh_attestation() -> dict:
+    temporary = Path(tempfile.mkdtemp(prefix='identity-seed-attest-', dir=RUNTIME))
+    try:
+        attestation_path = temporary / 'boot-device.json'
+        status_path = temporary / 'state-status.json'
+        result = subprocess.run(
+            [STATE_INIT, '--dry-run', '--attestation-only', '--attestation', str(attestation_path), '--status', str(status_path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            raise RuntimeError('attestation refresh failed')
+        return read_json(attestation_path)
+    finally:
+        for child in temporary.iterdir() if temporary.exists() else []:
+            child.unlink(missing_ok=True)
+        temporary.rmdir() if temporary.exists() else None
+
+
+def identity_matches(expected: dict, fresh: dict) -> bool:
+    return (
+        expected.get('schema') == 'rigos.boot-device/v1'
+        and fresh.get('schema') == expected.get('schema')
+        and expected.get('verification_outcome') == 'verified'
+        and fresh.get('verification_outcome') == 'verified'
+        and fresh.get('boot_id') == expected.get('boot_id')
+        and fresh.get('disk', {}).get('major_minor') == expected.get('disk', {}).get('major_minor')
+        and fresh.get('disk', {}).get('ptuuid', '').lower() == expected.get('disk', {}).get('ptuuid', '').lower()
+        and fresh.get('partition1', {}).get('major_minor') == expected.get('partition1', {}).get('major_minor')
+        and fresh.get('partition1', {}).get('partuuid', '').lower() == expected.get('partition1', {}).get('partuuid', '').lower()
+        and fresh.get('root', {}).get('major_minor') == expected.get('root', {}).get('major_minor')
+    )
+
+
+def safe_seed_path(root: Path, alias: str) -> Path:
+    if not SLUG_RE.fullmatch(alias):
+        raise ValueError('invalid identity alias')
+    return root / 'rigos' / 'identities' / f'{alias}.json'
+
+
+def read_seed(path: Path, alias: str) -> dict | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_size > MAX_SEED_BYTES:
+        raise ValueError('identity seed is not a bounded regular file')
+    data = path.read_bytes()
+    if len(data) > MAX_SEED_BYTES:
+        raise ValueError('identity seed exceeds size limit')
+    seed = json.loads(data.decode('utf-8'))
+    allowed = {'schema', 'alias', 'kind', 'value'}
+    if set(seed) != allowed:
+        raise ValueError('identity seed contains unknown or missing fields')
+    if seed.get('schema') != 'rigos.identity-seed/v1':
+        raise ValueError('unsupported identity seed schema')
+    if seed.get('alias') != alias or not SLUG_RE.fullmatch(seed.get('alias', '')):
+        raise ValueError('identity seed alias mismatch')
+    if seed.get('kind') != 'mining_identity':
+        raise ValueError('unsupported identity seed kind')
+    value = seed.get('value')
+    if not isinstance(value, str) or not value or len(value.encode('utf-8')) > MAX_VALUE_BYTES:
+        raise ValueError('identity seed value is empty or too large')
+    if any(character.isspace() or ord(character) < 32 for character in value):
+        raise ValueError('identity seed value contains whitespace or control characters')
+    return {
+        'schema': 'rigos.identity/v1',
+        'alias': alias,
+        'kind': 'mining_identity',
+        'value': value,
+        'created_locally': True,
+        'seeded_from_usb': True,
+    }
+
+
+def mount_and_read(alias: str) -> dict | None:
+    expected = read_json(ATTESTATION)
+    fresh = fresh_attestation()
+    if not identity_matches(expected, fresh):
+        raise RuntimeError('boot device identity changed')
+    mountpoint = Path(tempfile.mkdtemp(prefix='identity-seed-efi-', dir=RUNTIME))
+    mounted = False
+    try:
+        partition = fresh['partition1']['path']
+        result = subprocess.run(
+            ['mount', '-o', 'ro,nodev,nosuid,noexec', partition, str(mountpoint)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            raise RuntimeError('verified EFI partition could not be mounted')
+        mounted = True
+        identity = subprocess.run(
+            ['findmnt', '--noheadings', '--output', 'MAJ:MIN', '--target', str(mountpoint)],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        if identity.returncode != 0 or identity.stdout.strip() != fresh['partition1']['major_minor']:
+            raise RuntimeError('mounted EFI identity changed')
+        return read_seed(safe_seed_path(mountpoint, alias), alias)
+    finally:
+        if mounted:
+            subprocess.run(['umount', str(mountpoint)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        mountpoint.rmdir() if mountpoint.exists() else None
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--alias', required=True)
+    args = parser.parse_args()
+    if not ready_state():
+        return fail('RIGOS_CONFIG_BOOT_DEVICE_UNPROVEN', 'state is not ready')
+    try:
+        seed = mount_and_read(args.alias)
+    except FileNotFoundError:
+        return 1
+    except (OSError, KeyError, json.JSONDecodeError, UnicodeDecodeError, ValueError, RuntimeError) as error:
+        return fail('RIGOS_IDENTITY_SEED_INVALID', str(error))
+    if seed is None:
+        return 1
+    print(json.dumps(seed, sort_keys=True))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
