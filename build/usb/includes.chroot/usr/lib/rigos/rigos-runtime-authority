@@ -1,4 +1,5 @@
 #!/bin/sh
+# Repository contract: LF line endings are required for WSL and appliance execution.
 set -eu
 
 runtime=${RIGOS_RUNTIME_PATH:-/run/rigos}
