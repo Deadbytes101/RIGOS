@@ -14,4 +14,4 @@ RUN command -v cargo \
  && rustc --version
 
 WORKDIR /source
-ENTRYPOINT ["/bin/bash", "./scripts/build-usb-image-entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "exec /bin/bash ./scripts/build-usb-image-entrypoint.sh"]
