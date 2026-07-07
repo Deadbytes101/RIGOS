@@ -217,3 +217,31 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
 
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn missing_jq_is_rejected_before_runtime_staging() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("rigos-runtime-missing-jq-{unique}"));
+    let runtime = root.join("run");
+    fs::create_dir_all(&runtime).unwrap();
+
+    let publisher = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-publish");
+    let missing_jq = root.join("missing-jq");
+    let output = Command::new("/bin/sh")
+        .arg(&publisher)
+        .env("RIGOS_RUNTIME_PATH", &runtime)
+        .env("RIGOS_JQ", &missing_jq)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(127));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("required jq runtime is missing"));
+    assert!(stderr.contains(missing_jq.to_str().unwrap()));
+    assert_eq!(fs::read_dir(&runtime).unwrap().count(), 0);
+
+    let _ = fs::remove_dir_all(root);
+}
