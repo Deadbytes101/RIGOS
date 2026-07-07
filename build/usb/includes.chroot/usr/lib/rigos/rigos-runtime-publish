@@ -1,4 +1,5 @@
 #!/bin/sh
+# Repository contract: LF line endings are required for WSL and appliance execution.
 set -eu
 
 runtime=${RIGOS_RUNTIME_PATH:-/run/rigos}
@@ -7,7 +8,13 @@ mkdir -p "$runtime"
 chmod 0755 "$runtime"
 stage=$(mktemp -d "$runtime/.render-stage.XXXXXX")
 chmod 0700 "$stage"
+public_tmp=
+status_tmp=
+config_tmp=
 cleanup() {
+    [ -z "$public_tmp" ] || rm -f "$public_tmp"
+    [ -z "$status_tmp" ] || rm -f "$status_tmp"
+    [ -z "$config_tmp" ] || rm -f "$config_tmp"
     rm -rf "$stage"
 }
 trap cleanup EXIT HUP INT TERM
@@ -29,7 +36,6 @@ profile=$(jq -r '.profile // empty' "$stage/runtime-config-status.json")
 public_tmp=$(mktemp "$runtime/.xmrig-public.XXXXXX")
 status_tmp=$(mktemp "$runtime/.runtime-status.XXXXXX")
 config_tmp=$(mktemp "$runtime/.xmrig-runtime.XXXXXX")
-trap 'rm -f "$public_tmp" "$status_tmp" "$config_tmp"; cleanup' EXIT HUP INT TERM
 
 jq \
   --arg algorithm "$algorithm" \
@@ -94,6 +100,9 @@ sync -f "$config_tmp"
 sync -f "$public_tmp"
 sync -f "$status_tmp"
 mv -f "$config_tmp" "$runtime/xmrig.json"
+config_tmp=
 mv -f "$public_tmp" "$runtime/xmrig-public.json"
+public_tmp=
 mv -f "$status_tmp" "$runtime/runtime-config-status.json"
+status_tmp=
 sync -f "$runtime"
