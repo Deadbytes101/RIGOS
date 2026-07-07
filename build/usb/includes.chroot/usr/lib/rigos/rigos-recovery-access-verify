@@ -1,10 +1,11 @@
 #!/usr/bin/python3
 import json
+import os
 import sys
 from pathlib import Path
 
-RUNTIME = Path("/run/rigos")
-BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
+BOOT_ID = Path(os.environ.get("RIGOS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
 STATUS = RUNTIME / "recovery-access-status.json"
 MAX_STATUS_BYTES = 64 * 1024
 
