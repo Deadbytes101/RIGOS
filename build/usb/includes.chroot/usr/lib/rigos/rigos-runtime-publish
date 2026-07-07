@@ -1,0 +1,99 @@
+#!/bin/sh
+set -eu
+
+runtime=${RIGOS_RUNTIME_PATH:-/run/rigos}
+renderer=${RIGOS_RUNTIME_RENDERER:-/usr/lib/rigos/rigos-runtime-render}
+mkdir -p "$runtime"
+chmod 0755 "$runtime"
+stage=$(mktemp -d "$runtime/.render-stage.XXXXXX")
+chmod 0700 "$stage"
+cleanup() {
+    rm -rf "$stage"
+}
+trap cleanup EXIT HUP INT TERM
+
+RIGOS_RUNTIME_PATH="$stage" "$renderer"
+
+jq -e '
+  .schema == "rigos.runtime-config-status/v1" and
+  .outcome == "ready" and
+  (.revision | type == "string") and
+  (.algorithm | type == "string")
+' "$stage/runtime-config-status.json" >/dev/null
+
+algorithm=$(jq -r '.algorithm' "$stage/runtime-config-status.json")
+revision=$(jq -r '.revision' "$stage/runtime-config-status.json")
+thread_count=$(jq -r '.exact_threads // empty' "$stage/runtime-config-status.json")
+profile=$(jq -r '.profile // empty' "$stage/runtime-config-status.json")
+
+public_tmp=$(mktemp "$runtime/.xmrig-public.XXXXXX")
+status_tmp=$(mktemp "$runtime/.runtime-status.XXXXXX")
+config_tmp=$(mktemp "$runtime/.xmrig-runtime.XXXXXX")
+trap 'rm -f "$public_tmp" "$status_tmp" "$config_tmp"; cleanup' EXIT HUP INT TERM
+
+jq \
+  --arg algorithm "$algorithm" \
+  --arg revision "$revision" \
+  --arg profile "$profile" \
+  --argjson thread_count "${thread_count:-null}" '
+  def present: with_entries(select(.value != null));
+  def endpoint:
+    if type == "string" then split("@") | last else null end;
+  {
+    algo: $algorithm,
+    cpu: ({
+      enabled: .cpu.enabled,
+      "huge-pages": .cpu["huge-pages"],
+      "max-threads-hint": .cpu["max-threads-hint"]
+    } | present),
+    pools: [
+      .pools[] | ({
+        url: (.url | endpoint),
+        algo: .algo,
+        tls: .tls,
+        nicehash: .nicehash,
+        keepalive: .keepalive,
+        priority: .priority
+      } | present)
+    ],
+    http: ({
+      enabled: (.http.enabled // false),
+      host: .http.host,
+      port: .http.port,
+      restricted: .http.restricted
+    } | present),
+    randomx: {
+      "huge-pages": (.cpu["huge-pages"] // false)
+    },
+    "rigos-public-view": {
+      schema: "rigos.xmrig-public-config/v1",
+      identity_redacted: true,
+      construction: "allowlist",
+      source_revision: $revision
+    }
+  }
+  | if $thread_count != null then .threads = $thread_count else . end
+  | if ($profile | length) > 0 and $thread_count != null
+      then .cpu[$profile] = [range(0; $thread_count) | -1]
+      else .
+    end
+' "$stage/xmrig.json" >"$public_tmp"
+
+jq '. + {
+  identity_redacted_public_view: true,
+  public_view_construction: "allowlist"
+}' "$stage/runtime-config-status.json" >"$status_tmp"
+
+cp "$stage/xmrig.json" "$config_tmp"
+chmod 0640 "$config_tmp"
+if [ "${RIGOS_RENDER_SKIP_CHOWN:-0}" != 1 ]; then
+    chown root:rigos "$config_tmp"
+fi
+chmod 0644 "$public_tmp" "$status_tmp"
+sync -f "$config_tmp"
+sync -f "$public_tmp"
+sync -f "$status_tmp"
+mv -f "$config_tmp" "$runtime/xmrig.json"
+mv -f "$public_tmp" "$runtime/xmrig-public.json"
+mv -f "$status_tmp" "$runtime/runtime-config-status.json"
+sync -f "$runtime"
