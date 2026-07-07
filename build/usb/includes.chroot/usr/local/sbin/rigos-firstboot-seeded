@@ -1,0 +1,210 @@
+#!/usr/bin/python3
+from __future__ import annotations
+
+import json
+import os
+import runpy
+import subprocess
+import tempfile
+from pathlib import Path
+
+FIRSTBOOT_SOURCE = os.environ.get(
+    "RIGOS_FIRSTBOOT_SOURCE", "/usr/local/sbin/rigos-firstboot"
+)
+IDENTITY_SEED = os.environ.get(
+    "RIGOS_IDENTITY_SEED", "/usr/lib/rigos/rigos-identity-seed"
+)
+RUNTIME = Path(os.environ.get("RIGOS_IDENTITY_RUNTIME", "/run/rigos"))
+
+
+class SeedInvocationError(Exception):
+    def __init__(self, diagnostic: dict) -> None:
+        super().__init__(diagnostic.get("message", "identity seed failed"))
+        self.diagnostic = diagnostic
+
+
+def last_json(text: str, fallback: dict) -> dict:
+    try:
+        value = json.loads(text.strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        return fallback
+    return value if isinstance(value, dict) else fallback
+
+
+def valid_identity(identity: object, requested_alias: str) -> bool:
+    if not isinstance(identity, dict):
+        return False
+    value = identity.get("value")
+    return (
+        identity.get("schema") == "rigos.identity/v1"
+        and identity.get("alias") == requested_alias
+        and identity.get("kind") == "mining_identity"
+        and identity.get("created_locally") is True
+        and isinstance(value, str)
+        and bool(value)
+        and len(value.encode("utf-8")) <= 512
+        and value.isascii()
+        and all(33 <= ord(character) <= 126 for character in value)
+    )
+
+
+def invoke_identity_seed(alias: str) -> dict | None:
+    RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix="rigos-identity-seed-", dir=RUNTIME, delete=False
+    ) as stream:
+        output = Path(stream.name)
+    output.unlink(missing_ok=True)
+    try:
+        try:
+            result = subprocess.run(
+                [IDENTITY_SEED, "--alias", alias, "--output", str(output)],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError:
+            raise SeedInvocationError(
+                {
+                    "code": "RIGOS_IDENTITY_SEED_INVALID",
+                    "file": None,
+                    "line": None,
+                    "key": None,
+                    "message": "identity seed verifier could not be executed",
+                }
+            ) from None
+        if result.returncode != 0:
+            raise SeedInvocationError(
+                last_json(
+                    result.stderr,
+                    {
+                        "code": "RIGOS_IDENTITY_SEED_INVALID",
+                        "file": None,
+                        "line": None,
+                        "key": None,
+                        "message": "identity seed verification failed",
+                    },
+                )
+            )
+        status = last_json(
+            result.stdout,
+            {
+                "outcome": "identity_seed_invalid",
+                "alias": alias,
+            },
+        )
+        if status.get("outcome") == "identity_seed_missing":
+            return None
+        if status.get("outcome") != "identity_seed_ready" or not output.is_file():
+            raise SeedInvocationError(
+                {
+                    "code": "RIGOS_IDENTITY_SEED_INVALID",
+                    "file": None,
+                    "line": None,
+                    "key": None,
+                    "message": "identity seed verifier returned an invalid result",
+                }
+            )
+        try:
+            identity = json.loads(output.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            raise SeedInvocationError(
+                {
+                    "code": "RIGOS_IDENTITY_SEED_INVALID",
+                    "file": None,
+                    "line": None,
+                    "key": None,
+                    "message": "verified identity seed output is invalid",
+                }
+            ) from None
+        if not valid_identity(identity, alias):
+            raise SeedInvocationError(
+                {
+                    "code": "RIGOS_IDENTITY_SEED_INVALID",
+                    "file": None,
+                    "line": None,
+                    "key": "identity_ref",
+                    "message": "verified identity does not match the Flight Sheet alias",
+                }
+            )
+        return identity
+    finally:
+        output.unlink(missing_ok=True)
+
+
+def persistent_identities(state: Path) -> list[dict]:
+    directory = state / "identities"
+    values: list[dict] = []
+    if not directory.is_dir():
+        return values
+    for path in sorted(directory.glob("*.json"))[:64]:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict) and value.get("schema") == "rigos.identity/v1":
+            values.append(value)
+    return values
+
+
+def install_seed_resolver(namespace: dict) -> None:
+    globals_ = namespace["run"].__globals__
+    original_resolve = globals_["resolve_identity"]
+
+    def seeded_resolve(proposal: dict) -> dict:
+        requested = proposal["flight_sheet"]["identity_ref"]
+        if (
+            globals_["SLUG_RE"].fullmatch(requested) is None
+            or requested == "unresolved"
+            or requested.startswith("hive-wal-")
+        ):
+            return original_resolve(proposal)
+        try:
+            seed = invoke_identity_seed(requested)
+        except SeedInvocationError as error:
+            globals_["dialog"](
+                "--msgbox",
+                globals_["diagnostic_text"](error.diagnostic),
+                "18",
+                "76",
+                stage="identity_seed_invalid",
+            )
+            raise globals_["FirstbootFailure"]("identity_seed_invalid") from None
+        if seed is None:
+            return original_resolve(proposal)
+
+        matches = [
+            identity
+            for identity in persistent_identities(globals_["STATE"])
+            if str(identity.get("alias", "")).lower() == requested.lower()
+        ]
+        if len(matches) > 1 or (
+            matches
+            and (
+                matches[0].get("alias") != requested
+                or matches[0].get("value") != seed.get("value")
+            )
+        ):
+            globals_["dialog"](
+                "--msgbox",
+                f"Offline identity seed conflicts with persistent alias {requested}.\n\nNo identity was changed.",
+                "14",
+                "76",
+                stage="identity_seed_conflict",
+            )
+            raise globals_["FirstbootFailure"]("identity_seed_conflict")
+        proposal["flight_sheet"]["identity_ref"] = requested
+        return matches[0] if matches else seed
+
+    globals_["resolve_identity"] = seeded_resolve
+
+
+def main() -> int:
+    namespace = runpy.run_path(FIRSTBOOT_SOURCE, run_name="rigos_firstboot_seeded")
+    install_seed_resolver(namespace)
+    return namespace["run"]()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
