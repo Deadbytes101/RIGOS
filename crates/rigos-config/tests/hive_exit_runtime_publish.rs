@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::fs;
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -81,15 +81,9 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
         }),
     );
 
-    let renderer = repo_path(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-render",
-    );
-    let publisher = repo_path(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-publish",
-    );
-    let gate = repo_path(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-gate",
-    );
+    let renderer = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-render");
+    let publisher = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-publish");
+    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-gate");
     let renderer_wrapper = root.join("renderer");
     fs::write(
         &renderer_wrapper,
@@ -99,7 +93,10 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
     fs::set_permissions(&renderer_wrapper, fs::Permissions::from_mode(0o755)).unwrap();
 
     let jq = Command::new("jq").arg("--version").status().unwrap();
-    assert!(jq.success(), "jq is required by runtime publication authority");
+    assert!(
+        jq.success(),
+        "jq is required by runtime publication authority"
+    );
 
     let result = Command::new("sh")
         .arg(&publisher)
@@ -120,7 +117,12 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
     assert_eq!(private["cpu"]["rx"], serde_json::json!([-1, -1]));
 
     let public = read_json(&runtime.join("xmrig-public.json"));
-    let public_keys = public.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    let public_keys = public
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
     assert_eq!(
         public_keys,
         vec![
@@ -150,7 +152,10 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
         "WORKER_SENTINEL",
         "TOKEN_SENTINEL",
     ] {
-        assert!(!public_text.contains(sentinel), "public view leaked {sentinel}");
+        assert!(
+            !public_text.contains(sentinel),
+            "public view leaked {sentinel}"
+        );
     }
 
     let status = read_json(&runtime.join("runtime-config-status.json"));
@@ -182,7 +187,10 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .filter(|name| name.starts_with('.'))
         .collect::<Vec<_>>();
-    assert!(leftovers.is_empty(), "temporary runtime files remain: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "temporary runtime files remain: {leftovers:?}"
+    );
 
     let allowed = Command::new("python3")
         .arg(&gate)
