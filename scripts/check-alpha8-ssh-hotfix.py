@@ -7,6 +7,8 @@ POLICY = ROOT / "build/usb/includes.chroot/etc/ssh/sshd_config.d/00-rigos.conf"
 PACKAGES = ROOT / "build/usb/package-lists/rigos.list.chroot"
 HOOK = ROOT / "build/usb/hooks/010-rigos.chroot"
 DOCKERFILE = ROOT / "build/usb/Dockerfile"
+RECOVERY_UNIT = ROOT / "build/usb/includes.chroot/etc/systemd/system/rigos-recovery-access.service"
+RECOVERY_GATE = ROOT / "build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify"
 EXPECTED_POLICY_SHA256 = "d59b6bcc078a047d1f1cc90ef6ed9205476d91f874be809009bdd442ef66b8c3"
 
 
@@ -39,7 +41,28 @@ def main() -> int:
         raise RuntimeError("builder entrypoint must not use a login shell")
     if "cargo --version" not in dockerfile or "rustc --version" not in dockerfile:
         raise RuntimeError("builder toolchain verification is missing")
-    print("RIGOS Alpha8 SSH hotfix verification passed")
+
+    recovery_unit = RECOVERY_UNIT.read_text(encoding="utf-8")
+    required_unit_lines = (
+        "Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service ssh.service",
+        "SuccessExitStatus=1",
+        "ExecStartPost=/usr/bin/python3 /usr/lib/rigos/rigos-recovery-access-verify",
+    )
+    for required in required_unit_lines:
+        if required not in recovery_unit:
+            raise RuntimeError(f"recovery access hotfix wiring is missing: {required}")
+
+    recovery_gate = RECOVERY_GATE.read_text(encoding="utf-8")
+    compile(recovery_gate, str(RECOVERY_GATE), "exec")
+    for required in (
+        'status.get("boot_id") != boot_id',
+        'status.get("local_console_access") is not True',
+        'status.get("credential_persisted") is not True',
+    ):
+        if required not in recovery_gate:
+            raise RuntimeError(f"recovery access validator contract is missing: {required}")
+
+    print("RIGOS Alpha8 SSH and recovery hotfix verification passed")
     return 0
 
 
