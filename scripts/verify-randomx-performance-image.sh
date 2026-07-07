@@ -31,24 +31,36 @@ mount -o ro "$loop" "$temporary/root-a"
 squashfs="$temporary/root-a/live/filesystem.squashfs"
 [[ -f "$squashfs" ]] || die 'ROOT_A squashfs is missing'
 
+unsquashfs -ll "$squashfs" \
+    | grep -Eq 'squashfs-root/(usr/)?lib/modules/.*/kernel/arch/x86/kernel/msr\.ko(\.(xz|zst|gz))?$' \
+    || die 'kernel MSR module is missing from squashfs'
+
 unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
-    usr/bin/python3 usr/bin/python3.11 usr/sbin/modprobe \
-    usr/lib/rigos/rigos-randomx-msr \
+    usr/bin/python3 usr/bin/python3.11 usr/bin/kmod usr/sbin/modprobe \
+    usr/lib/rigos/rigos-randomx-msr usr/lib/rigos/rigos-miner-gate \
     etc/systemd/system/rigos-randomx-msr.service \
     etc/systemd/system/rigos-miner.service \
     etc/systemd/system/rigos-miner.service.d/randomx-msr.conf \
+    etc/systemd/system/multi-user.target.wants/rigos-randomx-msr.service \
     >/dev/null
 
 root="$temporary/squash"
 [[ -x "$root/usr/bin/python3" ]] || die 'Python runtime for MSR authority is missing'
-[[ -x "$root/usr/sbin/modprobe" ]] || die 'modprobe runtime for MSR authority is missing'
+[[ -x "$root/usr/bin/kmod" ]] || die 'kmod runtime for MSR authority is missing'
+[[ -L "$root/usr/sbin/modprobe" || -x "$root/usr/sbin/modprobe" ]] || die 'modprobe entrypoint is missing'
 [[ -f "$root/usr/lib/rigos/rigos-randomx-msr" ]] || die 'RandomX MSR authority is missing'
-python3 -m py_compile "$root/usr/lib/rigos/rigos-randomx-msr"
+[[ -f "$root/usr/lib/rigos/rigos-miner-gate" ]] || die 'miner safety gate is missing'
+[[ -L "$root/etc/systemd/system/multi-user.target.wants/rigos-randomx-msr.service" ]] \
+    || die 'RandomX MSR authority is not enabled in the appliance'
+python3 -m py_compile \
+    "$root/usr/lib/rigos/rigos-randomx-msr" \
+    "$root/usr/lib/rigos/rigos-miner-gate"
 
 service="$root/etc/systemd/system/rigos-randomx-msr.service"
 dropin="$root/etc/systemd/system/rigos-miner.service.d/randomx-msr.conf"
 miner="$root/etc/systemd/system/rigos-miner.service"
 authority="$root/usr/lib/rigos/rigos-randomx-msr"
+miner_gate="$root/usr/lib/rigos/rigos-miner-gate"
 
 for required in \
     'ExecStartPre=-/usr/sbin/modprobe msr' \
@@ -63,9 +75,11 @@ done
 grep -Fqx 'Wants=rigos-randomx-msr.service' "$dropin" || die 'miner does not want optional MSR authority'
 grep -Fqx 'After=rigos-randomx-msr.service' "$dropin" || die 'miner is not ordered after MSR authority'
 if grep -Fq 'Requires=rigos-randomx-msr.service' "$dropin"; then
-    die 'optional MSR optimization incorrectly blocks the miner'
+    die 'optional MSR optimization incorrectly blocks the baseline miner path'
 fi
 grep -Fqx 'User=rigos' "$miner" || die 'miner no longer runs as the unprivileged rigos user'
+grep -Fqx 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' "$miner" \
+    || die 'miner safety gate is not wired'
 
 for required in \
     'SUPPORTED_CPUS = {("GenuineIntel", 6, 42)}' \
@@ -76,6 +90,16 @@ for required in \
     'stale_state_discarded'
 do
     grep -Fq "$required" "$authority" || die "MSR authority contract is missing: $required"
+done
+
+for required in \
+    'PRODUCTION_STATE = Path("/var/lib/rigos")' \
+    'validate_msr_authority' \
+    'randomx_msr_status_stale' \
+    'randomx_msr_restore_state_missing' \
+    'randomx_msr_authority_unsafe'
+do
+    grep -Fq "$required" "$miner_gate" || die "miner MSR safety contract is missing: $required"
 done
 
 printf 'RIGOS RandomX performance image verification passed: %s\n' "$image"
