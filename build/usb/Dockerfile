@@ -14,4 +14,4 @@ RUN command -v cargo \
  && rustc --version
 
 WORKDIR /source
-ENTRYPOINT ["/bin/bash", "-c", "python3 ./scripts/check-alpha8-ssh-hotfix.py && exec ./scripts/build-usb-image.sh"]
+ENTRYPOINT ["/bin/bash", "./scripts/build-usb-image-entrypoint.sh"]
