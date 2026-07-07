@@ -1,0 +1,32 @@
+#!/bin/sh
+# Repository contract: LF line endings are required for WSL and appliance execution.
+set -eu
+
+runtime=${RIGOS_RUNTIME_PATH:-/run/rigos}
+publisher=${RIGOS_RUNTIME_PUBLISHER:-/usr/lib/rigos/rigos-runtime-publish}
+mkdir -p "$runtime"
+chmod 0755 "$runtime"
+
+lock="$runtime/.runtime-publish.lock"
+exec 9>"$lock"
+chmod 0600 "$lock"
+if ! flock -x -w 30 9; then
+    echo 'rigos-runtime-authority: publication lock timeout' >&2
+    exit 75
+fi
+
+cleanup_stale() {
+    find -P "$runtime" -mindepth 1 -maxdepth 1 -type d \
+        -name '.render-stage.*' -exec rm -rf -- {} +
+    find -P "$runtime" -mindepth 1 -maxdepth 1 -type f \
+        \( -name '.xmrig-public.*' \
+           -o -name '.runtime-status.*' \
+           -o -name '.xmrig-runtime.*' \) \
+        -delete
+}
+
+cleanup_stale
+status=0
+"$publisher" || status=$?
+cleanup_stale
+exit "$status"

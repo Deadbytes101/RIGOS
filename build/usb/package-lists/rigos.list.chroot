@@ -1,8 +1,10 @@
+# Runtime dependencies required by boot-time RIGOS authorities.
 ca-certificates
 curl
 e2fsprogs
 fdisk
 gdisk
+jq
 live-boot
 live-config
 linux-image-amd64

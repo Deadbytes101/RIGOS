@@ -1,0 +1,268 @@
+#!/usr/bin/python3
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
+BOOT_ID = Path(os.environ.get("RIGOS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
+CURRENT = Path(os.environ.get("RIGOS_CURRENT_REVISION_PATH", "/var/lib/rigos/current"))
+PROC = Path(os.environ.get("RIGOS_PROC_ROOT", "/proc"))
+SYSTEMCTL = os.environ.get("RIGOS_SYSTEMCTL", "/usr/bin/systemctl")
+JOURNALCTL = os.environ.get("RIGOS_JOURNALCTL", "/usr/bin/journalctl")
+STATUS = RUNTIME / "miner-health-status.json"
+WINDOW_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_WINDOW_SECONDS", "180"))
+WARMUP_SECONDS = int(os.environ.get("RIGOS_MINER_WARMUP_SECONDS", "240"))
+MAX_JOURNAL_LINES = 500
+
+EXTERNAL_MARKERS = (
+    "connect error",
+    "connection refused",
+    "connection reset",
+    "network error",
+    "dns error",
+    "no active pools",
+    "operation timed out",
+    "connection timeout",
+)
+SHARE_RE = re.compile(r"accepted \((\d+)/(\d+)\)")
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    data = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def command(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        argv,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+        check=False,
+    )
+
+
+def systemd_properties() -> dict[str, str]:
+    result = command([
+        SYSTEMCTL,
+        "show",
+        "rigos-miner.service",
+        "--property=ActiveState",
+        "--property=SubState",
+        "--property=MainPID",
+        "--property=NRestarts",
+        "--property=Result",
+        "--property=ExecMainStatus",
+        "--property=ActiveEnterTimestampMonotonic",
+        "--no-pager",
+    ])
+    if result.returncode != 0:
+        raise RuntimeError("systemctl_show_failed")
+    values = {}
+    for line in result.stdout.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value
+    return values
+
+
+def current_revision() -> str | None:
+    try:
+        return CURRENT.resolve(strict=True).name
+    except OSError:
+        return None
+
+
+def runtime_revision() -> tuple[str | None, str | None]:
+    try:
+        value = json.loads((RUNTIME / "runtime-config-status.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(value, dict):
+        return None, None
+    return value.get("outcome"), value.get("revision")
+
+
+def process_state(pid: int) -> str | None:
+    try:
+        raw = (PROC / str(pid) / "stat").read_text(encoding="ascii")
+    except (OSError, UnicodeError):
+        return None
+    end = raw.rfind(")")
+    if end < 0:
+        return None
+    fields = raw[end + 1 :].split()
+    return fields[0] if fields else None
+
+
+def active_seconds(properties: dict[str, str]) -> int | None:
+    try:
+        entered = int(properties.get("ActiveEnterTimestampMonotonic", "0"))
+        uptime = float((PROC / "uptime").read_text(encoding="ascii").split()[0])
+    except (OSError, UnicodeError, ValueError, IndexError):
+        return None
+    if entered <= 0:
+        return None
+    return max(0, int(uptime - entered / 1_000_000))
+
+
+def recent_journal() -> tuple[str, bool]:
+    result = command([
+        JOURNALCTL,
+        "-b",
+        "-u",
+        "rigos-miner.service",
+        "--since",
+        f"-{WINDOW_SECONDS} seconds",
+        "--lines",
+        str(MAX_JOURNAL_LINES),
+        "--no-pager",
+        "-o",
+        "cat",
+    ])
+    return result.stdout, result.returncode == 0
+
+
+def last_share_counts(text: str) -> tuple[int | None, int | None]:
+    matches = SHARE_RE.findall(text)
+    if not matches:
+        return None, None
+    accepted, rejected = matches[-1]
+    return int(accepted), int(rejected)
+
+
+def classify(
+    properties: dict[str, str],
+    proc_state: str | None,
+    active_for: int | None,
+    canonical_revision: str | None,
+    rendered_outcome: str | None,
+    rendered_revision: str | None,
+    journal: str,
+    journal_available: bool,
+) -> tuple[str, str | None]:
+    if properties.get("ActiveState") != "active" or properties.get("SubState") != "running":
+        return "failed", "miner_unit_not_running"
+    try:
+        pid = int(properties.get("MainPID", "0"))
+    except ValueError:
+        pid = 0
+    if pid <= 0 or proc_state is None or proc_state in ("X", "Z"):
+        return "failed", "miner_process_unavailable"
+    if canonical_revision is None:
+        return "blocked", "current_revision_unavailable"
+    if rendered_outcome != "ready" or rendered_revision != canonical_revision:
+        return "blocked", "runtime_revision_mismatch"
+    if not journal_available:
+        return "unknown", "journal_unavailable"
+
+    lowered = journal.lower()
+    if "miner    speed" in lowered:
+        return "ready", None
+    if any(marker in lowered for marker in EXTERNAL_MARKERS):
+        return "waiting_external", "pool_or_network_unavailable"
+    if active_for is not None and active_for < WARMUP_SECONDS:
+        return "warming_up", None
+    return "degraded", "no_recent_speed_evidence"
+
+
+def main() -> int:
+    try:
+        boot_id = BOOT_ID.read_text(encoding="ascii").strip()
+        if not boot_id:
+            raise RuntimeError("boot_id_unavailable")
+        properties = systemd_properties()
+        try:
+            pid = int(properties.get("MainPID", "0"))
+        except ValueError:
+            pid = 0
+        proc_state = process_state(pid) if pid > 0 else None
+        active_for = active_seconds(properties)
+        canonical = current_revision()
+        rendered_outcome, rendered_revision = runtime_revision()
+        journal, journal_available = recent_journal()
+        accepted, rejected = last_share_counts(journal)
+        state, reason = classify(
+            properties,
+            proc_state,
+            active_for,
+            canonical,
+            rendered_outcome,
+            rendered_revision,
+            journal,
+            journal_available,
+        )
+        lowered_journal = journal.lower()
+        value = {
+            "schema": "rigos.miner-health-status/v1",
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
+            "boot_id": boot_id,
+            "state": state,
+            "reason": reason,
+            "unit": {
+                "active_state": properties.get("ActiveState"),
+                "sub_state": properties.get("SubState"),
+                "result": properties.get("Result"),
+                "main_pid": pid or None,
+                "process_state": proc_state,
+                "restart_count": int(properties.get("NRestarts", "0") or 0),
+                "exec_main_status": int(properties.get("ExecMainStatus", "0") or 0),
+                "active_seconds": active_for,
+            },
+            "config": {
+                "current_revision": canonical,
+                "runtime_outcome": rendered_outcome,
+                "runtime_revision": rendered_revision,
+            },
+            "evidence": {
+                "window_seconds": WINDOW_SECONDS,
+                "journal_available": journal_available,
+                "journal_line_limit": MAX_JOURNAL_LINES,
+                "recent_speed": "miner    speed" in lowered_journal,
+                "external_wait_marker": any(
+                    marker in lowered_journal for marker in EXTERNAL_MARKERS
+                ),
+                "accepted_shares": accepted,
+                "rejected_shares": rejected,
+            },
+            "remediation": "observe_only",
+        }
+        atomic_json(STATUS, value)
+        print(json.dumps({
+            "schema": "rigos.miner-health-observer/v1",
+            "state": state,
+            "reason": reason,
+            "remediation": "observe_only",
+        }, sort_keys=True))
+        return 0
+    except (OSError, UnicodeError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+        print(f"rigos-miner-health: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
