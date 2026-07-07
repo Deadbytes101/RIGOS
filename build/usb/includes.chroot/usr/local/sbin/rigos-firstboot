@@ -10,12 +10,13 @@ from pathlib import Path
 os.environ.setdefault('TERM', 'linux')
 STATE = Path('/var/lib/rigos')
 ENGINE = '/usr/lib/rigos/rigos-config'
+IDENTITY_SEED = '/usr/lib/rigos/rigos-identity-seed'
 STATE_STATUS = Path('/run/rigos/state-status.json')
 UI_STATUS = Path(os.environ.get('RIGOS_FIRSTBOOT_UI_STATUS', '/var/lib/rigos/firstboot-ui-status.json'))
 BOOT_ID_PATH = Path(os.environ.get('RIGOS_FIRSTBOOT_BOOT_ID', '/proc/sys/kernel/random/boot_id'))
 WHIPTAIL = os.environ.get('RIGOS_WHIPTAIL', '/usr/bin/whiptail')
 SYSTEMD_CAT = os.environ.get('RIGOS_SYSTEMD_CAT', '/usr/bin/systemd-cat')
-HOST_RE = re.compile('^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$')
+HOST_RE = re.compile('^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9a-fA-F:]+$')
 SLUG_RE = re.compile('^[A-Za-z0-9][A-Za-z0-9-]{0,63}$')
 CURRENT_STAGE = 'startup'
 CURRENT_DIALOG = None
@@ -170,6 +171,31 @@ def diagnostic_text(error: dict) -> str:
     parts.append(error.get('message', 'Invalid configuration'))
     return '\n'.join(parts)
 
+def load_identity_seed(alias: str) -> dict | None:
+    if not SLUG_RE.fullmatch(alias):
+        return None
+    try:
+        result = subprocess.run([IDENTITY_SEED, '--alias', alias], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError:
+        return None
+    if result.returncode == 1:
+        return None
+    if result.returncode != 0:
+        try:
+            error = json.loads((result.stderr or '').strip().splitlines()[-1])
+        except (json.JSONDecodeError, IndexError):
+            error = {'message': 'identity seed resolver failed'}
+        dialog('--msgbox', f"Identity seed rejected\n\nAlias {alias}\n{error.get('message', 'invalid identity seed')}", '14', '72', stage='identity_seed_invalid')
+        raise FirstbootFailure('identity_seed_invalid', result.returncode)
+    try:
+        identity = json.loads(result.stdout.strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        raise FirstbootFailure('identity_seed_invalid', result.returncode)
+    value = identity.get('value')
+    if identity.get('schema') != 'rigos.identity/v1' or identity.get('alias') != alias or identity.get('kind') != 'mining_identity' or not isinstance(value, str) or not value or len(value) > 512 or any((character.isspace() or ord(character) < 32 for character in value)):
+        raise FirstbootFailure('identity_seed_invalid', result.returncode)
+    return identity
+
 def manual_proposal() -> tuple[dict, str, str]:
     node = prompt('node_name', 'Node name', 'rig01').strip()
     timezone = prompt('timezone', 'IANA timezone', 'UTC').strip()
@@ -264,6 +290,13 @@ def resolve_identity(proposal: dict) -> dict:
     if exact and confirm(f"Reuse local identity alias {requested}\n\nValue suffix {exact['value'][-6:].rjust(len(exact['value'][-6:]) + 4, '*')}"):
         proposal['flight_sheet']['identity_ref'] = exact['alias']
         return exact
+    seeded_identity = load_identity_seed(requested)
+    if seeded_identity:
+        set_stage('identity_seed_confirmation')
+        if confirm(f"Use USB identity seed\n\nAlias {seeded_identity['alias']}\nValue suffix ****{seeded_identity['value'][-4:]}\n\nThe full value will be copied once into local persistent state and will not be written back to the USB."):
+            proposal['flight_sheet']['identity_ref'] = seeded_identity['alias']
+            return seeded_identity
+        raise FirstbootCancelled('identity_seed_not_confirmed')
     aliases = [(f"existing:{item['alias']}", f"Use {item['alias']} suffix ****{item['value'][-4:]}") for item in candidates]
     choices = aliases + [('new', 'Add a new local identity'), ('none', 'Leave mining unconfigured'), ('reboot', 'Cancel and reboot')]
     set_stage('identity_selection')
@@ -362,13 +395,8 @@ def run() -> int:
     except RebootRequested:
         record_event('cancelled', 'reboot_requested')
         return 0
-    except Exception as error:
-        reason = f'unexpected_{type(error).__name__}'
-        record_event('failed', reason)
-        print(f'RIGOS firstboot failed stage={CURRENT_STAGE} reason={reason}', file=sys.stderr, flush=True)
-        return 20
-    set_stage('complete')
     record_event('ready', 'firstboot_completed')
     return 0
+
 if __name__ == '__main__':
     raise SystemExit(run())
