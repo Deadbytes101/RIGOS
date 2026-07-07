@@ -1,0 +1,13 @@
+[Unit]
+Description=Observe RIGOS remote access truth
+After=network-online.target ssh.service rigos-recovery-access.service
+Wants=network-online.target
+Requires=ssh.service rigos-recovery-access.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/rigos/rigos-remote-access-probe
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
