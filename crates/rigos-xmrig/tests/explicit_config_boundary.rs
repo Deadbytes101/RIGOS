@@ -2,7 +2,6 @@ use rigos_machine::MachineContext;
 use rigos_miner::MinerBackend;
 use rigos_xmrig::{ConfigParseState, XmrigBackend};
 use std::fs;
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -55,7 +54,7 @@ fn explicit_public_config_wins_when_runtime_uses_xmrig_short_config_option() {
     let expected_path = public.to_string_lossy().into_owned();
     let backend = XmrigBackend {
         explicit_executable: None,
-        explicit_config: Some(PathBuf::from(&public)),
+        explicit_config: Some(public.clone()),
         probe_version: false,
     };
     let result = backend.discover(&MachineContext {
