@@ -1,0 +1,10 @@
+[Unit]
+Description=Observe RIGOS SSH listener truth
+After=network-online.target ssh.service rigos-recovery-access.service
+Wants=network-online.target
+Requires=ssh.service rigos-recovery-access.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/rigos/rigos-remote-access-probe
+RemainAfterExit=yes
