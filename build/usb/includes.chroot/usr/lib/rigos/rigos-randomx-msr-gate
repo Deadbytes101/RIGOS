@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+# Repository contract: LF line endings are required for appliance execution.
+import sys
+
+
+def main() -> int:
+    return 20
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
