@@ -27,9 +27,7 @@ fn recovery_gate_accepts_only_current_persisted_credential_truth() {
     });
     fs::write(&status, serde_json::to_vec(&valid).unwrap()).unwrap();
 
-    let gate = repo_path(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify",
-    );
+    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify");
     let run = |runtime_path: &PathBuf, boot_path: &PathBuf| {
         Command::new("python3")
             .arg(&gate)
@@ -75,7 +73,7 @@ fn recovery_service_accepts_legacy_exit_one_only_with_post_validation() {
         "Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service ssh.service"
     ));
     assert!(unit.contains("SuccessExitStatus=1"));
-    assert!(unit.contains(
-        "ExecStartPost=/usr/bin/python3 /usr/lib/rigos/rigos-recovery-access-verify"
-    ));
+    assert!(
+        unit.contains("ExecStartPost=/usr/bin/python3 /usr/lib/rigos/rigos-recovery-access-verify")
+    );
 }
