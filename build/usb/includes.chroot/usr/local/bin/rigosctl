@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+for argument in "$@"; do
+    case "$argument" in
+        --xmrig-config|--xmrig-config=*)
+            exec /usr/lib/rigos/rigosctl "$@"
+            ;;
+    esac
+done
+
+exec /usr/lib/rigos/rigosctl \
+    --xmrig-config /run/rigos/xmrig-public.json \
+    "$@"
