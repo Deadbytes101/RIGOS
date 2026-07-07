@@ -1,14 +1,62 @@
-name: Disabled Alpha8 PR Command
+name: Hive Exit Review Command
 
 on:
-  workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
-  disabled:
-    if: false
+  apply:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.number == 13 &&
+      github.event.comment.body == '/apply-hive-exit-review-fixes' &&
+      github.event.comment.user.login == 'Deadbytes101'
     runs-on: ubuntu-latest
     steps:
-      - run: echo disabled
+      - uses: actions/checkout@v4
+        with:
+          ref: stability/hive-exit-gates
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.85.1
+        with:
+          components: rustfmt
+
+      - name: Apply exact hostile-review patches
+        run: python3 scripts/apply-hive-exit-review-fixes.py
+
+      - name: Verify patched sources
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p rigos-xmrig --lib
+          python3 scripts/check-alpha8-runtime.py
+          git diff --check
+
+      - name: Commit verified fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rigos-xmrig/src/lib.rs \
+                  build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-render \
+                  scripts/check-alpha8-runtime.py
+          git diff --cached --quiet && exit 0
+          git commit -m "stability enforce public inspector boundary"
+          git push origin HEAD:stability/hive-exit-gates
+
+      - name: Report success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 13 --body "Hostile review fixes applied and targeted verification passed."
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 13 --body "Hostile review patch workflow failed. Inspect the Actions log; no verified commit was promoted."
