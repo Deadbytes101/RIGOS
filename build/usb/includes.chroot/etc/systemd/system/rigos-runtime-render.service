@@ -1,5 +1,5 @@
 [Unit]
-Description=Render RIGOS runtime miner configuration
+Description=Render and publish RIGOS runtime miner configuration
 After=rigos-state-ready.service rigos-profile-apply.service
 Requires=rigos-state-ready.service rigos-profile-apply.service
 Before=rigos-hugepages.service rigos-miner.service
@@ -7,7 +7,7 @@ ConditionPathExists=/var/lib/rigos/current
 
 [Service]
 Type=oneshot
-ExecStart=/usr/lib/rigos/rigos-runtime-render
+ExecStart=/usr/lib/rigos/rigos-runtime-publish
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
