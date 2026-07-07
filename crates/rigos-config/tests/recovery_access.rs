@@ -143,10 +143,20 @@ fn alpha8_runtime_authority_is_exact_and_fail_closed() {
 fn alpha8_appliance_wiring_is_explicit() {
     let hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot"))
         .expect("read appliance hook");
-    assert!(hook.contains("ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd"));
-    assert!(hook.contains("ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl"));
+    assert!(hook.contains("chmod 0755 /usr/local/bin/rigosd /usr/local/bin/rigosctl"));
+    assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd"));
+    assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl"));
     assert!(hook.contains("rigos-runtime-render.service"));
     assert!(hook.contains("systemctl disable ssh.socket"));
+
+    for command in ["rigosd", "rigosctl"] {
+        let wrapper = fs::read_to_string(repo_path(&format!(
+            "build/usb/includes.chroot/usr/local/bin/{command}"
+        )))
+        .expect("read inspector wrapper");
+        assert!(wrapper.contains("--xmrig-config /run/rigos/xmrig-public.json"));
+        assert!(wrapper.contains(&format!("exec /usr/lib/rigos/{command}")));
+    }
 
     let miner = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/rigos-miner.service.d/runtime-render.conf",
