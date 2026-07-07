@@ -2,11 +2,13 @@
 Description=Establish local RIGOS recovery access
 After=rigos-state.service
 Wants=rigos-state.service
-Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service
+Before=rigos-state-ready.service rigos-firstboot.service getty@tty1.service ssh.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/rigos-recovery-access
+SuccessExitStatus=1
+ExecStartPost=/usr/bin/python3 /usr/lib/rigos/rigos-recovery-access-verify
 StandardInput=tty
 StandardOutput=tty
 StandardError=tty
