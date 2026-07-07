@@ -1,11 +1,16 @@
 FROM docker.io/library/rust:1.85.1-bookworm
 
+ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"
+
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl dosfstools e2fsprogs fdisk gdisk git grub-efi-amd64-bin \
       grub-pc-bin grub2-common isolinux jq live-build mtools ovmf parted qemu-system-x86 \
       ripgrep rsync squashfs-tools syslinux-common syslinux-utils udev uuid-runtime xorriso zstd \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && command -v cargo \
+ && cargo --version \
+ && rustc --version
 
 WORKDIR /source
-ENTRYPOINT ["bash", "-lc", "python3 ./scripts/check-alpha8-ssh-hotfix.py && exec ./scripts/build-usb-image.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "python3 ./scripts/check-alpha8-ssh-hotfix.py && exec ./scripts/build-usb-image.sh"]
