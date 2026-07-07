@@ -1,0 +1,6 @@
+{
+  "schema": "rigos.identity-seed/v1",
+  "alias": "main-xmr",
+  "kind": "mining_identity",
+  "value": "REPLACE_WITH_PUBLIC_MINING_IDENTITY"
+}
