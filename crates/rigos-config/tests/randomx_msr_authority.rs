@@ -76,6 +76,40 @@ fn run_authority(root: &Path, command: &str) -> std::process::Output {
         .unwrap()
 }
 
+fn prepare_miner_gate_fixture(root: &Path) -> PathBuf {
+    let state = root.join("miner-state");
+    let revision = state.join("revisions/r1");
+    fs::create_dir_all(&revision).unwrap();
+    symlink("revisions/r1", state.join("current")).unwrap();
+    fs::write(
+        revision.join("policy.json"),
+        r#"{"schema":"rigos.policy/v1","miner_start_mode":"on_boot"}"#,
+    )
+    .unwrap();
+    fs::write(revision.join("xmrig.json"), r#"{"autosave":false}"#).unwrap();
+    fs::write(root.join("cmdline"), "boot=live console=tty0\n").unwrap();
+    state
+}
+
+fn run_miner_gate(root: &Path) -> std::process::Output {
+    let state = prepare_miner_gate_fixture(root);
+    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate");
+    Command::new("/usr/bin/python3")
+        .arg(gate)
+        .arg("--state")
+        .arg(state)
+        .arg("--cmdline")
+        .arg(root.join("cmdline"))
+        .arg("--msr-status")
+        .arg(root.join("run/status.json"))
+        .arg("--msr-state")
+        .arg(root.join("run/state.json"))
+        .arg("--boot-id")
+        .arg(root.join("boot_id"))
+        .output()
+        .unwrap()
+}
+
 fn status(root: &Path) -> Value {
     serde_json::from_slice(&fs::read(root.join("run/status.json")).unwrap()).unwrap()
 }
@@ -94,6 +128,10 @@ fn source_wiring_is_optional_reversible_and_narrow() {
         fs::read_to_string(repo_path("build/usb/package-lists/rigos.list.chroot")).unwrap();
     let authority = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/usr/lib/rigos/rigos-randomx-msr",
+    ))
+    .unwrap();
+    let miner_gate = fs::read_to_string(repo_path(
+        "build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate",
     ))
     .unwrap();
 
@@ -116,6 +154,10 @@ fn source_wiring_is_optional_reversible_and_narrow() {
     assert!(authority.contains("apply_failed_rolled_back"));
     assert!(authority.contains("apply_failed_rollback_incomplete"));
     assert!(authority.contains("stale_state_discarded"));
+    assert!(miner_gate.contains("validate_msr_authority"));
+    assert!(miner_gate.contains("randomx_msr_authority_unsafe"));
+    assert!(miner_gate.contains("randomx_msr_status_stale"));
+    assert!(miner_gate.contains("randomx_msr_restore_state_missing"));
 }
 
 #[test]
@@ -152,6 +194,13 @@ fn supported_cpu_apply_is_idempotent_and_restore_recovers_original_values() {
             .mode()
             & 0o777,
         0o600
+    );
+
+    let gate = run_miner_gate(&root);
+    assert!(
+        gate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&gate.stderr)
     );
 
     let repeated = run_authority(&root, "apply");
@@ -199,6 +248,13 @@ fn unsupported_cpu_is_truthful_and_never_requires_msr_devices() {
     assert_eq!(value["reason"], "cpu_not_allowlisted");
     assert!(!root.join("run/state.json").exists());
 
+    let gate = run_miner_gate(&root);
+    assert!(
+        gate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&gate.stderr)
+    );
+
     let _ = fs::remove_dir_all(root);
 }
 
@@ -231,6 +287,12 @@ fn partial_write_failure_rolls_back_every_recoverable_cpu_and_keeps_state() {
     assert_eq!(value["rollback"]["attempted"], true);
     assert_eq!(value["rollback"]["complete"], false);
     assert!(root.join("run/state.json").exists());
+
+    let gate = run_miner_gate(&root);
+    assert_eq!(gate.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&gate.stderr).contains("randomx_msr_authority_unsafe")
+    );
 
     let _ = fs::remove_dir_all(root);
 }
