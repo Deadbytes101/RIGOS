@@ -13,6 +13,7 @@ fn image_verifier_requires_runtime_authority_and_stability_bytes() {
 
     for required in [
         "usr/lib/rigos/rigos-runtime-publish",
+        "usr/lib/rigos/rigos-runtime-authority",
         "usr/lib/rigos/rigos-miner-health",
         "usr/local/bin/rigosd",
         "usr/local/bin/rigosctl",
@@ -20,10 +21,11 @@ fn image_verifier_requires_runtime_authority_and_stability_bytes() {
         "etc/systemd/system/rigos-miner.service.d/runtime-render.conf",
         "etc/systemd/system/rigos-miner.service.d/stability.conf",
         "etc/systemd/system/rigos-miner-health.timer",
-        "ExecStart=/usr/lib/rigos/rigos-runtime-publish",
-        "ExecCondition=+/usr/lib/rigos/rigos-runtime-publish",
+        "ExecStart=/usr/lib/rigos/rigos-runtime-authority",
+        "ExecCondition=+/usr/lib/rigos/rigos-runtime-authority",
         "ExecStart=/usr/lib/rigos/xmrig -c /run/rigos/xmrig.json",
         "--xmrig-config /run/rigos/xmrig-public.json",
+        "flock -x -w 30",
         "construction: \"allowlist\"",
         "StartLimitBurst=5",
     ] {
