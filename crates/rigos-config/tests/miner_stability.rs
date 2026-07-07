@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::fs;
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use uuid::Uuid;
@@ -86,14 +86,8 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
     let systemctl = root.join("systemctl");
     let journalctl = root.join("journalctl");
     let journalctl_fail = root.join("journalctl-fail");
-    write_executable(
-        &systemctl,
-        "#!/bin/sh\ncat \"$RIGOS_SYSTEMCTL_FIXTURE\"\n",
-    );
-    write_executable(
-        &journalctl,
-        "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n",
-    );
+    write_executable(&systemctl, "#!/bin/sh\ncat \"$RIGOS_SYSTEMCTL_FIXTURE\"\n");
+    write_executable(&journalctl, "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n");
     write_executable(&journalctl_fail, "#!/bin/sh\nexit 1\n");
 
     fs::write(
