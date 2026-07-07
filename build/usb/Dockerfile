@@ -8,4 +8,4 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /source
-ENTRYPOINT ["./scripts/build-usb-image.sh"]
+ENTRYPOINT ["bash", "-lc", "python3 ./scripts/check-alpha8-ssh-hotfix.py && exec ./scripts/build-usb-image.sh"]
