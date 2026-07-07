@@ -9,8 +9,8 @@ ConditionPathExists=/var/lib/rigos/current
 [Service]
 Type=oneshot
 ExecStartPre=-/usr/sbin/modprobe msr
-ExecStart=/usr/lib/rigos/rigos-randomx-msr apply
-ExecStop=/usr/lib/rigos/rigos-randomx-msr restore
+ExecStart=/usr/bin/python3 /usr/lib/rigos/rigos-randomx-msr apply
+ExecStop=/usr/bin/python3 /usr/lib/rigos/rigos-randomx-msr restore
 RemainAfterExit=yes
 TimeoutStartSec=20s
 TimeoutStopSec=20s
