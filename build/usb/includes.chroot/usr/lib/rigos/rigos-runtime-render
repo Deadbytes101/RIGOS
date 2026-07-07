@@ -102,6 +102,7 @@ def render() -> tuple[dict, dict, dict]:
         exact_threads = threads
     elif threads != "auto":
         raise RuntimeError("threads must be auto or an integer")
+
     public = copy.deepcopy(runtime)
     for pool in public.get("pools", []):
         if isinstance(pool, dict):
@@ -110,11 +111,25 @@ def render() -> tuple[dict, dict, dict]:
     http = public.get("http")
     if isinstance(http, dict):
         http.pop("access-token", None)
+
+    public["algo"] = algorithm
+    if exact_threads is not None:
+        public["threads"] = exact_threads
+    else:
+        public.pop("threads", None)
+    public_randomx = public.get("randomx")
+    if not isinstance(public_randomx, dict):
+        public_randomx = {}
+    huge_pages = cpu.get("huge-pages")
+    if isinstance(huge_pages, bool):
+        public_randomx["huge-pages"] = huge_pages
+    public["randomx"] = public_randomx
     public["rigos-public-view"] = {
         "schema": "rigos.xmrig-public-config/v1",
         "identity_redacted": True,
         "source_revision": current.name,
     }
+
     status = {
         "schema": "rigos.runtime-config-status/v1",
         "outcome": "ready",
