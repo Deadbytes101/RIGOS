@@ -1,3 +1,4 @@
+# Runtime dependencies required by boot-time RIGOS authorities.
 ca-certificates
 curl
 e2fsprogs
