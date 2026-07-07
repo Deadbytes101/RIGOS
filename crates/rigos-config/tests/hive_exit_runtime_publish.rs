@@ -98,7 +98,7 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
         "jq is required by runtime publication authority"
     );
 
-    let result = Command::new("sh")
+    let result = Command::new("/bin/sh")
         .arg(&publisher)
         .env("RIGOS_STATE_PATH", &state)
         .env("RIGOS_RUNTIME_PATH", &runtime)
