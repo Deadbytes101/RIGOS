@@ -9,6 +9,7 @@ It stages bounded regular files in tmpfs before parsing and never sources config
 ```text
 /rigos/rig.conf
 /rigos/flight-sheets/*.json
+/rigos/identities/*.json
 /rigos/import/*.json
 ```
 
@@ -16,11 +17,21 @@ It stages bounded regular files in tmpfs before parsing and never sources config
 
 `FLIGHT_SOURCE` is `native`, `import` or `interactive`. Native and import modes require one safe `FLIGHT_REF`; interactive mode forbids it and never auto-selects a file. `MINER_START_MODE` is `manual` or `on_boot`. Legacy `AUTO_START`, watchdog and split active/import selection keys are rejected.
 
-Flight Sheets describe only an XMRig workload: algorithm, ordered pools, TLS, a local identity reference, worker template and CPU policy. They cannot start services or contain a wallet, pool username, password or cloud credential. See `configs/flight-sheets/xmr-ssl.json`.
+Flight Sheets describe only an XMRig workload: algorithm, ordered pools, TLS, a local identity reference, worker template and CPU policy. They cannot start services or contain a mining identity, pool password or cloud credential. See `configs/flight-sheets/xmr-ssl.json`.
 
 ## Local identities
 
-The operator resolves `identity_ref` on the local TTY. Values are stored only in the verified persistent state under `/var/lib/rigos/identities`, protected from normal diagnostics, and copied only into the restricted runtime `xmrig.json`. Canonical policy stores the alias, not the value.
+A native Flight Sheet names one local alias through `identity_ref`. RIGOS first checks the verified persistent state under `/var/lib/rigos/identities`.
+
+For offline provisioning, the exact verified EFI partition may also provide `/rigos/identities/<alias>.json` using schema `rigos.identity-seed/v1`. The filename and alias must match. The seed must contain exactly `schema`, `alias`, `kind` and `value`; `kind` must be `mining_identity`.
+
+Identity seeds are bounded strict JSON regular files. Symlinks, unknown fields, duplicate members, unsafe filenames, duplicate aliases, whitespace, control characters and oversized values are rejected. The EFI partition is mounted read only with `nodev`, `nosuid` and `noexec` after its boot identity is revalidated.
+
+A valid seed resolves the matching native Flight Sheet without typing the value on tty1. Firstboot displays only the alias and a short suffix, then asks for final confirmation. The committed identity is stored mode `0600` inside the persistent revision and only copied into the restricted runtime `xmrig.json`. Canonical policy stores the alias, not the value.
+
+The EFI partition is not a secret store. Use identity seeding only for a public wallet address or other public pool identity. Never place a private key, seed phrase, password, remote credential or account token there. Remove the seed from EFI after successful provisioning when the public value does not need to remain portable.
+
+If the same alias already exists in persistent state with a different value, RIGOS fails closed and does not replace it. If no matching seed exists, the original local interactive identity flow remains available.
 
 External `wal_id` values remain external references. They are never sent to XMRig. Confirmed mappings are local state and are not copied back to EFI_SYSTEM.
 
