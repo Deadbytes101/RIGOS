@@ -223,7 +223,7 @@ def read_seed_file(path: Path) -> dict:
         info = path.lstat()
     except OSError as error:
         raise fail("identity seed metadata is unavailable", file=name) from error
-    if info.st_mode & stat.S_IFMT(info.st_mode) != stat.S_IFREG or stat.S_ISLNK(info.st_mode):
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
         raise fail("identity seed must be a regular file", file=name)
     if info.st_size > MAX_SEED_BYTES:
         raise fail("identity seed exceeds 4 KiB", file=name)
