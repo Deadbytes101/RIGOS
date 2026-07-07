@@ -10,8 +10,13 @@ fn repo_path(path: &str) -> PathBuf {
 #[test]
 fn image_verifier_requires_runtime_authority_and_stability_bytes() {
     let verifier = fs::read_to_string(repo_path("scripts/verify-usb-appliance.sh")).unwrap();
-    let packages =
-        fs::read_to_string(repo_path("build/usb/package-lists/rigos.list.chroot")).unwrap();
+    let package_path = repo_path("build/usb/package-lists/rigos.list.chroot");
+    let package_bytes = fs::read(&package_path).unwrap();
+    assert!(
+        !package_bytes.contains(&b'\r'),
+        "appliance package list contains CR/CRLF line endings"
+    );
+    let packages = String::from_utf8(package_bytes).unwrap();
 
     assert!(
         packages.lines().any(|line| line.trim() == "jq"),
