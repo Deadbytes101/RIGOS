@@ -2,7 +2,7 @@ name: Hive Exit Review Command
 
 on:
   pull_request_target:
-    types: [labeled]
+    types: [synchronize]
 
 permissions:
   contents: write
@@ -13,9 +13,9 @@ jobs:
   apply:
     if: >-
       github.event.number == 13 &&
-      github.event.label.name == 'stability' &&
       github.event.pull_request.user.login == 'Deadbytes101' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'stability/hive-exit-gates'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
