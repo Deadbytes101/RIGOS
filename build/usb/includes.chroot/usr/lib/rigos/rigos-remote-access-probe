@@ -1,0 +1,99 @@
+#!/usr/bin/python3
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+RUNTIME = Path("/run/rigos")
+STATUS = RUNTIME / "recovery-access-status.json"
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+SSH_PORT = 22
+
+
+def unit_state(action: str, unit: str) -> bool:
+    return subprocess.run(
+        ["/usr/bin/systemctl", action, "--quiet", unit],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def has_listener(path: Path, port: int) -> bool:
+    try:
+        lines = path.read_text(encoding="ascii").splitlines()[1:]
+    except OSError:
+        return False
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 4 or fields[3] != "0A":
+            continue
+        try:
+            observed = int(fields[1].rsplit(":", 1)[1], 16)
+        except (IndexError, ValueError):
+            continue
+        if observed == port:
+            return True
+    return False
+
+
+def fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def main() -> int:
+    boot_id = BOOT_ID.read_text(encoding="ascii").strip()
+    status = json.loads(STATUS.read_text(encoding="utf-8"))
+    if status.get("boot_id") != boot_id:
+        raise RuntimeError("recovery access status belongs to another boot")
+    enabled = unit_state("is-enabled", "ssh.service")
+    active = unit_state("is-active", "ssh.service")
+    ipv4 = has_listener(Path("/proc/net/tcp"), SSH_PORT)
+    ipv6 = has_listener(Path("/proc/net/tcp6"), SSH_PORT)
+    listening = ipv4 or ipv6
+    if enabled and active and listening:
+        remote_access = "active"
+    elif enabled and not listening:
+        remote_access = "enabled_no_listener"
+    elif listening and not active:
+        remote_access = "listener_without_service"
+    else:
+        remote_access = "inactive"
+    operational = (
+        status.get("state_outcome") == "ready"
+        and status.get("local_console_access") is True
+        and remote_access == "active"
+    )
+    status.update(
+        {
+            "mode": "operational" if operational else "recovery",
+            "remote_access": remote_access,
+            "remote_protocol": "ssh",
+            "remote_port": SSH_PORT,
+            "ssh_service_enabled": enabled,
+            "ssh_service_active": active,
+            "ssh_listener_ipv4": ipv4,
+            "ssh_listener_ipv6": ipv6,
+        }
+    )
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=RUNTIME, prefix=".recovery-access-", delete=False
+    ) as stream:
+        json.dump(status, stream, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        temporary = Path(stream.name)
+    temporary.chmod(0o644)
+    os.replace(temporary, STATUS)
+    fsync_directory(RUNTIME)
+    return 0 if operational else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
