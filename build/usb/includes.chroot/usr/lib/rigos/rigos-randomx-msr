@@ -1,0 +1,440 @@
+#!/usr/bin/python3
+# Repository contract: LF line endings are required for appliance execution.
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+import struct
+import sys
+import uuid
+from pathlib import Path
+
+STATUS_SCHEMA = "rigos.randomx-msr-status/v1"
+STATE_SCHEMA = "rigos.randomx-msr-state/v1"
+REGISTER = 0x1A4
+TARGET_VALUE = 0xF
+SUPPORTED_CPUS = {("GenuineIntel", 6, 42)}
+
+
+class AuthorityError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
+
+
+def value_hex(value: int) -> str:
+    return f"0x{value:016x}"
+
+
+def read_trimmed(path: Path, name: str) -> str:
+    try:
+        value = path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as error:
+        raise AuthorityError(f"{name}: {error}") from error
+    if not value:
+        raise AuthorityError(f"{name} is empty")
+    return value
+
+
+def parse_cpu_identity(path: Path) -> tuple[str, int, int]:
+    try:
+        text = path.read_text(encoding="ascii")
+    except (OSError, UnicodeError) as error:
+        raise AuthorityError(f"cpuinfo: {error}") from error
+    first = text.split("\n\n", 1)[0]
+    fields: dict[str, str] = {}
+    for line in first.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        fields[key.strip()] = value.strip()
+    vendor = fields.get("vendor_id")
+    family = fields.get("cpu family")
+    model = fields.get("model")
+    if not vendor or family is None or model is None:
+        raise AuthorityError("cpu identity fields are incomplete")
+    try:
+        return vendor, int(family, 10), int(model, 10)
+    except ValueError as error:
+        raise AuthorityError("cpu family/model is malformed") from error
+
+
+def parse_online_cpus(text: str) -> list[int]:
+    value = text.strip()
+    if not value:
+        raise AuthorityError("online CPU list is empty")
+    cpus: set[int] = set()
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            raise AuthorityError("online CPU list contains an empty item")
+        if "-" in item:
+            start_text, end_text = item.split("-", 1)
+            try:
+                start = int(start_text, 10)
+                end = int(end_text, 10)
+            except ValueError as error:
+                raise AuthorityError("online CPU range is malformed") from error
+            if start < 0 or end < start:
+                raise AuthorityError("online CPU range is invalid")
+            cpus.update(range(start, end + 1))
+        else:
+            try:
+                cpu = int(item, 10)
+            except ValueError as error:
+                raise AuthorityError("online CPU identifier is malformed") from error
+            if cpu < 0:
+                raise AuthorityError("online CPU identifier is invalid")
+            cpus.add(cpu)
+    if not cpus:
+        raise AuthorityError("online CPU list resolved to no CPUs")
+    return sorted(cpus)
+
+
+def msr_path(device_root: Path, cpu: int) -> Path:
+    return device_root / str(cpu) / "msr"
+
+
+def read_msr(device_root: Path, cpu: int, register: int = REGISTER) -> int:
+    path = msr_path(device_root, cpu)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    except OSError as error:
+        raise AuthorityError(f"open {path}: {error}") from error
+    try:
+        data = os.pread(fd, 8, register)
+    except OSError as error:
+        raise AuthorityError(f"read CPU {cpu} MSR {register:#x}: {error}") from error
+    finally:
+        os.close(fd)
+    if len(data) != 8:
+        raise AuthorityError(f"short read from CPU {cpu} MSR {register:#x}")
+    return struct.unpack("<Q", data)[0]
+
+
+def write_msr(device_root: Path, cpu: int, value: int, register: int = REGISTER) -> None:
+    path = msr_path(device_root, cpu)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+    except OSError as error:
+        raise AuthorityError(f"open {path} for write: {error}") from error
+    try:
+        written = os.pwrite(fd, struct.pack("<Q", value), register)
+    except OSError as error:
+        raise AuthorityError(f"write CPU {cpu} MSR {register:#x}: {error}") from error
+    finally:
+        os.close(fd)
+    if written != 8:
+        raise AuthorityError(f"short write to CPU {cpu} MSR {register:#x}")
+
+
+def atomic_json(path: Path, value: dict, mode: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    data = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, mode)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def unlink_synced(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def load_state(path: Path) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise AuthorityError(f"MSR state is unreadable: {error}") from error
+    if not isinstance(value, dict) or value.get("schema") != STATE_SCHEMA:
+        raise AuthorityError("MSR state schema is invalid")
+    if value.get("register") != value_hex(REGISTER):
+        raise AuthorityError("MSR state register is invalid")
+    entries = value.get("cpus")
+    if not isinstance(entries, list) or not entries:
+        raise AuthorityError("MSR state CPU list is invalid")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise AuthorityError("MSR state CPU entry is invalid")
+        if not isinstance(entry.get("cpu"), int) or not isinstance(entry.get("original"), str):
+            raise AuthorityError("MSR state CPU value is invalid")
+        try:
+            int(entry["original"], 16)
+        except ValueError as error:
+            raise AuthorityError("MSR state original value is malformed") from error
+    return value
+
+
+def base_status(boot_id: str, vendor: str | None, family: int | None, model: int | None) -> dict:
+    return {
+        "schema": STATUS_SCHEMA,
+        "generated_at": utc_now(),
+        "boot_id": boot_id,
+        "vendor_id": vendor,
+        "cpu_family": family,
+        "cpu_model": model,
+        "register": value_hex(REGISTER),
+        "target_value": value_hex(TARGET_VALUE),
+    }
+
+
+def publish(status_path: Path, value: dict) -> None:
+    atomic_json(status_path, value, 0o644)
+    print(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def restore_values(device_root: Path, state: dict) -> tuple[bool, list[str], list[dict]]:
+    errors: list[str] = []
+    evidence: list[dict] = []
+    entries = state["cpus"]
+    for entry in entries:
+        cpu = entry["cpu"]
+        original = int(entry["original"], 16)
+        try:
+            write_msr(device_root, cpu, original)
+        except AuthorityError as error:
+            errors.append(str(error))
+    for entry in entries:
+        cpu = entry["cpu"]
+        original = int(entry["original"], 16)
+        try:
+            readback = read_msr(device_root, cpu)
+            evidence.append({
+                "cpu": cpu,
+                "original": value_hex(original),
+                "readback": value_hex(readback),
+            })
+            if readback != original:
+                errors.append(
+                    f"CPU {cpu} restore readback mismatch: expected {value_hex(original)} got {value_hex(readback)}"
+                )
+        except AuthorityError as error:
+            errors.append(str(error))
+    return not errors, errors, evidence
+
+
+def current_values_match_target(device_root: Path, state: dict) -> bool:
+    try:
+        return all(
+            read_msr(device_root, entry["cpu"]) == TARGET_VALUE
+            for entry in state["cpus"]
+        )
+    except AuthorityError:
+        return False
+
+
+def apply(args: argparse.Namespace) -> int:
+    boot_id = read_trimmed(args.boot_id, "boot ID")
+    vendor, family, model = parse_cpu_identity(args.cpuinfo)
+    cpus = parse_online_cpus(read_trimmed(args.online, "online CPU list"))
+    status = base_status(boot_id, vendor, family, model)
+    status["online_cpus"] = cpus
+
+    state = load_state(args.state)
+    if state is not None:
+        if state.get("boot_id") != boot_id:
+            unlink_synced(args.state)
+            state = None
+        elif current_values_match_target(args.device_root, state):
+            status.update({
+                "outcome": "ready",
+                "reason": "already_applied",
+                "cpus": state["cpus"],
+                "rollback": {"attempted": False, "complete": None},
+            })
+            publish(args.status, status)
+            return 0
+        else:
+            restored, errors, evidence = restore_values(args.device_root, state)
+            if not restored:
+                status.update({
+                    "outcome": "degraded",
+                    "reason": "previous_state_restore_failed",
+                    "errors": errors,
+                    "cpus": evidence,
+                    "rollback": {"attempted": True, "complete": False},
+                })
+                publish(args.status, status)
+                return 0
+            unlink_synced(args.state)
+            state = None
+
+    if (vendor, family, model) not in SUPPORTED_CPUS:
+        status.update({
+            "outcome": "unsupported",
+            "reason": "cpu_not_allowlisted",
+            "cpus": [],
+            "rollback": {"attempted": False, "complete": None},
+        })
+        publish(args.status, status)
+        return 0
+
+    originals: list[dict] = []
+    try:
+        for cpu in cpus:
+            originals.append({"cpu": cpu, "original": value_hex(read_msr(args.device_root, cpu))})
+    except AuthorityError as error:
+        status.update({
+            "outcome": "unavailable",
+            "reason": "msr_device_unavailable",
+            "errors": [str(error)],
+            "cpus": originals,
+            "rollback": {"attempted": False, "complete": None},
+        })
+        publish(args.status, status)
+        return 0
+
+    state = {
+        "schema": STATE_SCHEMA,
+        "boot_id": boot_id,
+        "register": value_hex(REGISTER),
+        "target_value": value_hex(TARGET_VALUE),
+        "cpus": originals,
+    }
+    atomic_json(args.state, state, 0o600)
+
+    apply_error: str | None = None
+    evidence: list[dict] = []
+    try:
+        for cpu in cpus:
+            write_msr(args.device_root, cpu, TARGET_VALUE)
+        for entry in originals:
+            cpu = entry["cpu"]
+            readback = read_msr(args.device_root, cpu)
+            evidence.append({
+                "cpu": cpu,
+                "original": entry["original"],
+                "readback": value_hex(readback),
+            })
+            if readback != TARGET_VALUE:
+                raise AuthorityError(
+                    f"CPU {cpu} apply readback mismatch: expected {value_hex(TARGET_VALUE)} got {value_hex(readback)}"
+                )
+    except AuthorityError as error:
+        apply_error = str(error)
+
+    if apply_error is not None:
+        restored, restore_errors, restore_evidence = restore_values(args.device_root, state)
+        if restored:
+            unlink_synced(args.state)
+        status.update({
+            "outcome": "degraded",
+            "reason": "apply_failed_rolled_back" if restored else "apply_failed_rollback_incomplete",
+            "errors": [apply_error, *restore_errors],
+            "cpus": restore_evidence,
+            "rollback": {"attempted": True, "complete": restored},
+        })
+        publish(args.status, status)
+        return 0
+
+    status.update({
+        "outcome": "ready",
+        "reason": None,
+        "cpus": evidence,
+        "rollback": {"attempted": False, "complete": None},
+    })
+    publish(args.status, status)
+    return 0
+
+
+def restore(args: argparse.Namespace) -> int:
+    boot_id = read_trimmed(args.boot_id, "boot ID")
+    vendor: str | None = None
+    family: int | None = None
+    model: int | None = None
+    try:
+        vendor, family, model = parse_cpu_identity(args.cpuinfo)
+    except AuthorityError:
+        pass
+    status = base_status(boot_id, vendor, family, model)
+    state = load_state(args.state)
+    if state is None:
+        status.update({
+            "outcome": "restored",
+            "reason": "state_absent",
+            "cpus": [],
+            "rollback": {"attempted": False, "complete": True},
+        })
+        publish(args.status, status)
+        return 0
+    if state.get("boot_id") != boot_id:
+        unlink_synced(args.state)
+        status.update({
+            "outcome": "restored",
+            "reason": "stale_state_discarded",
+            "cpus": [],
+            "rollback": {"attempted": False, "complete": True},
+        })
+        publish(args.status, status)
+        return 0
+    restored, errors, evidence = restore_values(args.device_root, state)
+    if restored:
+        unlink_synced(args.state)
+    status.update({
+        "outcome": "restored" if restored else "degraded",
+        "reason": None if restored else "restore_failed",
+        "errors": errors,
+        "cpus": evidence,
+        "rollback": {"attempted": True, "complete": restored},
+    })
+    publish(args.status, status)
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description="RIGOS reversible RandomX MSR authority")
+    result.add_argument("command", choices=("apply", "restore"))
+    result.add_argument("--cpuinfo", type=Path, default=Path("/proc/cpuinfo"))
+    result.add_argument("--online", type=Path, default=Path("/sys/devices/system/cpu/online"))
+    result.add_argument("--device-root", type=Path, default=Path("/dev/cpu"))
+    result.add_argument("--boot-id", type=Path, default=Path("/proc/sys/kernel/random/boot_id"))
+    result.add_argument("--status", type=Path, default=Path("/run/rigos/randomx-msr-status.json"))
+    result.add_argument("--state", type=Path, default=Path("/run/rigos/randomx-msr-state.json"))
+    result.add_argument("--lock", type=Path, default=Path("/run/rigos/.randomx-msr.lock"))
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    args.lock.parent.mkdir(parents=True, exist_ok=True)
+    with args.lock.open("a+b") as lock_handle:
+        os.chmod(args.lock, 0o600)
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        if args.command == "apply":
+            return apply(args)
+        return restore(args)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (AuthorityError, OSError, ValueError) as error:
+        print(f"rigos-randomx-msr: {error}", file=sys.stderr)
+        raise SystemExit(2)
