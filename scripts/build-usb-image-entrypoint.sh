@@ -29,9 +29,11 @@ python3 -m py_compile \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-health \
     ./scripts/test-miner-health-api.py \
     ./scripts/test-miner-health-connection-state.py \
+    ./scripts/test-miner-health-journal-fallback.py \
     ./scripts/test-runtime-token-publication.py
 python3 ./scripts/test-miner-health-api.py
 python3 ./scripts/test-miner-health-connection-state.py
+python3 ./scripts/test-miner-health-journal-fallback.py
 python3 ./scripts/test-runtime-token-publication.py
 
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
