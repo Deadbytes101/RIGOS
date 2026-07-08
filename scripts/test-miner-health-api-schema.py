@@ -49,6 +49,22 @@ class MinerHealthApiSchemaTests(unittest.TestCase):
         self.assertIsNone(metrics["hugepages_used"])
         self.assertIsNone(metrics["hugepages_total"])
 
+    def test_fractional_uptime_cannot_assert_active_connection(self):
+        metrics = self.module.summary_metrics({
+            "uptime": 900.5,
+            "connection": {
+                "pool": "pool.example:1234",
+                "ip": None,
+                "uptime": 0.1,
+                "uptime_ms": 0.5,
+            },
+        })
+
+        self.assertIsNone(metrics["uptime_seconds"])
+        self.assertIsNone(metrics["connection_uptime_seconds"])
+        self.assertIsNone(metrics["connection_uptime_ms"])
+        self.assertFalse(metrics["pool_connected"])
+
     def test_boolean_counters_are_rejected(self):
         metrics = self.module.summary_metrics({
             "connection": {"accepted": True, "rejected": False},
