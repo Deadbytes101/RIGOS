@@ -1,6 +1,8 @@
+#[cfg(unix)]
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Command;
 
 fn repo_root() -> PathBuf {
@@ -112,5 +114,5 @@ fn observer_test_files_are_regular_repository_files() {
         assert!(metadata.is_file(), "observer test path is not a file: {path}");
     }
 
-    assert!(Path::new(&repo_path("scripts/verify-miner-observer-image.sh")).is_file());
+    assert!(repo_path("scripts/verify-miner-observer-image.sh").is_file());
 }
