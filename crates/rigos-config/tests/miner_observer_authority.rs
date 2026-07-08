@@ -105,6 +105,34 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
 }
 
 #[test]
+fn unix_only_integrations_are_explicitly_platform_gated() {
+    for path in [
+        "crates/rigos-config/tests/miner_stability.rs",
+        "crates/rigos-config/tests/hive_exit_runtime_publish.rs",
+    ] {
+        let source = fs::read_to_string(repo_path(path))
+            .unwrap_or_else(|error| panic!("read Unix integration {path}: {error}"));
+        assert!(
+            source.starts_with("#![cfg(unix)]\n"),
+            "Unix integration is not explicitly platform gated: {path}"
+        );
+    }
+
+    let recovery = fs::read_to_string(repo_path("crates/rigos-config/tests/recovery_access.rs"))
+        .expect("read recovery access integration");
+    let unix_scope = recovery
+        .find("#[cfg(unix)]\n    {")
+        .expect("recovery executable-mode assertion is not Unix scoped");
+    let permissions_import = recovery
+        .find("use std::os::unix::fs::PermissionsExt;")
+        .expect("recovery Unix permissions import is missing");
+    let mode_binding = recovery
+        .find("let mode = fs::metadata(authority).unwrap().permissions();")
+        .expect("recovery Unix mode binding is missing");
+    assert!(unix_scope < permissions_import && permissions_import < mode_binding);
+}
+
+#[test]
 fn observer_test_files_are_regular_repository_files() {
     for path in [
         "scripts/test-miner-health-api.py",
