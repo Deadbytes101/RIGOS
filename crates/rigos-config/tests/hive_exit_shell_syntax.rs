@@ -49,8 +49,9 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
         .unwrap()
         .as_nanos();
     let root = std::env::temp_dir().join(format!("rigos-runtime-dependency-scan-{unique}"));
-    fs::create_dir_all(&root).unwrap();
-    let fixture = root.join("fixture.txt");
+    let scan_root = root.join("scan-root");
+    fs::create_dir_all(&scan_root).unwrap();
+    let fixture = scan_root.join("fixture.txt");
     let scanner = root.join("verify-runtime-dependencies.sh");
     fs::copy(
         repo_path("scripts/verify-runtime-dependencies.sh"),
@@ -66,7 +67,7 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
         "latest_journal_signal\nlatest_marker_index\ncalculate_latest_value\n",
     )
     .unwrap();
-    let benign = Command::new(&scanner).arg(&root).status().unwrap();
+    let benign = Command::new(&scanner).arg(&scan_root).status().unwrap();
     assert!(
         benign.success(),
         "benign identifiers must not look like floating dependencies"
@@ -82,7 +83,7 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
         "xmrig-latest.tar.gz\n",
     ] {
         fs::write(&fixture, dangerous).unwrap();
-        let denied = Command::new(&scanner).arg(&root).status().unwrap();
+        let denied = Command::new(&scanner).arg(&scan_root).status().unwrap();
         assert_eq!(
             denied.code(),
             Some(1),
