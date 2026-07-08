@@ -24,7 +24,11 @@ python3 ./scripts/verify-systemd-ordering.py
 python3 -m py_compile \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-randomx-msr \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
-    ./build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys \
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-render \
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-health \
+    ./scripts/test-miner-health-api.py
+python3 ./scripts/test-miner-health-api.py
 
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
