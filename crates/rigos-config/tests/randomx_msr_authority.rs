@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
