@@ -12,3 +12,5 @@
 *.age.partial
 *.pem
 *.key
+__pycache__/
+*.py[cod]
