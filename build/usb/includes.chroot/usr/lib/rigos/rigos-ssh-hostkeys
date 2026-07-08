@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+import datetime
+import grp
+import hashlib
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+STATE = Path("/var/lib/rigos")
+SYSTEM = STATE / "system"
+KEYS = SYSTEM / "ssh-hostkeys"
+PRIVATE_KEY = KEYS / "ssh_host_ed25519_key"
+PUBLIC_KEY = KEYS / "ssh_host_ed25519_key.pub"
+MANIFEST = KEYS / "manifest.json"
+RUNTIME = Path("/run/rigos")
+STATUS = RUNTIME / "ssh-hostkeys-status.json"
+STATE_STATUS = RUNTIME / "state-status.json"
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+SSH_KEYGEN = "/usr/bin/ssh-keygen"
+FINDMNT = "/usr/bin/findmnt"
+
+
+class AuthorityError(RuntimeError):
+    pass
+
+
+def read_json(path: Path) -> dict:
+    try:
+        raw = path.read_bytes()
+        if len(raw) > 64 * 1024:
+            return {}
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_atomic_json(path: Path, value: dict, mode: int = 0o644) -> None:
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}-",
+        delete=False,
+    ) as stream:
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        temporary = Path(stream.name)
+    os.chown(temporary, 0, 0)
+    temporary.chmod(mode)
+    os.replace(temporary, path)
+    fsync_directory(path.parent)
+
+
+def current_boot_id() -> str:
+    try:
+        value = BOOT_ID.read_text(encoding="ascii").strip()
+    except OSError as error:
+        raise AuthorityError(f"boot id unavailable: {error}") from error
+    if not value:
+        raise AuthorityError("boot id is empty")
+    return value
+
+
+def validate_state_ready(boot_id: str) -> None:
+    status = read_json(STATE_STATUS)
+    if (
+        status.get("schema") != "rigos.state-status/v1"
+        or status.get("boot_id") != boot_id
+        or status.get("outcome") != "ready"
+    ):
+        raise AuthorityError("current persistent state readiness is unavailable")
+
+    observed = subprocess.run(
+        [FINDMNT, "--json", "--target", str(STATE), "--output", "TARGET,FSTYPE,OPTIONS"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if observed.returncode != 0:
+        raise AuthorityError("persistent state mount query failed")
+    try:
+        filesystems = json.loads(observed.stdout).get("filesystems", [])
+    except json.JSONDecodeError as error:
+        raise AuthorityError("persistent state mount query returned invalid JSON") from error
+    if len(filesystems) != 1:
+        raise AuthorityError("persistent state mount is ambiguous")
+    filesystem = filesystems[0]
+    options = set(str(filesystem.get("options") or "").split(","))
+    if (
+        filesystem.get("target") != str(STATE)
+        or filesystem.get("fstype") != "ext4"
+        or "rw" not in options
+    ):
+        raise AuthorityError("persistent state is not the expected read-write ext4 mount")
+
+
+def secure_state_root() -> None:
+    try:
+        state = STATE.lstat()
+    except OSError as error:
+        raise AuthorityError(f"persistent state root unavailable: {error}") from error
+    if stat.S_ISLNK(state.st_mode) or not stat.S_ISDIR(state.st_mode):
+        raise AuthorityError("persistent state root is not a real directory")
+    try:
+        rigos_gid = grp.getgrnam("rigos").gr_gid
+        os.chown(STATE, 0, rigos_gid)
+        STATE.chmod(0o750)
+    except OSError as error:
+        raise AuthorityError(f"persistent state root could not be secured: {error}") from error
+
+
+def ensure_secure_directory(path: Path, mode: int) -> None:
+    if not path.exists():
+        path.mkdir(mode=mode)
+        os.chown(path, 0, 0)
+        path.chmod(mode)
+    observed = path.lstat()
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+        raise AuthorityError(f"{path} is not a real directory")
+    if observed.st_uid != 0 or observed.st_gid != 0:
+        raise AuthorityError(f"{path} is not owned by root:root")
+    if stat.S_IMODE(observed.st_mode) != mode:
+        raise AuthorityError(f"{path} has unsafe mode")
+
+
+def validate_regular_file(path: Path, mode: int) -> None:
+    try:
+        observed = path.lstat()
+    except OSError as error:
+        raise AuthorityError(f"required host identity file is unavailable: {path.name}") from error
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISREG(observed.st_mode):
+        raise AuthorityError(f"host identity file is not regular: {path.name}")
+    if observed.st_uid != 0 or observed.st_gid != 0:
+        raise AuthorityError(f"host identity file owner is unsafe: {path.name}")
+    if stat.S_IMODE(observed.st_mode) != mode:
+        raise AuthorityError(f"host identity file mode is unsafe: {path.name}")
+
+
+def command_output(arguments: list[str]) -> str:
+    result = subprocess.run(
+        arguments,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise AuthorityError(f"host identity command failed: {Path(arguments[0]).name}")
+    return result.stdout.strip()
+
+
+def key_fingerprint(public_key: Path) -> str:
+    output = command_output([SSH_KEYGEN, "-E", "sha256", "-lf", str(public_key)])
+    fields = output.split()
+    if len(fields) < 2 or not fields[1].startswith("SHA256:"):
+        raise AuthorityError("host identity fingerprint is invalid")
+    return fields[1]
+
+
+def validate_keyset() -> str:
+    ensure_secure_directory(KEYS, 0o700)
+    validate_regular_file(PRIVATE_KEY, 0o600)
+    validate_regular_file(PUBLIC_KEY, 0o644)
+    validate_regular_file(MANIFEST, 0o644)
+
+    public_fields = PUBLIC_KEY.read_text(encoding="ascii").strip().split()
+    derived_fields = command_output([SSH_KEYGEN, "-y", "-f", str(PRIVATE_KEY)]).split()
+    if len(public_fields) < 2 or derived_fields[:2] != public_fields[:2]:
+        raise AuthorityError("persistent SSH public and private keys do not match")
+
+    fingerprint = key_fingerprint(PUBLIC_KEY)
+    public_sha256 = hashlib.sha256(PUBLIC_KEY.read_bytes()).hexdigest()
+    manifest = read_json(MANIFEST)
+    if (
+        manifest.get("schema") != "rigos.ssh-hostkeys/v1"
+        or manifest.get("algorithm") != "ssh-ed25519"
+        or manifest.get("fingerprint") != fingerprint
+        or manifest.get("public_key_sha256") != public_sha256
+        or not isinstance(manifest.get("created_boot_id"), str)
+        or not manifest.get("created_boot_id")
+    ):
+        raise AuthorityError("persistent SSH host identity manifest is invalid")
+    return fingerprint
+
+
+def remove_stale_staging() -> None:
+    for candidate in SYSTEM.glob(".ssh-hostkeys.tmp-*"):
+        observed = candidate.lstat()
+        if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+            raise AuthorityError("unsafe SSH host identity staging path exists")
+        if observed.st_uid != 0 or observed.st_gid != 0:
+            raise AuthorityError("untrusted SSH host identity staging directory exists")
+        shutil.rmtree(candidate)
+    fsync_directory(SYSTEM)
+
+
+def generate_keyset(boot_id: str) -> str:
+    if KEYS.exists() or KEYS.is_symlink():
+        raise AuthorityError("persistent SSH host identity exists without a valid manifest")
+    remove_stale_staging()
+
+    temporary = Path(tempfile.mkdtemp(prefix=".ssh-hostkeys.tmp-", dir=SYSTEM))
+    try:
+        os.chown(temporary, 0, 0)
+        temporary.chmod(0o700)
+        private_key = temporary / PRIVATE_KEY.name
+        public_key = temporary / PUBLIC_KEY.name
+        manifest_path = temporary / MANIFEST.name
+
+        result = subprocess.run(
+            [
+                SSH_KEYGEN,
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                "rigos-host",
+                "-f",
+                str(private_key),
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise AuthorityError("persistent SSH host identity generation failed")
+
+        os.chown(private_key, 0, 0)
+        os.chown(public_key, 0, 0)
+        private_key.chmod(0o600)
+        public_key.chmod(0o644)
+        fingerprint = key_fingerprint(public_key)
+        manifest = {
+            "schema": "rigos.ssh-hostkeys/v1",
+            "algorithm": "ssh-ed25519",
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "created_boot_id": boot_id,
+            "fingerprint": fingerprint,
+            "public_key_sha256": hashlib.sha256(public_key.read_bytes()).hexdigest(),
+        }
+        write_atomic_json(manifest_path, manifest, 0o644)
+
+        for path in (private_key, public_key, manifest_path):
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        fsync_directory(temporary)
+        os.rename(temporary, KEYS)
+        fsync_directory(SYSTEM)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return validate_keyset()
+
+
+def write_status(boot_id: str, outcome: str, **extra: object) -> None:
+    value = {
+        "schema": "rigos.ssh-hostkeys-status/v1",
+        "boot_id": boot_id,
+        "outcome": outcome,
+        "persistent_path": str(PRIVATE_KEY),
+    }
+    value.update(extra)
+    try:
+        write_atomic_json(STATUS, value)
+    except OSError:
+        pass
+
+
+def main() -> int:
+    boot_id = "unavailable"
+    try:
+        boot_id = current_boot_id()
+        validate_state_ready(boot_id)
+        secure_state_root()
+        ensure_secure_directory(SYSTEM, 0o700)
+        reused = KEYS.exists()
+        fingerprint = validate_keyset() if reused else generate_keyset(boot_id)
+        write_status(
+            boot_id,
+            "ready",
+            algorithm="ssh-ed25519",
+            fingerprint=fingerprint,
+            reused=reused,
+        )
+        print(f"RIGOS_SSH_HOSTKEYS=READY fingerprint={fingerprint} reused={str(reused).lower()}")
+        return 0
+    except (AuthorityError, OSError, subprocess.SubprocessError) as error:
+        write_status(boot_id, "error", reason=str(error))
+        print(f"rigos-ssh-hostkeys: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
