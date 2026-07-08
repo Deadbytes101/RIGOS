@@ -38,3 +38,4 @@ cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 
 image="./dist/usb/${RIGOS_IMAGE_ID}-${RIGOS_IMAGE_VERSION}.img"
 bash ./scripts/verify-randomx-performance-image.sh "$image"
+bash ./scripts/verify-miner-observer-image.sh "$image"
