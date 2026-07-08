@@ -43,25 +43,19 @@ fn repo_path(path: &str) -> PathBuf {
 fn wsl_launcher_is_path_safe_and_fail_closed() {
     let launcher = fs::read_to_string(repo_path("scripts/verify-wsl.ps1"))
         .expect("read WSL source gate launcher");
+    let entrypoint = fs::read_to_string(repo_path("scripts/verify-wsl-entrypoint.sh"))
+        .expect("read WSL source gate entrypoint");
 
     for required in [
         "[string]$Repository,",
         "$PSScriptRoot",
         "RIGOS_WSL_SCRIPT_ROOT_UNAVAILABLE",
-        "$Repository |",
-        "bash -lc $PathConverter",
-        "IFS= read -r windows_path",
-        "windows_path=\"${windows_path%$'\\r'}\"",
-        "wslpath -a \"$windows_path\"",
+        "$Repository.Replace([char]92, [char]47)",
+        "wslpath -a -- $RepositoryForWsl",
         "$PathExitCode = $LASTEXITCODE",
         "$ErrorActionPreference = \"Continue\"",
-        "RIGOS_WSL_DISTRO",
-        "for tool in cargo rustc python3 bash sh git grep rg mktemp",
-        "command -v \"$tool\"",
-        "RIGOS_WSL_TOOL_MISSING",
-        "for component in fmt clippy",
-        "RIGOS_WSL_CARGO_COMPONENT_MISSING",
-        "exec bash ./scripts/verify.sh",
+        "verify-wsl-entrypoint.sh",
+        "& wsl.exe @WslPrefix -- bash $LinuxEntrypoint $LinuxRepo",
         "RIGOS_WSL_SOURCE_GATE=PASS",
     ] {
         assert!(
@@ -70,9 +64,28 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         );
     }
 
+    for required in [
+        "set -euo pipefail",
+        "RIGOS_WSL_REPOSITORY_INVALID",
+        "for tool in cargo rustc python3 bash sh git grep rg mktemp",
+        "command -v \"$tool\"",
+        "RIGOS_WSL_TOOL_MISSING",
+        "for component in fmt clippy",
+        "RIGOS_WSL_CARGO_COMPONENT_MISSING",
+        "exec bash ./scripts/verify.sh",
+    ] {
+        assert!(
+            entrypoint.contains(required),
+            "WSL entrypoint contract missing: {required}"
+        );
+    }
+
     for forbidden in [
         "[string]$Repository = (Split-Path -Parent $PSScriptRoot)",
         "wslpath -a $Repository",
+        "$PathConverter",
+        "$Shell = @'",
+        "bash -lc",
         "/mnt/d/TECHNICAL/dbyte-rigos",
         "curl | sh",
         "Invoke-WebRequest",
@@ -80,7 +93,7 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
     ] {
         assert!(
             !launcher.contains(forbidden),
-            "WSL launcher contains forbidden bootstrap, direct path argument, default expression, or hard-coded path: {forbidden}"
+            "WSL launcher contains forbidden bootstrap, multiline shell transport, direct path argument, default expression, or hard-coded path: {forbidden}"
         );
     }
 }
