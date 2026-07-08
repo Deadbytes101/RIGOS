@@ -48,7 +48,13 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         "[string]$Repository,",
         "$PSScriptRoot",
         "RIGOS_WSL_SCRIPT_ROOT_UNAVAILABLE",
-        "wslpath -a",
+        "$Repository |",
+        "bash -lc $PathConverter",
+        "IFS= read -r windows_path",
+        "windows_path=\"${windows_path%$'\\r'}\"",
+        "wslpath -a \"$windows_path\"",
+        "$PathExitCode = $LASTEXITCODE",
+        "$ErrorActionPreference = \"Continue\"",
         "RIGOS_WSL_DISTRO",
         "for tool in cargo rustc python3 bash sh git grep rg mktemp",
         "command -v \"$tool\"",
@@ -66,6 +72,7 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
 
     for forbidden in [
         "[string]$Repository = (Split-Path -Parent $PSScriptRoot)",
+        "wslpath -a $Repository",
         "/mnt/d/TECHNICAL/dbyte-rigos",
         "curl | sh",
         "Invoke-WebRequest",
@@ -73,7 +80,7 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
     ] {
         assert!(
             !launcher.contains(forbidden),
-            "WSL launcher contains forbidden bootstrap, default expression, or hard-coded path: {forbidden}"
+            "WSL launcher contains forbidden bootstrap, direct path argument, default expression, or hard-coded path: {forbidden}"
         );
     }
 }
