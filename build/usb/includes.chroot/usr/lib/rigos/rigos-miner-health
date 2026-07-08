@@ -1,8 +1,11 @@
 #!/usr/bin/python3
 import datetime as dt
+import http.client
 import json
+import math
 import os
 import re
+import stat
 import subprocess
 import sys
 import uuid
@@ -15,9 +18,16 @@ PROC = Path(os.environ.get("RIGOS_PROC_ROOT", "/proc"))
 SYSTEMCTL = os.environ.get("RIGOS_SYSTEMCTL", "/usr/bin/systemctl")
 JOURNALCTL = os.environ.get("RIGOS_JOURNALCTL", "/usr/bin/journalctl")
 STATUS = RUNTIME / "miner-health-status.json"
+API_TOKEN = Path(os.environ.get("RIGOS_XMRIG_API_TOKEN_PATH", str(RUNTIME / "xmrig-api-token")))
+API_HOST = os.environ.get("RIGOS_XMRIG_API_HOST", "127.0.0.1")
+API_PORT = int(os.environ.get("RIGOS_XMRIG_API_PORT", "18080"))
+API_TIMEOUT_SECONDS = float(os.environ.get("RIGOS_XMRIG_API_TIMEOUT_SECONDS", "2"))
+API_MAX_BYTES = 256 * 1024
+TEST_MODE = os.environ.get("RIGOS_MINER_HEALTH_TEST_MODE") == "1"
 WINDOW_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_WINDOW_SECONDS", "180"))
 WARMUP_SECONDS = int(os.environ.get("RIGOS_MINER_WARMUP_SECONDS", "240"))
 MAX_JOURNAL_LINES = 500
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 EXTERNAL_MARKERS = (
     "connect error",
@@ -43,7 +53,7 @@ def atomic_json(path: Path, value: dict) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(directory)
         finally:
@@ -155,6 +165,148 @@ def last_share_counts(text: str) -> tuple[int | None, int | None]:
     return int(accepted), int(rejected)
 
 
+def expected_token_uid() -> int:
+    return os.geteuid() if TEST_MODE else 0
+
+
+def read_api_token() -> str:
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(API_TOKEN, os.O_RDONLY | os.O_CLOEXEC | nofollow)
+    try:
+        observed = os.fstat(descriptor)
+        if not stat.S_ISREG(observed.st_mode):
+            raise RuntimeError("api_token_not_regular")
+        if observed.st_uid != expected_token_uid():
+            raise RuntimeError("api_token_owner_unsafe")
+        if stat.S_IMODE(observed.st_mode) != 0o600:
+            raise RuntimeError("api_token_mode_unsafe")
+        if observed.st_size > 256:
+            raise RuntimeError("api_token_oversized")
+        raw = os.read(descriptor, 257)
+    finally:
+        os.close(descriptor)
+    try:
+        token = raw.decode("ascii").strip()
+    except UnicodeDecodeError as error:
+        raise RuntimeError("api_token_not_ascii") from error
+    if not TOKEN_RE.fullmatch(token):
+        raise RuntimeError("api_token_invalid")
+    return token
+
+
+def fetch_api_summary() -> tuple[dict | None, str | None]:
+    connection = None
+    try:
+        token = read_api_token()
+        connection = http.client.HTTPConnection(
+            API_HOST,
+            API_PORT,
+            timeout=API_TIMEOUT_SECONDS,
+        )
+        connection.request(
+            "GET",
+            "/2/summary",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        if response.status != 200:
+            response.read(min(API_MAX_BYTES, 4096))
+            return None, f"api_http_status_{response.status}"
+        length = response.getheader("Content-Length")
+        if length is not None:
+            try:
+                if int(length) > API_MAX_BYTES:
+                    return None, "api_response_oversized"
+            except ValueError:
+                return None, "api_content_length_invalid"
+        raw = response.read(API_MAX_BYTES + 1)
+        if len(raw) > API_MAX_BYTES:
+            return None, "api_response_oversized"
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            return None, "api_response_not_object"
+        return value, None
+    except FileNotFoundError:
+        return None, "api_token_missing"
+    except PermissionError:
+        return None, "api_token_permission_denied"
+    except (OSError, RuntimeError, http.client.HTTPException, json.JSONDecodeError) as error:
+        message = str(error)
+        if message.startswith("api_"):
+            return None, message
+        return None, "api_unavailable"
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def nonnegative_number(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(float(value)) or value < 0:
+        return None
+    return value
+
+
+def summary_metrics(summary: dict) -> dict:
+    hashrate = summary.get("hashrate")
+    if not isinstance(hashrate, dict):
+        hashrate = {}
+    raw_total = hashrate.get("total")
+    rates: list[int | float | None] = [None, None, None]
+    if isinstance(raw_total, list):
+        for index, value in enumerate(raw_total[:3]):
+            rates[index] = nonnegative_number(value)
+
+    connection = summary.get("connection")
+    if not isinstance(connection, dict):
+        connection = {}
+    results = summary.get("results")
+    if not isinstance(results, dict):
+        results = {}
+
+    accepted = nonnegative_number(connection.get("accepted"))
+    rejected = nonnegative_number(connection.get("rejected"))
+    if accepted is None:
+        accepted = nonnegative_number(results.get("shares_good"))
+    if rejected is None:
+        total = nonnegative_number(results.get("shares_total"))
+        if total is not None and accepted is not None and total >= accepted:
+            rejected = total - accepted
+
+    pool = connection.get("pool")
+    if not isinstance(pool, str) or not pool:
+        pool = None
+    hugepages = summary.get("hugepages")
+    hugepages_used = None
+    hugepages_total = None
+    if isinstance(hugepages, list) and len(hugepages) >= 2:
+        hugepages_used = nonnegative_number(hugepages[0])
+        hugepages_total = nonnegative_number(hugepages[1])
+
+    return {
+        "uptime_seconds": nonnegative_number(summary.get("uptime")),
+        "algorithm": summary.get("algo") if isinstance(summary.get("algo"), str) else None,
+        "hashrate_10s": rates[0],
+        "hashrate_60s": rates[1],
+        "hashrate_15m": rates[2],
+        "hashrate_highest": nonnegative_number(hashrate.get("highest")),
+        "pool_connected": pool is not None,
+        "pool": pool,
+        "connection_uptime_seconds": nonnegative_number(connection.get("uptime")),
+        "connection_failures": nonnegative_number(connection.get("failures")),
+        "pool_ping_ms": nonnegative_number(connection.get("ping")),
+        "accepted_shares": int(accepted) if accepted is not None else None,
+        "rejected_shares": int(rejected) if rejected is not None else None,
+        "hugepages_used": int(hugepages_used) if hugepages_used is not None else None,
+        "hugepages_total": int(hugepages_total) if hugepages_total is not None else None,
+    }
+
+
 def classify(
     properties: dict[str, str],
     proc_state: str | None,
@@ -162,6 +314,8 @@ def classify(
     canonical_revision: str | None,
     rendered_outcome: str | None,
     rendered_revision: str | None,
+    api_metrics: dict | None,
+    api_error: str | None,
     journal: str,
     journal_available: bool,
 ) -> tuple[str, str | None]:
@@ -177,17 +331,31 @@ def classify(
         return "blocked", "current_revision_unavailable"
     if rendered_outcome != "ready" or rendered_revision != canonical_revision:
         return "blocked", "runtime_revision_mismatch"
-    if not journal_available:
-        return "unknown", "journal_unavailable"
 
+    if api_metrics is not None:
+        rates = (
+            api_metrics.get("hashrate_10s"),
+            api_metrics.get("hashrate_60s"),
+            api_metrics.get("hashrate_15m"),
+        )
+        if any(isinstance(value, (int, float)) and value > 0 for value in rates):
+            return "ready", None
+        if active_for is not None and active_for < WARMUP_SECONDS:
+            return "warming_up", None
+        if not api_metrics.get("pool_connected"):
+            return "waiting_external", "pool_or_network_unavailable"
+        return "degraded", "no_hashrate_from_api"
+
+    if not journal_available:
+        return "unknown", api_error or "journal_unavailable"
     lowered = journal.lower()
-    if "miner    speed" in lowered:
+    if "miner    speed" in lowered or "accepted (" in lowered:
         return "ready", None
     if any(marker in lowered for marker in EXTERNAL_MARKERS):
         return "waiting_external", "pool_or_network_unavailable"
     if active_for is not None and active_for < WARMUP_SECONDS:
         return "warming_up", None
-    return "degraded", "no_recent_speed_evidence"
+    return "degraded", api_error or "miner_api_unavailable"
 
 
 def main() -> int:
@@ -204,8 +372,10 @@ def main() -> int:
         active_for = active_seconds(properties)
         canonical = current_revision()
         rendered_outcome, rendered_revision = runtime_revision()
+        summary, api_error = fetch_api_summary()
+        metrics = summary_metrics(summary) if summary is not None else None
         journal, journal_available = recent_journal()
-        accepted, rejected = last_share_counts(journal)
+        journal_accepted, journal_rejected = last_share_counts(journal)
         state, reason = classify(
             properties,
             proc_state,
@@ -213,10 +383,14 @@ def main() -> int:
             canonical,
             rendered_outcome,
             rendered_revision,
+            metrics,
+            api_error,
             journal,
             journal_available,
         )
         lowered_journal = journal.lower()
+        accepted = metrics.get("accepted_shares") if metrics is not None else journal_accepted
+        rejected = metrics.get("rejected_shares") if metrics is not None else journal_rejected
         value = {
             "schema": "rigos.miner-health-status/v1",
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
@@ -238,7 +412,14 @@ def main() -> int:
                 "runtime_outcome": rendered_outcome,
                 "runtime_revision": rendered_revision,
             },
+            "api": {
+                "available": metrics is not None,
+                "error": api_error,
+                "endpoint": f"http://{API_HOST}:{API_PORT}/2/summary",
+                "metrics": metrics,
+            },
             "evidence": {
+                "source": "xmrig_http_api" if metrics is not None else "journal_fallback",
                 "window_seconds": WINDOW_SECONDS,
                 "journal_available": journal_available,
                 "journal_line_limit": MAX_JOURNAL_LINES,
@@ -256,6 +437,7 @@ def main() -> int:
             "schema": "rigos.miner-health-observer/v1",
             "state": state,
             "reason": reason,
+            "evidence_source": value["evidence"]["source"],
             "remediation": "observe_only",
         }, sort_keys=True))
         return 0
