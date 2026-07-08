@@ -14,6 +14,7 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
         fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
     let image_verifier =
         fs::read_to_string(repo_path("scripts/verify-randomx-performance-image.sh")).unwrap();
+    let image_hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot")).unwrap();
 
     assert!(
         attributes
@@ -29,6 +30,9 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(entrypoint.contains("rigos-randomx-msr"));
     assert!(entrypoint.contains("rigos-miner-gate"));
     assert!(entrypoint.contains("--test randomx_build_entrypoint"));
+
+    assert!(image_hook.contains("/usr/lib/rigos/rigos-randomx-msr"));
+    assert!(image_hook.contains("rigos-randomx-msr.service rigos-miner.service"));
 
     assert!(image_verifier.contains("msr_support=\"module\""));
     assert!(image_verifier.contains("msr_support=\"builtin\""));
