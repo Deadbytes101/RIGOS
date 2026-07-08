@@ -1,6 +1,6 @@
+use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Command;
-use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn is_repo_root(path: &Path) -> bool {
@@ -192,10 +192,9 @@ fn repository_root_is_resolved_at_runtime() {
     let root = repo_root();
     assert!(is_repo_root(&root));
 
-    let source = fs::read_to_string(root.join(
-        "crates/rigos-config/tests/miner_observer_authority.rs",
-    ))
-    .expect("read observer authority source");
+    let source =
+        fs::read_to_string(root.join("crates/rigos-config/tests/miner_observer_authority.rs"))
+            .expect("read observer authority source");
     let compile_time_manifest = ["CARGO", "_MANIFEST_DIR"].concat();
     assert!(!source.contains(&compile_time_manifest));
 }
