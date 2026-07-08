@@ -77,6 +77,9 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
             }],
             "http": {
                 "enabled": false,
+                "host": "0.0.0.0",
+                "port": 9999,
+                "restricted": false,
                 "access-token": "TOKEN_SENTINEL",
                 "future_http": "HTTP_SENTINEL"
             }
@@ -114,9 +117,25 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
     assert_eq!(private["future_top"], "TOP_SENTINEL");
     assert_eq!(private["cpu"]["future_cpu"], "CPU_SENTINEL");
     assert_eq!(private["pools"][0]["future_pool"], "POOL_SENTINEL");
-    assert_eq!(private["http"]["future_http"], "HTTP_SENTINEL");
     assert_eq!(private["cpu"]["max-threads-hint"], 100);
     assert_eq!(private["cpu"]["rx"], serde_json::json!([-1, -1]));
+
+    let private_http = private["http"].as_object().expect("private HTTP authority");
+    let private_http_keys = private_http.keys().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        private_http_keys,
+        vec!["access-token", "enabled", "host", "port", "restricted"]
+    );
+    assert_eq!(private_http["enabled"], true);
+    assert_eq!(private_http["host"], "127.0.0.1");
+    assert_eq!(private_http["port"], 18080);
+    assert_eq!(private_http["restricted"], true);
+    let api_token = private_http["access-token"]
+        .as_str()
+        .expect("private API token");
+    assert!(api_token.len() >= 32);
+    assert_ne!(api_token, "TOKEN_SENTINEL");
+    assert!(private_http.get("future_http").is_none());
 
     let public = read_json(&runtime.join("xmrig-public.json"));
     let public_keys = public
@@ -144,6 +163,11 @@ fn staged_runtime_publication_is_allowlisted_atomic_and_fail_closed() {
     assert_eq!(public["randomx"]["huge-pages"].as_bool(), Some(true));
     assert_eq!(public["pools"][0]["url"], "pool.test:1");
     assert_eq!(public["rigos-public-view"]["construction"], "allowlist");
+    assert_eq!(public["http"]["enabled"], true);
+    assert_eq!(public["http"]["host"], "127.0.0.1");
+    assert_eq!(public["http"]["port"], 18080);
+    assert_eq!(public["http"]["restricted"], true);
+    assert!(public["http"].get("access-token").is_none());
     let public_text = serde_json::to_string(&public).unwrap();
     for sentinel in [
         "TOP_SENTINEL",
