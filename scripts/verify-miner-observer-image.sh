@@ -113,6 +113,24 @@ if active_metrics.get("pool_connected") is not True:
     raise SystemExit("extracted observer rejects active pool evidence")
 if active_state != ("ready", None):
     raise SystemExit(f"extracted observer rejects active hashrate: {active_state}")
+
+old_ready_new_external = "\n".join([
+    "miner    speed 10s/60s/15m 341.2 340.9 340.7 H/s",
+    "cpu accepted (43/0) diff 10000",
+    "net connect error: operation timed out",
+])
+state = module.journal_fallback_state(old_ready_new_external, 600, "api_unavailable")
+if state != ("waiting_external", "pool_or_network_unavailable"):
+    raise SystemExit(f"extracted observer trusts stale journal ready evidence: {state}")
+
+old_external_new_ready = "\n".join([
+    "net connect error: operation timed out",
+    "miner    speed 10s/60s/15m 341.2 340.9 340.7 H/s",
+    "cpu accepted (44/0) diff 10000",
+])
+state = module.journal_fallback_state(old_external_new_ready, 600, "api_unavailable")
+if state != ("ready", None):
+    raise SystemExit(f"extracted observer ignores newer journal ready evidence: {state}")
 PY
 
 for required in \
@@ -148,6 +166,8 @@ for required in \
     'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
     '"pool_connected": pool_connected' \
     'if pool_connected and hashrate_positive:' \
+    'def latest_journal_signal(text: str) -> str | None:' \
+    '"latest_journal_signal": latest_journal_signal(journal)' \
     '"source": "xmrig_http_api" if metrics is not None else "journal_fallback"' \
     'return "degraded", "no_hashrate_from_api"' \
     'return "degraded", api_error or "miner_api_unavailable"'
