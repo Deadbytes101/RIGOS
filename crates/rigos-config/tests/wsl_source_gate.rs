@@ -72,7 +72,11 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         "RIGOS_WSL_TOOL_MISSING",
         "for component in fmt clippy",
         "RIGOS_WSL_CARGO_COMPONENT_MISSING",
-        "exec bash ./scripts/verify.sh",
+        "pycache_root=$(mktemp -d)",
+        "trap cleanup EXIT HUP INT TERM",
+        "export PYTHONPYCACHEPREFIX=\"$pycache_root\"",
+        "export PYTHONDONTWRITEBYTECODE=1",
+        "bash ./scripts/verify.sh",
     ] {
         assert!(
             entrypoint.contains(required),
@@ -90,10 +94,22 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         "curl | sh",
         "Invoke-WebRequest",
         "rustup-init",
+        "exec bash ./scripts/verify.sh",
     ] {
         assert!(
-            !launcher.contains(forbidden),
-            "WSL launcher contains forbidden bootstrap, multiline shell transport, direct path argument, default expression, or hard-coded path: {forbidden}"
+            !launcher.contains(forbidden) && !entrypoint.contains(forbidden),
+            "WSL gate contains forbidden bootstrap, multiline shell transport, direct path argument, cleanup-bypassing exec, default expression, or hard-coded path: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn python_bytecode_artifacts_are_ignored() {
+    let ignore = fs::read_to_string(repo_path(".gitignore")).expect("read repository ignore rules");
+    for required in ["__pycache__/", "*.py[cod]"] {
+        assert!(
+            ignore.lines().any(|line| line == required),
+            "Python bytecode ignore rule missing: {required}"
         );
     }
 }
