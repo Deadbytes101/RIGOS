@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -49,18 +51,22 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
     let root = std::env::temp_dir().join(format!("rigos-runtime-dependency-scan-{unique}"));
     fs::create_dir_all(&root).unwrap();
     let fixture = root.join("fixture.txt");
-    let scanner = repo_path("scripts/verify-runtime-dependencies.sh");
+    let scanner = root.join("verify-runtime-dependencies.sh");
+    fs::copy(
+        repo_path("scripts/verify-runtime-dependencies.sh"),
+        &scanner,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&scanner).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&scanner, permissions).unwrap();
 
     fs::write(
         &fixture,
         "latest_journal_signal\nlatest_marker_index\ncalculate_latest_value\n",
     )
     .unwrap();
-    let benign = Command::new("bash")
-        .arg(&scanner)
-        .arg(&root)
-        .status()
-        .unwrap();
+    let benign = Command::new(&scanner).arg(&root).status().unwrap();
     assert!(
         benign.success(),
         "benign identifiers must not look like floating dependencies"
@@ -76,11 +82,7 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
         "xmrig-latest.tar.gz\n",
     ] {
         fs::write(&fixture, dangerous).unwrap();
-        let denied = Command::new("bash")
-            .arg(&scanner)
-            .arg(&root)
-            .status()
-            .unwrap();
+        let denied = Command::new(&scanner).arg(&root).status().unwrap();
         assert_eq!(
             denied.code(),
             Some(1),
@@ -88,8 +90,7 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
         );
     }
 
-    let missing = Command::new("bash")
-        .arg(&scanner)
+    let missing = Command::new(&scanner)
         .arg(root.join("missing"))
         .status()
         .unwrap();
