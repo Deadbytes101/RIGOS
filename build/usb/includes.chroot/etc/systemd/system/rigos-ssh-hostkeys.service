@@ -1,0 +1,25 @@
+[Unit]
+Description=Establish persistent RIGOS SSH host identity
+After=rigos-state-ready.service
+Requires=rigos-state-ready.service
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/rigos/rigos-ssh-hostkeys
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/rigos /run/rigos
+
+[Install]
+WantedBy=multi-user.target
