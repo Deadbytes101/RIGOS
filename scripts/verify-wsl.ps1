@@ -1,11 +1,18 @@
 [CmdletBinding()]
 param(
-    [string]$Repository = (Split-Path -Parent $PSScriptRoot),
+    [string]$Repository,
     [string]$Distribution = $env:RIGOS_WSL_DISTRO
 )
 
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
+
+if ([string]::IsNullOrWhiteSpace($Repository)) {
+    if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        throw "RIGOS_WSL_SCRIPT_ROOT_UNAVAILABLE"
+    }
+    $Repository = Split-Path -Parent $PSScriptRoot
+}
 
 $WslPrefix = @()
 if (-not [string]::IsNullOrWhiteSpace($Distribution)) {
