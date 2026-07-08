@@ -19,13 +19,30 @@ if (-not [string]::IsNullOrWhiteSpace($Distribution)) {
     $WslPrefix += @("-d", $Distribution)
 }
 
-$Repository = (Resolve-Path -LiteralPath $Repository).Path
-$LinuxRepoOutput = & wsl.exe @WslPrefix -- wslpath -a $Repository 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "WSL_PATH_CONVERSION_FAILED: $LinuxRepoOutput"
+$Repository = (Resolve-Path -LiteralPath $Repository -ErrorAction Stop).Path
+$PathConverter = @'
+set -euo pipefail
+IFS= read -r windows_path
+windows_path="${windows_path%$'\r'}"
+wslpath -a "$windows_path"
+'@
+
+$SavedErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $LinuxRepoOutput = $Repository |
+        & wsl.exe @WslPrefix -- bash -lc $PathConverter 2>&1
+    $PathExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $SavedErrorActionPreference
 }
 
-$LinuxRepo = ($LinuxRepoOutput | Select-Object -Last 1).Trim()
+$LinuxRepoLines = @($LinuxRepoOutput | ForEach-Object { $_.ToString() })
+if ($PathExitCode -ne 0) {
+    throw "WSL_PATH_CONVERSION_FAILED: $($LinuxRepoLines -join ' | ')"
+}
+
+$LinuxRepo = ($LinuxRepoLines | Select-Object -Last 1).Trim()
 if ([string]::IsNullOrWhiteSpace($LinuxRepo)) {
     throw "WSL_PATH_CONVERSION_EMPTY"
 }
@@ -70,8 +87,16 @@ printf 'RIGOS_WSL_CARGO=%s\n' "$(command -v cargo)"
 exec bash ./scripts/verify.sh
 '@
 
-& wsl.exe @WslPrefix -- bash -lc $Shell -- $LinuxRepo
-$ExitCode = $LASTEXITCODE
+$SavedErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    & wsl.exe @WslPrefix -- bash -lc $Shell -- $LinuxRepo 2>&1 |
+        ForEach-Object { Write-Host $_ }
+    $ExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $SavedErrorActionPreference
+}
+
 if ($ExitCode -ne 0) {
     throw "RIGOS_WSL_SOURCE_GATE_FAILED: exit $ExitCode"
 }
