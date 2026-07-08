@@ -99,6 +99,21 @@ if stale_metrics.get("pool_connected") is not False:
 if stale_state != ("waiting_external", "pool_or_network_unavailable"):
     raise SystemExit(f"extracted observer misclassifies disconnected historical hashrate: {stale_state}")
 
+historical_metrics, historical_state = classify({
+    "hashrate": {"total": [0, 340.9, 340.7], "highest": 342.1},
+    "connection": {
+        "pool": "pool.example:1234",
+        "ip": "203.0.113.10",
+        "uptime": 590,
+        "uptime_ms": 590125,
+        "failures": 0,
+    },
+})
+if historical_metrics.get("pool_connected") is not True:
+    raise SystemExit("extracted observer rejects active pool evidence")
+if historical_state != ("degraded", "no_current_hashrate_from_api"):
+    raise SystemExit(f"extracted observer trusts historical hashrate as current: {historical_state}")
+
 active_metrics, active_state = classify({
     "hashrate": {"total": [341.2, 340.9, 340.7], "highest": 342.1},
     "connection": {
@@ -165,11 +180,13 @@ for required in \
     'connection_ip = connection.get("ip")' \
     'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
     '"pool_connected": pool_connected' \
-    'if pool_connected and hashrate_positive:' \
+    'current_hashrate = api_metrics.get("hashrate_10s")' \
+    'if pool_connected and current_hashrate_positive:' \
+    'return "degraded", "current_hashrate_unavailable"' \
+    'return "degraded", "no_current_hashrate_from_api"' \
     'def latest_journal_signal(text: str) -> str | None:' \
     '"latest_journal_signal": latest_journal_signal(journal)' \
     '"source": "xmrig_http_api" if metrics is not None else "journal_fallback"' \
-    'return "degraded", "no_hashrate_from_api"' \
     'return "degraded", api_error or "miner_api_unavailable"'
 do
     grep -Fq "$required" "$observer" || die "miner observer API contract is missing: $required"
