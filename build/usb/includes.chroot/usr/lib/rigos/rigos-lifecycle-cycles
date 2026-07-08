@@ -1,4 +1,5 @@
 #!/bin/sh
+# Repository contract: LF line endings are required for appliance execution.
 set -eu
 
 cycles="${1:-20}"
