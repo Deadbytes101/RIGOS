@@ -69,6 +69,7 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
             "performance image entrypoint does not run {script}"
         );
     }
+    assert!(entrypoint.contains("--test miner_observer_authority"));
 
     for contract in [
         "RIGOS_XMRIG_API_TOKEN_PATH",
