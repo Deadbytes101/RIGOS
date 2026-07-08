@@ -35,14 +35,18 @@ listing="$temporary/squashfs.list"
 unsquashfs -ll "$squashfs" >"$listing"
 
 msr_support="missing"
+# Do not use grep -q in a pipe while pipefail is enabled. An early grep exit can
+# SIGPIPE the producer and turn a real match into a false pipeline failure.
 if awk '{print $NF}' "$listing" \
-    | grep -Eq '^squashfs-root/(usr/)?lib/modules/[^/]+/kernel/arch/x86/kernel/msr\.ko(\.(xz|zst|gz))?$'
+    | grep -E '^squashfs-root/(usr/)?lib/modules/[^/]+/kernel/arch/x86/kernel/msr\.ko(\.(xz|zst|gz))?$' \
+        >/dev/null
 then
     msr_support="module"
 else
     while IFS= read -r builtin_path; do
         if unsquashfs -cat "$squashfs" "$builtin_path" \
-            | grep -Eq '(^|/)kernel/arch/x86/kernel/msr\.ko$'
+            | grep -E '(^|/)kernel/arch/x86/kernel/msr\.ko$' \
+                >/dev/null
         then
             msr_support="builtin"
             break
