@@ -44,6 +44,14 @@ if [[ "$missing" -ne 0 ]]; then
   exit 127
 fi
 
+pycache_root=$(mktemp -d)
+cleanup() {
+  rm -rf "$pycache_root"
+}
+trap cleanup EXIT HUP INT TERM
+export PYTHONPYCACHEPREFIX="$pycache_root"
+export PYTHONDONTWRITEBYTECODE=1
+
 printf 'RIGOS_WSL_REPO=%s\n' "$repo"
 printf 'RIGOS_WSL_CARGO=%s\n' "$(command -v cargo)"
-exec bash ./scripts/verify.sh
+bash ./scripts/verify.sh
