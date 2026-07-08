@@ -34,6 +34,7 @@ squashfs="$temporary/root-a/live/filesystem.squashfs"
 unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
     usr/bin/python3 usr/bin/python3.11 \
     usr/lib/rigos/rigos-runtime-render \
+    usr/lib/rigos/rigos-runtime-publish \
     usr/lib/rigos/rigos-miner-health \
     etc/systemd/system/rigos-miner-health.service \
     etc/systemd/system/rigos-miner-health.timer \
@@ -42,17 +43,19 @@ unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
 
 root="$temporary/squash"
 renderer="$root/usr/lib/rigos/rigos-runtime-render"
+publisher="$root/usr/lib/rigos/rigos-runtime-publish"
 observer="$root/usr/lib/rigos/rigos-miner-health"
 service="$root/etc/systemd/system/rigos-miner-health.service"
 timer="$root/etc/systemd/system/rigos-miner-health.timer"
 
 [[ -x "$root/usr/bin/python3" ]] || die 'Python runtime is missing'
 [[ -x "$renderer" ]] || die 'runtime renderer is missing or not executable'
+[[ -x "$publisher" ]] || die 'runtime publisher is missing or not executable'
 [[ -x "$observer" ]] || die 'miner observer is missing or not executable'
 python3 -m py_compile "$renderer" "$observer"
 
 for required in \
-    'API_TOKEN = RUNTIME / "xmrig-api-token"' \
+    'API_TOKEN = Path(os.environ.get("RIGOS_XMRIG_API_TOKEN_PATH", str(RUNTIME / "xmrig-api-token")))' \
     'API_HOST = "127.0.0.1"' \
     'API_PORT = 18080' \
     'token = secrets.token_urlsafe(48)' \
@@ -66,6 +69,14 @@ done
 if grep -Eq 'API_HOST = "(0\.0\.0\.0|::)"' "$renderer"; then
     die 'runtime API authority exposes a non-loopback bind'
 fi
+
+for required in \
+    'RIGOS_RUNTIME_PATH="$stage" \' \
+    'RIGOS_XMRIG_API_TOKEN_PATH="$runtime/xmrig-api-token" \' \
+    '    "$renderer"'
+do
+    grep -Fqx "$required" "$publisher" || die "runtime token publication contract is missing: $required"
+done
 
 for required in \
     'connection.request(' \
