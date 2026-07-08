@@ -49,7 +49,9 @@ Run the fail-closed launcher from the repository root:
 The launcher:
 
   - derives the repository from its own location
-  - converts the Windows path through wslpath
+  - normalizes Windows backslashes before invoking wslpath
+  - invokes scripts/verify-wsl-entrypoint.sh as a real file
+  - never transports multiline Bash source through a native command argument
   - sources $HOME/.cargo/env when present
   - checks cargo, rustc, python3, bash, sh, git, grep, rg, and mktemp
   - checks the Rust fmt and clippy cargo components
