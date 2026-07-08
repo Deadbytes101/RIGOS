@@ -351,11 +351,15 @@ def classify(
             api_metrics.get("hashrate_60s"),
             api_metrics.get("hashrate_15m"),
         )
-        if any(isinstance(value, (int, float)) and value > 0 for value in rates):
+        hashrate_positive = any(
+            isinstance(value, (int, float)) and value > 0 for value in rates
+        )
+        pool_connected = api_metrics.get("pool_connected") is True
+        if pool_connected and hashrate_positive:
             return "ready", None
         if active_for is not None and active_for < WARMUP_SECONDS:
             return "warming_up", None
-        if not api_metrics.get("pool_connected"):
+        if not pool_connected:
             return "waiting_external", "pool_or_network_unavailable"
         return "degraded", "no_hashrate_from_api"
 
