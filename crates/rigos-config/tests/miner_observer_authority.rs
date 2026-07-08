@@ -109,6 +109,7 @@ fn unix_only_integrations_are_explicitly_platform_gated() {
     for path in [
         "crates/rigos-config/tests/miner_stability.rs",
         "crates/rigos-config/tests/hive_exit_runtime_publish.rs",
+        "crates/rigos-config/tests/randomx_msr_authority.rs",
     ] {
         let source = fs::read_to_string(repo_path(path))
             .unwrap_or_else(|error| panic!("read Unix integration {path}: {error}"));
