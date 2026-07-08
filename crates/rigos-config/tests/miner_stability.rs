@@ -2,10 +2,16 @@
 
 use serde_json::Value;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 use uuid::Uuid;
+
+const API_TOKEN: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 fn repo_path(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -33,13 +39,64 @@ fn write_runtime_status(path: &Path, revision: &str) {
     .unwrap();
 }
 
+fn api_port_and_server(summary: Option<Value>) -> (u16, Option<thread::JoinHandle<()>>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let Some(summary) = summary else {
+        drop(listener);
+        return (port, None);
+    };
+
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        loop {
+            let count = stream.read(&mut buffer).unwrap();
+            if count == 0 {
+                break;
+            }
+            request.extend_from_slice(&buffer[..count]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+            assert!(request.len() <= 8192, "observer HTTP request is oversized");
+        }
+
+        let request = String::from_utf8(request).unwrap();
+        assert!(request.starts_with("GET /2/summary HTTP/1.1\r\n"));
+        assert!(request.contains(&format!("Authorization: Bearer {API_TOKEN}\r\n")));
+
+        let body = serde_json::to_vec(&summary).unwrap();
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(headers.as_bytes()).unwrap();
+        stream.write_all(&body).unwrap();
+        stream.flush().unwrap();
+    });
+
+    (port, Some(server))
+}
+
 fn run_observer(
     root: &Path,
     systemctl: &Path,
     journalctl: &Path,
     systemctl_fixture: &Path,
     journal_fixture: &Path,
+    api_summary: Option<Value>,
 ) -> Value {
+    let (api_port, server) = api_port_and_server(api_summary);
     let status = Command::new("python3")
         .arg(repo_path(
             "build/usb/includes.chroot/usr/lib/rigos/rigos-miner-health",
@@ -52,10 +109,81 @@ fn run_observer(
         .env("RIGOS_JOURNALCTL", journalctl)
         .env("RIGOS_SYSTEMCTL_FIXTURE", systemctl_fixture)
         .env("RIGOS_JOURNAL_FIXTURE", journal_fixture)
+        .env(
+            "RIGOS_XMRIG_API_TOKEN_PATH",
+            root.join("run/xmrig-api-token"),
+        )
+        .env("RIGOS_XMRIG_API_HOST", "127.0.0.1")
+        .env("RIGOS_XMRIG_API_PORT", api_port.to_string())
+        .env("RIGOS_XMRIG_API_TIMEOUT_SECONDS", "0.5")
+        .env("RIGOS_MINER_HEALTH_TEST_MODE", "1")
         .status()
         .unwrap();
+
+    if let Some(server) = server {
+        server.join().unwrap();
+    }
     assert!(status.success());
     serde_json::from_slice(&fs::read(root.join("run/miner-health-status.json")).unwrap()).unwrap()
+}
+
+fn ready_summary() -> Value {
+    serde_json::json!({
+        "uptime": 600,
+        "algo": "rx/0",
+        "hashrate": {
+            "total": [340.0, 341.0, 339.0],
+            "highest": 342.0
+        },
+        "connection": {
+            "pool": "pool.test:1",
+            "ip": "127.0.0.1",
+            "uptime": 590,
+            "accepted": 7,
+            "rejected": 0,
+            "failures": 0,
+            "ping": 20
+        },
+        "hugepages": [4, 4]
+    })
+}
+
+fn disconnected_summary() -> Value {
+    serde_json::json!({
+        "uptime": 600,
+        "algo": "rx/0",
+        "hashrate": {
+            "total": [0.0, 341.0, 339.0],
+            "highest": 342.0
+        },
+        "connection": {
+            "accepted": 7,
+            "rejected": 0,
+            "failures": 1
+        },
+        "hugepages": [4, 4]
+    })
+}
+
+fn missing_current_hashrate_summary() -> Value {
+    serde_json::json!({
+        "uptime": 600,
+        "algo": "rx/0",
+        "hashrate": {
+            "total": [null, 341.0, 339.0],
+            "highest": 342.0
+        },
+        "connection": {
+            "pool": "pool.test:1",
+            "ip": "127.0.0.1",
+            "uptime": 590,
+            "accepted": 7,
+            "rejected": 0,
+            "failures": 0,
+            "ping": 20
+        },
+        "hugepages": [4, 4]
+    })
 }
 
 #[test]
@@ -68,6 +196,12 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
     fs::write(root.join("boot-id"), "boot-test\n").unwrap();
     fs::write(root.join("proc/uptime"), "1000.0 0.0\n").unwrap();
     fs::write(root.join("proc/123/stat"), "123 (xmrig) S\n").unwrap();
+    fs::write(root.join("run/xmrig-api-token"), format!("{API_TOKEN}\n")).unwrap();
+    fs::set_permissions(
+        root.join("run/xmrig-api-token"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
     write_runtime_status(&root.join("run/runtime-config-status.json"), "r1");
 
     let systemctl_fixture = root.join("systemctl.txt");
@@ -92,58 +226,63 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
     write_executable(&journalctl, "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n");
     write_executable(&journalctl_fail, "#!/bin/sh\nexit 1\n");
 
-    fs::write(
-        &journal_fixture,
-        concat!(
-            "miner    speed 10s/60s/15m 340.0 341.0 n/a H/s\n",
-            "cpu accepted (7/0) diff 10000\n"
-        ),
-    )
-    .unwrap();
+    fs::write(&journal_fixture, "net connect error: stale journal evidence\n").unwrap();
     let ready = run_observer(
         &root,
         &systemctl,
         &journalctl,
         &systemctl_fixture,
         &journal_fixture,
+        Some(ready_summary()),
     );
     assert_eq!(ready["state"], "ready");
+    assert_eq!(ready["reason"], Value::Null);
     assert_eq!(ready["unit"]["restart_count"], 2);
+    assert_eq!(ready["evidence"]["source"], "xmrig_http_api");
     assert_eq!(ready["evidence"]["accepted_shares"], 7);
     assert_eq!(ready["evidence"]["rejected_shares"], 0);
     assert_eq!(ready["remediation"], "observe_only");
 
-    fs::write(&journal_fixture, "net connect error: connection refused\n").unwrap();
+    fs::write(
+        &journal_fixture,
+        "miner    speed 10s/60s/15m 340.0 341.0 339.0 H/s\n",
+    )
+    .unwrap();
     let waiting = run_observer(
         &root,
         &systemctl,
         &journalctl,
         &systemctl_fixture,
         &journal_fixture,
+        Some(disconnected_summary()),
     );
     assert_eq!(waiting["state"], "waiting_external");
     assert_eq!(waiting["reason"], "pool_or_network_unavailable");
+    assert_eq!(waiting["evidence"]["source"], "xmrig_http_api");
 
-    fs::write(&journal_fixture, "").unwrap();
     let degraded = run_observer(
         &root,
         &systemctl,
         &journalctl,
         &systemctl_fixture,
         &journal_fixture,
+        Some(missing_current_hashrate_summary()),
     );
     assert_eq!(degraded["state"], "degraded");
-    assert_eq!(degraded["reason"], "no_recent_speed_evidence");
+    assert_eq!(degraded["reason"], "current_hashrate_unavailable");
+    assert_eq!(degraded["evidence"]["source"], "xmrig_http_api");
 
+    fs::write(&journal_fixture, "").unwrap();
     let unknown = run_observer(
         &root,
         &systemctl,
         &journalctl_fail,
         &systemctl_fixture,
         &journal_fixture,
+        None,
     );
     assert_eq!(unknown["state"], "unknown");
-    assert_eq!(unknown["reason"], "journal_unavailable");
+    assert_eq!(unknown["reason"], "api_unavailable");
     assert_eq!(unknown["evidence"]["journal_available"], false);
 
     write_runtime_status(&root.join("run/runtime-config-status.json"), "r2");
@@ -153,6 +292,7 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
         &journalctl,
         &systemctl_fixture,
         &journal_fixture,
+        Some(ready_summary()),
     );
     assert_eq!(blocked["state"], "blocked");
     assert_eq!(blocked["reason"], "runtime_revision_mismatch");
