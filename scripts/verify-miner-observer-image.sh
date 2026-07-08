@@ -129,6 +129,30 @@ if active_metrics.get("pool_connected") is not True:
 if active_state != ("ready", None):
     raise SystemExit(f"extracted observer rejects active hashrate: {active_state}")
 
+schema_metrics = module.summary_metrics({
+    "connection": {
+        "accepted": 43.9,
+        "rejected": 1.2,
+        "failures": 2.5,
+        "ping": 109.7,
+    },
+    "results": {
+        "shares_good": 42.8,
+        "shares_total": 44.1,
+    },
+    "hugepages": [1168.5, 1169.5],
+})
+for key in (
+    "accepted_shares",
+    "rejected_shares",
+    "connection_failures",
+    "pool_ping_ms",
+    "hugepages_used",
+    "hugepages_total",
+):
+    if schema_metrics.get(key) is not None:
+        raise SystemExit(f"extracted observer truncates fractional counters: {key}")
+
 old_ready_new_external = "\n".join([
     "miner    speed 10s/60s/15m 341.2 340.9 340.7 H/s",
     "cpu accepted (43/0) diff 10000",
@@ -207,6 +231,7 @@ for required in \
     '"/2/summary"' \
     '"Authorization": f"Bearer {token}"' \
     'API_MAX_BYTES = 256 * 1024' \
+    'def nonnegative_integer(value: object) -> int | None:' \
     'connection_ip = connection.get("ip")' \
     'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
     '"pool_connected": pool_connected' \
