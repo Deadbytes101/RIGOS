@@ -39,6 +39,7 @@ python3 ./scripts/test-miner-health-journal-fallback.py
 python3 ./scripts/test-runtime-token-publication.py
 
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
+cargo test --locked -p rigos-config --test miner_observer_authority -- --nocapture
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 
