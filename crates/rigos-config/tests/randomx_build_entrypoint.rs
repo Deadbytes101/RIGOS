@@ -33,7 +33,8 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(image_verifier.contains("msr_support=\"builtin\""));
     assert!(image_verifier.contains("modules.builtin"));
     assert!(image_verifier.contains("kernel/arch/x86/kernel/msr\\.ko"));
-    assert!(image_verifier.contains(
-        "kernel MSR support is absent from module files and modules.builtin"
-    ));
+    assert!(
+        image_verifier
+            .contains("kernel MSR support is absent from module files and modules.builtin")
+    );
 }
