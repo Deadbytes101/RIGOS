@@ -1,0 +1,67 @@
+DBYTE RIGOS WINDOWS SOURCE GATE
+===============================
+
+PURPOSE
+-------
+
+Windows may compile and run cross-platform source tests. Linux remains the
+authoritative environment for Unix runtime integration, image construction,
+filesystem permission semantics, systemd verification, and physical gates.
+
+POWERSHELL RULE
+---------------
+
+PowerShell does not use a trailing backslash as a line continuation. Run Cargo
+commands on one line, or use PowerShell's backtick continuation explicitly.
+
+SAFE BRANCH RECOVERY
+--------------------
+
+When a local performance branch still points at the historical ADDED BASED
+commit, preserve that history before aligning the working branch with origin:
+
+  git status --short
+  git branch backup/local-based-b25f0bf b25f0bf1ab902a22bb06a8e363fcdf51d66cafe7
+  git fetch origin performance/randomx-sustained-hash
+  git reset --hard origin/performance/randomx-sustained-hash
+
+Do not rebase the ADDED BASED commits onto the performance branch. That history
+contains the raw HiveOS reference tree intentionally removed from PR #15.
+
+WINDOWS COMMANDS
+----------------
+
+  cargo test --locked -p rigos-config --test miner_observer_authority -- --nocapture
+  cargo test --locked -p rigos-config --no-run
+
+The following integration targets are intentionally Unix-only and must retain a
+file-level #![cfg(unix)] gate:
+
+  crates/rigos-config/tests/miner_stability.rs
+  crates/rigos-config/tests/hive_exit_runtime_publish.rs
+  crates/rigos-config/tests/randomx_msr_authority.rs
+
+LINUX COMMANDS
+--------------
+
+Run these inside an actual WSL/Linux shell with Linux Rust installed:
+
+  cd /mnt/d/TECHNICAL/dbyte-rigos
+  source "$HOME/.cargo/env"
+  cargo --version
+  bash ./scripts/verify.sh
+
+Typing /mnt/d paths or source commands directly into PowerShell does not enter
+WSL. From PowerShell, launch a Linux shell first with:
+
+  wsl.exe
+
+or invoke the command explicitly:
+
+  wsl.exe bash -lc 'cd /mnt/d/TECHNICAL/dbyte-rigos && source "$HOME/.cargo/env" && bash ./scripts/verify.sh'
+
+EVIDENCE RULE
+-------------
+
+A Windows compile PASS is not a Linux runtime PASS. An exact image PASS and
+physical PASS remain separate gates.
