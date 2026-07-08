@@ -111,7 +111,59 @@ class MinerHealthConnectionStateTests(unittest.TestCase):
         self.assertTrue(metrics["pool_connected"])
         self.assertEqual(metrics["connection_ip"], "203.0.113.10")
         self.assertEqual(metrics["connection_uptime_ms"], 125)
-        self.assertEqual(classify(self.module, metrics), ("degraded", "no_hashrate_from_api"))
+        self.assertEqual(
+            classify(self.module, metrics),
+            ("degraded", "no_current_hashrate_from_api"),
+        )
+
+    def test_active_historical_hashrate_without_current_rate_is_degraded(self):
+        metrics = self.module.summary_metrics({
+            "uptime": 900,
+            "algo": "rx/0",
+            "hashrate": {"total": [0, 340.9, 340.7], "highest": 342.1},
+            "connection": {
+                "pool": "pool.example:1234",
+                "ip": "203.0.113.10",
+                "uptime": 590,
+                "uptime_ms": 590125,
+                "accepted": 43,
+                "rejected": 0,
+                "failures": 0,
+                "ping": 109,
+            },
+            "hugepages": [1168, 1168],
+        })
+
+        self.assertEqual(metrics["hashrate_10s"], 0)
+        self.assertGreater(metrics["hashrate_60s"], 0)
+        self.assertEqual(
+            classify(self.module, metrics),
+            ("degraded", "no_current_hashrate_from_api"),
+        )
+
+    def test_active_connection_with_unavailable_current_rate_is_degraded(self):
+        metrics = self.module.summary_metrics({
+            "uptime": 900,
+            "algo": "rx/0",
+            "hashrate": {"total": [None, 340.9, 340.7], "highest": 342.1},
+            "connection": {
+                "pool": "pool.example:1234",
+                "ip": "203.0.113.10",
+                "uptime": 590,
+                "uptime_ms": 590125,
+                "accepted": 43,
+                "rejected": 0,
+                "failures": 0,
+                "ping": 109,
+            },
+            "hugepages": [1168, 1168],
+        })
+
+        self.assertIsNone(metrics["hashrate_10s"])
+        self.assertEqual(
+            classify(self.module, metrics),
+            ("degraded", "current_hashrate_unavailable"),
+        )
 
     def test_active_connection_with_hashrate_is_ready(self):
         metrics = self.module.summary_metrics({
