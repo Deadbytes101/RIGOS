@@ -293,10 +293,7 @@ if rg -n 'if\s+.*(moneroocean|2miners|nicehash|supportxmr|herominers|hashvault|n
   echo "pool-name conditional leaked into runtime core" >&2
   exit 1
 fi
-if rg -n 'curl|wget|Invoke-WebRequest|latest' build/usb/includes.chroot; then
-  echo "runtime miner download or floating dependency detected" >&2
-  exit 1
-fi
+bash scripts/verify-runtime-dependencies.sh build/usb/includes.chroot
 for required in build/usb/THIRD_PARTY_NOTICES docs/miner-provenance.md docs/third-party-components.md; do
   [[ -s "$required" ]] || { echo "missing third-party disclosure: $required" >&2; exit 1; }
 done
