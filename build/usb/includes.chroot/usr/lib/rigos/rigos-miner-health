@@ -378,22 +378,22 @@ def classify(
         return "blocked", "runtime_revision_mismatch"
 
     if api_metrics is not None:
-        rates = (
-            api_metrics.get("hashrate_10s"),
-            api_metrics.get("hashrate_60s"),
-            api_metrics.get("hashrate_15m"),
-        )
-        hashrate_positive = any(
-            isinstance(value, (int, float)) and value > 0 for value in rates
+        current_hashrate = api_metrics.get("hashrate_10s")
+        current_hashrate_positive = (
+            isinstance(current_hashrate, (int, float))
+            and not isinstance(current_hashrate, bool)
+            and current_hashrate > 0
         )
         pool_connected = api_metrics.get("pool_connected") is True
-        if pool_connected and hashrate_positive:
+        if pool_connected and current_hashrate_positive:
             return "ready", None
         if active_for is not None and active_for < WARMUP_SECONDS:
             return "warming_up", None
         if not pool_connected:
             return "waiting_external", "pool_or_network_unavailable"
-        return "degraded", "no_hashrate_from_api"
+        if current_hashrate is None:
+            return "degraded", "current_hashrate_unavailable"
+        return "degraded", "no_current_hashrate_from_api"
 
     if not journal_available:
         return "unknown", api_error or "journal_unavailable"
