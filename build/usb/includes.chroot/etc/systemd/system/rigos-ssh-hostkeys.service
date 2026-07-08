@@ -6,7 +6,7 @@ Before=ssh.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/lib/rigos/rigos-ssh-hostkeys
+ExecStart=/usr/lib/rigos/rigos-ssh-hostkeys
 RemainAfterExit=yes
 UMask=0077
 NoNewPrivileges=yes
