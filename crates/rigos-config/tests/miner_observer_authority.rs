@@ -1,12 +1,39 @@
 #[cfg(unix)]
-use std::env;
-use std::fs;
-use std::path::PathBuf;
-#[cfg(unix)]
 use std::process::Command;
+use std::{env, fs};
+use std::path::{Path, PathBuf};
+
+fn is_repo_root(path: &Path) -> bool {
+    path.join("Cargo.toml").is_file()
+        && path.join("crates/rigos-config/Cargo.toml").is_file()
+        && path.join("scripts/verify.sh").is_file()
+}
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    let mut starts = Vec::new();
+
+    if let Ok(current) = env::current_dir() {
+        starts.push(current);
+    }
+    if let Ok(executable) = env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            starts.push(parent.to_path_buf());
+        }
+    }
+
+    for start in starts {
+        let mut candidate = start;
+        loop {
+            if is_repo_root(&candidate) {
+                return candidate;
+            }
+            if !candidate.pop() {
+                break;
+            }
+        }
+    }
+
+    panic!("unable to locate the RIGOS repository root at runtime");
 }
 
 fn repo_path(path: &str) -> PathBuf {
@@ -158,4 +185,16 @@ fn observer_test_files_are_regular_repository_files() {
     }
 
     assert!(repo_path("scripts/verify-miner-observer-image.sh").is_file());
+}
+
+#[test]
+fn repository_root_is_resolved_at_runtime() {
+    let root = repo_root();
+    assert!(is_repo_root(&root));
+
+    let source = fs::read_to_string(root.join(
+        "crates/rigos-config/tests/miner_observer_authority.rs",
+    ))
+    .expect("read observer authority source");
+    assert!(!source.contains("CARGO_MANIFEST_DIR"));
 }
