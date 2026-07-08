@@ -34,7 +34,7 @@ if [ -f "$HOME/.cargo/env" ]; then
 fi
 
 missing=0
-for tool in cargo rustc python3 bash rg; do
+for tool in cargo rustc python3 bash sh git grep rg mktemp; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'RIGOS_WSL_TOOL_MISSING=%s\n' "$tool" >&2
     missing=1
@@ -43,6 +43,18 @@ done
 
 if [ "$missing" -ne 0 ]; then
   printf '%s\n' 'Install the missing tool inside this WSL distribution, then rerun scripts/verify-wsl.ps1.' >&2
+  exit 127
+fi
+
+for component in fmt clippy; do
+  if ! cargo "$component" --version >/dev/null 2>&1; then
+    printf 'RIGOS_WSL_CARGO_COMPONENT_MISSING=%s\n' "$component" >&2
+    missing=1
+  fi
+done
+
+if [ "$missing" -ne 0 ]; then
+  printf '%s\n' 'Install the missing Rust component inside this WSL distribution, then rerun scripts/verify-wsl.ps1.' >&2
   exit 127
 fi
 
