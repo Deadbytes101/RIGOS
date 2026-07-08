@@ -25,6 +25,7 @@ python3 -m py_compile \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate
 
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
+cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 
 ./scripts/build-usb-image.sh
