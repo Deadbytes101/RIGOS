@@ -1,5 +1,5 @@
-DBYTE RIGOS WINDOWS SOURCE GATE
-===============================
+RIGOS WINDOWS SOURCE GATE
+=========================
 
 PURPOSE
 -------
@@ -78,9 +78,10 @@ PowerShell.
 DIRECT LINUX COMMANDS
 ---------------------
 
-Inside an actual WSL/Linux shell with Linux Rust installed:
+Inside an actual WSL/Linux shell with Linux Rust installed, change to the
+repository checkout selected by the operator:
 
-  cd /mnt/d/TECHNICAL/dbyte-rigos
+  cd /path/to/rigos-checkout
   source "$HOME/.cargo/env"
   cargo --version
   bash ./scripts/verify.sh
