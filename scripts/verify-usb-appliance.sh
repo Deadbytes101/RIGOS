@@ -68,17 +68,29 @@ mount -o ro "$p3" "$temporary/b"
 [[ "$(sha256sum "$p3" | cut -d' ' -f1)" == "$(jq -r .root_b_sha256 "$manifest")" ]] || die 'ROOT_B hash mismatch'
 cmp "$temporary/a/live/filesystem.squashfs" "$temporary/b/live/filesystem.squashfs"
 cmp "$temporary/a/image-layout.json" "$temporary/b/image-layout.json"
-[[ "$(sha256sum "$temporary/a/live/filesystem.squashfs" | cut -d' ' -f1)" == "$(jq -r .root_payload_sha256 "$manifest")" ]] || die 'root payload hash mismatch'
+squashfs="$temporary/a/live/filesystem.squashfs"
+[[ "$(sha256sum "$squashfs" | cut -d' ' -f1)" == "$(jq -r .root_payload_sha256 "$manifest")" ]] || die 'root payload hash mismatch'
 [[ "$(jq -r .schema "$temporary/a/image-layout.json")" == 'rigos.image-layout/v2' ]] || die 'embedded layout schema mismatch'
 [[ "$(jq -r .partition_table "$temporary/a/image-layout.json")" == mbr ]] || die 'embedded layout table mismatch'
 [[ "$(jq -r .final_state_partition "$temporary/a/image-layout.json")" == 4 ]] || die 'final state partition mismatch'
 [[ "$(jq -r '.partitions[-1].label' "$temporary/a/image-layout.json")" == RIGOS_STATE_SEED ]] || die 'state seed is not final'
-unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squashfs" \
+
+listing="$temporary/squashfs.list"
+unsquashfs -ll "$squashfs" >"$listing"
+if awk '{print $NF}' "$listing" | grep -E '^squashfs-root/etc/ssh/ssh_host_.*_key(\.pub)?$' >/dev/null; then
+  die 'appliance image contains a baked SSH host key'
+fi
+
+unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   etc/rigos-release etc/os-release \
+  etc/ssh/sshd_config.d/01-rigos-hostkeys.conf \
   usr/lib/tmpfiles.d/rigos.conf \
   etc/systemd/system/rigos-state.service \
   etc/systemd/system/rigos-state-ready.service \
   etc/systemd/system/rigos-recovery-access.service \
+  etc/systemd/system/rigos-ssh-hostkeys.service \
+  etc/systemd/system/ssh.service.d/rigos-observe.conf \
+  etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service \
   etc/systemd/system/rigos-firstboot.service \
   etc/systemd/system/rigos-hugepages.service \
   etc/systemd/system/rigos-miner.service \
@@ -88,20 +100,23 @@ unsquashfs -no-progress -d "$temporary/root" "$temporary/a/live/filesystem.squas
   etc/systemd/system/rigos-miner-health.timer \
   etc/systemd/system/rigos-runtime-render.service \
   etc/systemd/system/rigos-profile-apply.service \
-  usr/bin/jq usr/bin/python3 usr/bin/python3.11 \
+  usr/bin/jq usr/bin/python3 usr/bin/python3.11 usr/bin/findmnt usr/bin/ssh-keygen \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
-  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/xmrig \
+  usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/rigos-ssh-hostkeys usr/lib/rigos/xmrig \
   usr/local/bin/rigosd usr/local/bin/rigosctl \
   usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
 [[ -x "$temporary/root/usr/bin/jq" ]] || die 'jq runtime dependency is missing from the appliance'
+[[ -x "$temporary/root/usr/bin/findmnt" ]] || die 'findmnt runtime dependency is missing from the appliance'
+[[ -x "$temporary/root/usr/bin/ssh-keygen" ]] || die 'ssh-keygen runtime dependency is missing from the appliance'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-health"
+python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-ssh-hostkeys"
 sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-publish"
 sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-authority"
 python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
@@ -121,6 +136,35 @@ if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigo
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-state-ready' "$temporary/root/etc/systemd/system/rigos-state-ready.service" || die 'state readiness verifier is not wired'
 if grep -Fq 'Wants=rigos-recovery-access.service' "$temporary/root/etc/systemd/system/rigos-state-ready.service"; then die 'state readiness retriggers interactive recovery access'; fi
 grep -Fq 'Requires=rigos-state-ready.service' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply bypasses state readiness'
+
+hostkey_service="$temporary/root/etc/systemd/system/rigos-ssh-hostkeys.service"
+hostkey_policy="$temporary/root/etc/ssh/sshd_config.d/01-rigos-hostkeys.conf"
+ssh_dropin="$temporary/root/etc/systemd/system/ssh.service.d/rigos-observe.conf"
+hostkey_authority="$temporary/root/usr/lib/rigos/rigos-ssh-hostkeys"
+[[ -x "$hostkey_authority" ]] || die 'persistent SSH host-key authority is missing or not executable'
+[[ -L "$temporary/root/etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service" ]] || die 'persistent SSH host-key service is not enabled'
+for required in \
+  'After=rigos-state-ready.service' \
+  'Requires=rigos-state-ready.service' \
+  'Before=ssh.service' \
+  'ExecStart=/usr/lib/rigos/rigos-ssh-hostkeys' \
+  'ReadWritePaths=/var/lib/rigos /run/rigos'
+do
+  grep -Fqx "$required" "$hostkey_service" || die "persistent SSH host-key service contract is missing: $required"
+done
+grep -Fqx 'HostKey /var/lib/rigos/system/ssh-hostkeys/ssh_host_ed25519_key' "$hostkey_policy" || die 'sshd persistent HostKey policy is missing'
+grep -Fqx 'Requires=rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service does not require persistent host identity'
+grep -Fqx 'After=rigos-recovery-access.service rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service ordering bypasses persistent host identity'
+for required in \
+  'STATE = Path("/var/lib/rigos")' \
+  'KEYS = SYSTEM / "ssh-hostkeys"' \
+  '"schema": "rigos.ssh-hostkeys/v1"' \
+  'os.rename(temporary, KEYS)' \
+  '"persistent SSH host identity exists without a valid manifest"'
+do
+  grep -Fq "$required" "$hostkey_authority" || die "persistent SSH host-key authority contract is missing: $required"
+done
+
 [[ -x "$temporary/root/usr/lib/rigos/rigos-performance" ]] || die 'performance authority is missing or not executable'
 grep -Fq 'After=rigos-state-ready.service rigos-profile-apply.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority ordering is missing'
 grep -Fq 'Before=rigos-miner.service' "$temporary/root/etc/systemd/system/rigos-hugepages.service" || die 'huge page authority is not ordered before miner'
