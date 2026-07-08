@@ -16,8 +16,11 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         "$PSScriptRoot",
         "wslpath -a",
         "RIGOS_WSL_DISTRO",
+        "for tool in cargo rustc python3 bash sh git grep rg mktemp",
         "command -v \"$tool\"",
         "RIGOS_WSL_TOOL_MISSING",
+        "for component in fmt clippy",
+        "RIGOS_WSL_CARGO_COMPONENT_MISSING",
         "exec bash ./scripts/verify.sh",
         "RIGOS_WSL_SOURCE_GATE=PASS",
     ] {
