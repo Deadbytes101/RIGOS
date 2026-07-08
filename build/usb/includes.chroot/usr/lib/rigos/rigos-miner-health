@@ -281,6 +281,17 @@ def summary_metrics(summary: dict) -> dict:
     pool = connection.get("pool")
     if not isinstance(pool, str) or not pool:
         pool = None
+    connection_ip = connection.get("ip")
+    if not isinstance(connection_ip, str) or not connection_ip:
+        connection_ip = None
+    connection_uptime_seconds = nonnegative_number(connection.get("uptime"))
+    connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))
+    pool_connected = pool is not None and (
+        connection_ip is not None
+        or (connection_uptime_ms is not None and connection_uptime_ms > 0)
+        or (connection_uptime_seconds is not None and connection_uptime_seconds > 0)
+    )
+
     hugepages = summary.get("hugepages")
     hugepages_used = None
     hugepages_total = None
@@ -295,9 +306,11 @@ def summary_metrics(summary: dict) -> dict:
         "hashrate_60s": rates[1],
         "hashrate_15m": rates[2],
         "hashrate_highest": nonnegative_number(hashrate.get("highest")),
-        "pool_connected": pool is not None,
+        "pool_connected": pool_connected,
         "pool": pool,
-        "connection_uptime_seconds": nonnegative_number(connection.get("uptime")),
+        "connection_ip": connection_ip,
+        "connection_uptime_seconds": connection_uptime_seconds,
+        "connection_uptime_ms": connection_uptime_ms,
         "connection_failures": nonnegative_number(connection.get("failures")),
         "pool_ping_ms": nonnegative_number(connection.get("ping")),
         "accepted_shares": int(accepted) if accepted is not None else None,
