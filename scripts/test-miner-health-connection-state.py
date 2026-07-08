@@ -64,6 +64,32 @@ class MinerHealthConnectionStateTests(unittest.TestCase):
             ("waiting_external", "pool_or_network_unavailable"),
         )
 
+    def test_disconnected_historical_hashrate_does_not_report_ready(self):
+        metrics = self.module.summary_metrics({
+            "uptime": 900,
+            "algo": "rx/0",
+            "hashrate": {"total": [0, 340.8, 339.7], "highest": 341.2},
+            "connection": {
+                "pool": "pool.example:1234",
+                "ip": None,
+                "uptime": 0,
+                "uptime_ms": 0,
+                "accepted": 43,
+                "rejected": 0,
+                "failures": 3,
+                "ping": 0,
+            },
+            "hugepages": [1168, 1168],
+        })
+
+        self.assertGreater(metrics["hashrate_60s"], 0)
+        self.assertGreater(metrics["hashrate_15m"], 0)
+        self.assertFalse(metrics["pool_connected"])
+        self.assertEqual(
+            classify(self.module, metrics),
+            ("waiting_external", "pool_or_network_unavailable"),
+        )
+
     def test_active_connection_without_hashrate_is_degraded(self):
         metrics = self.module.summary_metrics({
             "uptime": 900,
@@ -86,6 +112,27 @@ class MinerHealthConnectionStateTests(unittest.TestCase):
         self.assertEqual(metrics["connection_ip"], "203.0.113.10")
         self.assertEqual(metrics["connection_uptime_ms"], 125)
         self.assertEqual(classify(self.module, metrics), ("degraded", "no_hashrate_from_api"))
+
+    def test_active_connection_with_hashrate_is_ready(self):
+        metrics = self.module.summary_metrics({
+            "uptime": 900,
+            "algo": "rx/0",
+            "hashrate": {"total": [341.2, 340.9, 340.7], "highest": 342.1},
+            "connection": {
+                "pool": "pool.example:1234",
+                "ip": "203.0.113.10",
+                "uptime": 590,
+                "uptime_ms": 590125,
+                "accepted": 43,
+                "rejected": 0,
+                "failures": 0,
+                "ping": 109,
+            },
+            "hugepages": [1168, 1168],
+        })
+
+        self.assertTrue(metrics["pool_connected"])
+        self.assertEqual(classify(self.module, metrics), ("ready", None))
 
     def test_seconds_uptime_remains_compatible_without_ip_or_milliseconds(self):
         metrics = self.module.summary_metrics({
