@@ -395,6 +395,8 @@ def classify(
             return "degraded", "current_hashrate_unavailable"
         return "degraded", "no_current_hashrate_from_api"
 
+    if api_error not in (None, "api_unavailable"):
+        return "degraded", api_error
     if not journal_available:
         return "unknown", api_error or "journal_unavailable"
     return journal_fallback_state(journal, active_for, api_error)
