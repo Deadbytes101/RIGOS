@@ -29,6 +29,10 @@ WARMUP_SECONDS = int(os.environ.get("RIGOS_MINER_WARMUP_SECONDS", "240"))
 MAX_JOURNAL_LINES = 500
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
+READY_MARKERS = (
+    "miner    speed",
+    "accepted (",
+)
 EXTERNAL_MARKERS = (
     "connect error",
     "connection refused",
@@ -163,6 +167,34 @@ def last_share_counts(text: str) -> tuple[int | None, int | None]:
         return None, None
     accepted, rejected = matches[-1]
     return int(accepted), int(rejected)
+
+
+def latest_marker_index(text: str, markers: tuple[str, ...]) -> int:
+    return max((text.rfind(marker) for marker in markers), default=-1)
+
+
+def latest_journal_signal(text: str) -> str | None:
+    lowered = text.lower()
+    ready_index = latest_marker_index(lowered, READY_MARKERS)
+    external_index = latest_marker_index(lowered, EXTERNAL_MARKERS)
+    if ready_index < 0 and external_index < 0:
+        return None
+    return "external_wait" if external_index > ready_index else "ready"
+
+
+def journal_fallback_state(
+    journal: str,
+    active_for: int | None,
+    api_error: str | None,
+) -> tuple[str, str | None]:
+    signal = latest_journal_signal(journal)
+    if signal == "ready":
+        return "ready", None
+    if signal == "external_wait":
+        return "waiting_external", "pool_or_network_unavailable"
+    if active_for is not None and active_for < WARMUP_SECONDS:
+        return "warming_up", None
+    return "degraded", api_error or "miner_api_unavailable"
 
 
 def expected_token_uid() -> int:
@@ -365,14 +397,7 @@ def classify(
 
     if not journal_available:
         return "unknown", api_error or "journal_unavailable"
-    lowered = journal.lower()
-    if "miner    speed" in lowered or "accepted (" in lowered:
-        return "ready", None
-    if any(marker in lowered for marker in EXTERNAL_MARKERS):
-        return "waiting_external", "pool_or_network_unavailable"
-    if active_for is not None and active_for < WARMUP_SECONDS:
-        return "warming_up", None
-    return "degraded", api_error or "miner_api_unavailable"
+    return journal_fallback_state(journal, active_for, api_error)
 
 
 def main() -> int:
@@ -444,6 +469,7 @@ def main() -> int:
                 "external_wait_marker": any(
                     marker in lowered_journal for marker in EXTERNAL_MARKERS
                 ),
+                "latest_journal_signal": latest_journal_signal(journal),
                 "accepted_shares": accepted,
                 "rejected_shares": rejected,
             },
