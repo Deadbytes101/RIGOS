@@ -85,5 +85,6 @@ fn repository_root_is_resolved_at_runtime() {
 
     let source = fs::read_to_string(root.join("crates/rigos-config/tests/wsl_source_gate.rs"))
         .expect("read WSL source gate test");
-    assert!(!source.contains("CARGO_MANIFEST_DIR"));
+    let compile_time_manifest = ["CARGO", "_MANIFEST_DIR"].concat();
+    assert!(!source.contains(&compile_time_manifest));
 }
