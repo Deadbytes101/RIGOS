@@ -31,9 +31,30 @@ mount -o ro "$loop" "$temporary/root-a"
 squashfs="$temporary/root-a/live/filesystem.squashfs"
 [[ -f "$squashfs" ]] || die 'ROOT_A squashfs is missing'
 
-unsquashfs -ll "$squashfs" \
-    | grep -Eq 'squashfs-root/(usr/)?lib/modules/.*/kernel/arch/x86/kernel/msr\.ko(\.(xz|zst|gz))?$' \
-    || die 'kernel MSR module is missing from squashfs'
+listing="$temporary/squashfs.list"
+unsquashfs -ll "$squashfs" >"$listing"
+
+msr_support="missing"
+if awk '{print $NF}' "$listing" \
+    | grep -Eq '^squashfs-root/(usr/)?lib/modules/[^/]+/kernel/arch/x86/kernel/msr\.ko(\.(xz|zst|gz))?$'
+then
+    msr_support="module"
+else
+    while IFS= read -r builtin_path; do
+        if unsquashfs -cat "$squashfs" "$builtin_path" \
+            | grep -Eq '(^|/)kernel/arch/x86/kernel/msr\.ko$'
+        then
+            msr_support="builtin"
+            break
+        fi
+    done < <(
+        awk '{print $NF}' "$listing" \
+            | sed -nE 's#^squashfs-root/((usr/)?lib/modules/[^/]+/modules\.builtin)$#\1#p'
+    )
+fi
+
+[[ "$msr_support" != "missing" ]] \
+    || die 'kernel MSR support is absent from module files and modules.builtin'
 
 unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
     usr/bin/python3 usr/bin/python3.11 usr/bin/kmod usr/sbin/modprobe \
@@ -102,4 +123,5 @@ do
     grep -Fq "$required" "$miner_gate" || die "miner MSR safety contract is missing: $required"
 done
 
+printf 'RIGOS RandomX kernel MSR support: %s\n' "$msr_support"
 printf 'RIGOS RandomX performance image verification passed: %s\n' "$image"
