@@ -21,7 +21,10 @@ fn run_python(script: &str) {
         .current_dir(repo_root())
         .status()
         .unwrap_or_else(|error| panic!("failed to execute {script} with {python}: {error}"));
-    assert!(status.success(), "observer source regression failed: {script}");
+    assert!(
+        status.success(),
+        "observer source regression failed: {script}"
+    );
 }
 
 #[cfg(unix)]
@@ -82,7 +85,10 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
         "latest_journal_signal",
         "api_error not in (None, \"api_unavailable\")",
     ] {
-        assert!(observer.contains(contract), "observer contract missing: {contract}");
+        assert!(
+            observer.contains(contract),
+            "observer contract missing: {contract}"
+        );
     }
 
     assert!(renderer.contains("secrets.token_urlsafe(48)"));
@@ -143,10 +149,12 @@ fn observer_test_files_are_regular_repository_files() {
         "scripts/test-miner-health-journal-fallback.py",
         "scripts/test-runtime-token-publication.py",
     ] {
-        let metadata = fs::metadata(repo_path(path)).unwrap_or_else(|error| {
-            panic!("observer test file is unavailable: {path}: {error}")
-        });
-        assert!(metadata.is_file(), "observer test path is not a file: {path}");
+        let metadata = fs::metadata(repo_path(path))
+            .unwrap_or_else(|error| panic!("observer test file is unavailable: {path}: {error}"));
+        assert!(
+            metadata.is_file(),
+            "observer test path is not a file: {path}"
+        );
     }
 
     assert!(repo_path("scripts/verify-miner-observer-image.sh").is_file());
