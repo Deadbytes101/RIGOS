@@ -146,6 +146,36 @@ old_external_new_ready = "\n".join([
 state = module.journal_fallback_state(old_external_new_ready, 600, "api_unavailable")
 if state != ("ready", None):
     raise SystemExit(f"extracted observer ignores newer journal ready evidence: {state}")
+
+authority_error_state = module.classify(
+    properties,
+    "S",
+    600,
+    "r1",
+    "ready",
+    "r1",
+    None,
+    "api_token_missing",
+    "cpu accepted (43/0) diff 10000",
+    True,
+)
+if authority_error_state != ("degraded", "api_token_missing"):
+    raise SystemExit(f"extracted observer hides API authority failure: {authority_error_state}")
+
+transient_state = module.classify(
+    properties,
+    "S",
+    600,
+    "r1",
+    "ready",
+    "r1",
+    None,
+    "api_unavailable",
+    "cpu accepted (43/0) diff 10000",
+    True,
+)
+if transient_state != ("ready", None):
+    raise SystemExit(f"extracted observer rejects bounded transient fallback: {transient_state}")
 PY
 
 for required in \
@@ -184,6 +214,7 @@ for required in \
     'if pool_connected and current_hashrate_positive:' \
     'return "degraded", "current_hashrate_unavailable"' \
     'return "degraded", "no_current_hashrate_from_api"' \
+    'if api_error not in (None, "api_unavailable"):' \
     'def latest_journal_signal(text: str) -> str | None:' \
     '"latest_journal_signal": latest_journal_signal(journal)' \
     '"source": "xmrig_http_api" if metrics is not None else "journal_fallback"' \
