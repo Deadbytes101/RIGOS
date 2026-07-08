@@ -28,11 +28,14 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(!entrypoint.contains("source ./build/usb/version.env"));
     assert!(entrypoint.contains("rigos-randomx-msr"));
     assert!(entrypoint.contains("rigos-miner-gate"));
+    assert!(entrypoint.contains("--test randomx_build_entrypoint"));
 
     assert!(image_verifier.contains("msr_support=\"module\""));
     assert!(image_verifier.contains("msr_support=\"builtin\""));
     assert!(image_verifier.contains("modules.builtin"));
     assert!(image_verifier.contains("kernel/arch/x86/kernel/msr\\.ko"));
+    assert!(image_verifier.contains("Do not use grep -q in a pipe while pipefail is enabled"));
+    assert!(!image_verifier.contains("grep -Eq"));
     assert!(
         image_verifier
             .contains("kernel MSR support is absent from module files and modules.builtin")
