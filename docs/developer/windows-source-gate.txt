@@ -51,7 +51,8 @@ The launcher:
   - derives the repository from its own location
   - converts the Windows path through wslpath
   - sources $HOME/.cargo/env when present
-  - checks cargo, rustc, python3, bash, and rg
+  - checks cargo, rustc, python3, bash, sh, git, grep, rg, and mktemp
+  - checks the Rust fmt and clippy cargo components
   - does not download or install tools
   - executes scripts/verify.sh only after every prerequisite is present
 
@@ -63,12 +64,14 @@ or set:
 
   $env:RIGOS_WSL_DISTRO = "Ubuntu"
 
-A missing dependency is reported as:
+A missing executable or Rust component is reported as:
 
   RIGOS_WSL_TOOL_MISSING=<tool>
+  RIGOS_WSL_CARGO_COMPONENT_MISSING=<component>
 
-Install that tool inside the selected WSL distribution and rerun the launcher.
-Do not type /mnt paths or source commands directly into PowerShell.
+Install the missing prerequisite inside the selected WSL distribution and rerun
+the launcher. Do not type /mnt paths or source commands directly into
+PowerShell.
 
 DIRECT LINUX COMMANDS
 ---------------------
