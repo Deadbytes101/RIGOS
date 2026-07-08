@@ -290,9 +290,7 @@ fn partial_write_failure_rolls_back_every_recoverable_cpu_and_keeps_state() {
 
     let gate = run_miner_gate(&root);
     assert_eq!(gate.status.code(), Some(2));
-    assert!(
-        String::from_utf8_lossy(&gate.stderr).contains("randomx_msr_authority_unsafe")
-    );
+    assert!(String::from_utf8_lossy(&gate.stderr).contains("randomx_msr_authority_unsafe"));
 
     let _ = fs::remove_dir_all(root);
 }
