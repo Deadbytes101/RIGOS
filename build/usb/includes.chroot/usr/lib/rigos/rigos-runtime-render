@@ -15,7 +15,7 @@ RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
 PRIVATE_CONFIG = RUNTIME / "xmrig.json"
 PUBLIC_CONFIG = RUNTIME / "xmrig-public.json"
 STATUS = RUNTIME / "runtime-config-status.json"
-API_TOKEN = RUNTIME / "xmrig-api-token"
+API_TOKEN = Path(os.environ.get("RIGOS_XMRIG_API_TOKEN_PATH", str(RUNTIME / "xmrig-api-token")))
 API_HOST = "127.0.0.1"
 API_PORT = 18080
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -87,7 +87,7 @@ def validate_token_descriptor(descriptor: int) -> str:
 
 
 def load_or_create_api_token() -> str:
-    RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
+    API_TOKEN.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     flags = os.O_RDONLY | os.O_CLOEXEC | nofollow
     try:
@@ -104,7 +104,7 @@ def load_or_create_api_token() -> str:
         finally:
             os.close(descriptor)
         API_TOKEN.chmod(0o600)
-        fsync_directory(RUNTIME)
+        fsync_directory(API_TOKEN.parent)
         descriptor = os.open(API_TOKEN, flags)
     try:
         return validate_token_descriptor(descriptor)
