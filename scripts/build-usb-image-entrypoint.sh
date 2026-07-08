@@ -20,9 +20,11 @@ fi
 source "$version_env"
 
 python3 ./scripts/check-alpha8-ssh-hotfix.py
+python3 ./scripts/verify-systemd-ordering.py
 python3 -m py_compile \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-randomx-msr \
-    ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys
 
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
