@@ -79,8 +79,8 @@ def verify(units):
     includes(hostkeys.words("Unit", "Requires"), {"rigos-state-ready.service"}, "SSH host-key authority must require state readiness")
     includes(hostkeys.words("Unit", "Before"), {"ssh.service"}, "SSH host-key authority must precede sshd")
     require(
-        hostkeys.scalar("Service", "ExecStart") == "/usr/bin/python3",
-        "SSH host-key authority must use the absolute Python runtime",
+        hostkeys.scalar("Service", "ExecStart") == "/usr/lib/rigos/rigos-ssh-hostkeys",
+        "SSH host-key authority entrypoint is not exact",
     )
     includes(hostkeys.words("Install", "WantedBy"), {"multi-user.target"}, "SSH host-key authority must be enabled under multi-user")
 
