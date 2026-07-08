@@ -12,6 +12,8 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     let attributes = fs::read_to_string(repo_path(".gitattributes")).unwrap();
     let entrypoint =
         fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
+    let image_verifier =
+        fs::read_to_string(repo_path("scripts/verify-randomx-performance-image.sh")).unwrap();
 
     assert!(
         attributes
@@ -26,4 +28,12 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(!entrypoint.contains("source ./build/usb/version.env"));
     assert!(entrypoint.contains("rigos-randomx-msr"));
     assert!(entrypoint.contains("rigos-miner-gate"));
+
+    assert!(image_verifier.contains("msr_support=\"module\""));
+    assert!(image_verifier.contains("msr_support=\"builtin\""));
+    assert!(image_verifier.contains("modules.builtin"));
+    assert!(image_verifier.contains("kernel/arch/x86/kernel/msr\\.ko"));
+    assert!(image_verifier.contains(
+        "kernel MSR support is absent from module files and modules.builtin"
+    ));
 }
