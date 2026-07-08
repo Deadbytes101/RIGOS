@@ -96,9 +96,9 @@ fn runtime_dependency_scan_is_token_aware_and_fail_closed() {
     assert_eq!(missing.code(), Some(66));
 
     let verify = fs::read_to_string(repo_path("scripts/verify.sh")).unwrap();
-    assert!(verify.contains(
-        "bash scripts/verify-runtime-dependencies.sh build/usb/includes.chroot"
-    ));
+    assert!(
+        verify.contains("bash scripts/verify-runtime-dependencies.sh build/usb/includes.chroot")
+    );
     assert!(!verify.contains("curl|wget|Invoke-WebRequest|latest"));
 
     let _ = fs::remove_dir_all(root);
