@@ -30,6 +30,7 @@ fn authenticated_miner_observer_behavioral_source_gate() {
     for script in [
         "scripts/test-miner-health-api.py",
         "scripts/test-miner-health-api-authority-errors.py",
+        "scripts/test-miner-health-api-schema.py",
         "scripts/test-miner-health-connection-state.py",
         "scripts/test-miner-health-journal-fallback.py",
         "scripts/test-runtime-token-publication.py",
@@ -60,6 +61,7 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
     for script in [
         "test-miner-health-api.py",
         "test-miner-health-api-authority-errors.py",
+        "test-miner-health-api-schema.py",
         "test-miner-health-connection-state.py",
         "test-miner-health-journal-fallback.py",
         "test-runtime-token-publication.py",
@@ -74,6 +76,7 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
     for contract in [
         "RIGOS_XMRIG_API_TOKEN_PATH",
         "hashrate_10s",
+        "nonnegative_integer",
         "current_hashrate_unavailable",
         "no_current_hashrate_from_api",
         "latest_journal_signal",
@@ -92,6 +95,7 @@ fn observer_authority_is_wired_into_build_and_exact_image_gates() {
         "extracted observer trusts historical hashrate as current",
         "extracted observer trusts stale journal ready evidence",
         "extracted observer hides API authority failure",
+        "extracted observer truncates fractional counters",
     ] {
         assert!(
             image_verifier.contains(contract),
@@ -105,6 +109,7 @@ fn observer_test_files_are_regular_repository_files() {
     for path in [
         "scripts/test-miner-health-api.py",
         "scripts/test-miner-health-api-authority-errors.py",
+        "scripts/test-miner-health-api-schema.py",
         "scripts/test-miner-health-connection-state.py",
         "scripts/test-miner-health-journal-fallback.py",
         "scripts/test-runtime-token-publication.py",
