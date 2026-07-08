@@ -226,7 +226,11 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
     write_executable(&journalctl, "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n");
     write_executable(&journalctl_fail, "#!/bin/sh\nexit 1\n");
 
-    fs::write(&journal_fixture, "net connect error: stale journal evidence\n").unwrap();
+    fs::write(
+        &journal_fixture,
+        "net connect error: stale journal evidence\n",
+    )
+    .unwrap();
     let ready = run_observer(
         &root,
         &systemctl,
