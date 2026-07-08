@@ -284,6 +284,12 @@ def nonnegative_number(value: object) -> int | float | None:
     return value
 
 
+def nonnegative_integer(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 def summary_metrics(summary: dict) -> dict:
     hashrate = summary.get("hashrate")
     if not isinstance(hashrate, dict):
@@ -301,12 +307,12 @@ def summary_metrics(summary: dict) -> dict:
     if not isinstance(results, dict):
         results = {}
 
-    accepted = nonnegative_number(connection.get("accepted"))
-    rejected = nonnegative_number(connection.get("rejected"))
+    accepted = nonnegative_integer(connection.get("accepted"))
+    rejected = nonnegative_integer(connection.get("rejected"))
     if accepted is None:
-        accepted = nonnegative_number(results.get("shares_good"))
+        accepted = nonnegative_integer(results.get("shares_good"))
     if rejected is None:
-        total = nonnegative_number(results.get("shares_total"))
+        total = nonnegative_integer(results.get("shares_total"))
         if total is not None and accepted is not None and total >= accepted:
             rejected = total - accepted
 
@@ -328,8 +334,8 @@ def summary_metrics(summary: dict) -> dict:
     hugepages_used = None
     hugepages_total = None
     if isinstance(hugepages, list) and len(hugepages) >= 2:
-        hugepages_used = nonnegative_number(hugepages[0])
-        hugepages_total = nonnegative_number(hugepages[1])
+        hugepages_used = nonnegative_integer(hugepages[0])
+        hugepages_total = nonnegative_integer(hugepages[1])
 
     return {
         "uptime_seconds": nonnegative_number(summary.get("uptime")),
@@ -343,12 +349,12 @@ def summary_metrics(summary: dict) -> dict:
         "connection_ip": connection_ip,
         "connection_uptime_seconds": connection_uptime_seconds,
         "connection_uptime_ms": connection_uptime_ms,
-        "connection_failures": nonnegative_number(connection.get("failures")),
-        "pool_ping_ms": nonnegative_number(connection.get("ping")),
-        "accepted_shares": int(accepted) if accepted is not None else None,
-        "rejected_shares": int(rejected) if rejected is not None else None,
-        "hugepages_used": int(hugepages_used) if hugepages_used is not None else None,
-        "hugepages_total": int(hugepages_total) if hugepages_total is not None else None,
+        "connection_failures": nonnegative_integer(connection.get("failures")),
+        "pool_ping_ms": nonnegative_integer(connection.get("ping")),
+        "accepted_shares": accepted,
+        "rejected_shares": rejected,
+        "hugepages_used": hugepages_used,
+        "hugepages_total": hugepages_total,
     }
 
 
