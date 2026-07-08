@@ -83,6 +83,9 @@ for required in \
     '"/2/summary"' \
     '"Authorization": f"Bearer {token}"' \
     'API_MAX_BYTES = 256 * 1024' \
+    'connection_ip = connection.get("ip")' \
+    'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
+    '"pool_connected": pool_connected' \
     '"source": "xmrig_http_api" if metrics is not None else "journal_fallback"' \
     'return "degraded", "no_hashrate_from_api"' \
     'return "degraded", api_error or "miner_api_unavailable"'
