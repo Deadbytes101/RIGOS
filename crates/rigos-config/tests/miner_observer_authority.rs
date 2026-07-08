@@ -1,7 +1,7 @@
 #[cfg(unix)]
 use std::process::Command;
-use std::{env, fs};
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 fn is_repo_root(path: &Path) -> bool {
     path.join("Cargo.toml").is_file()
@@ -196,5 +196,6 @@ fn repository_root_is_resolved_at_runtime() {
         "crates/rigos-config/tests/miner_observer_authority.rs",
     ))
     .expect("read observer authority source");
-    assert!(!source.contains("CARGO_MANIFEST_DIR"));
+    let compile_time_manifest = ["CARGO", "_MANIFEST_DIR"].concat();
+    assert!(!source.contains(&compile_time_manifest));
 }
