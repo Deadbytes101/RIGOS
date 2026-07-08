@@ -165,11 +165,12 @@ fn alpha8_appliance_wiring_is_explicit() {
     .expect("read runtime authority service");
     assert!(runtime_service.contains("ExecStart=/usr/lib/rigos/rigos-runtime-authority"));
 
-    let authority = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-authority");
-    let mode = fs::metadata(authority).unwrap().permissions();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        let authority =
+            repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-authority");
+        let mode = fs::metadata(authority).unwrap().permissions();
         assert_ne!(mode.mode() & 0o111, 0);
     }
 

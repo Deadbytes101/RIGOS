@@ -1,0 +1,32 @@
+[Unit]
+Description=Apply reversible RIGOS RandomX MSR optimization
+After=rigos-state-ready.service rigos-profile-apply.service
+Requires=rigos-state-ready.service rigos-profile-apply.service
+Before=rigos-miner.service
+ConditionArchitecture=x86-64
+ConditionPathExists=/var/lib/rigos/current
+
+[Service]
+Type=oneshot
+ExecStartPre=-/usr/sbin/modprobe msr
+ExecStart=/usr/bin/python3 /usr/lib/rigos/rigos-randomx-msr apply
+ExecStop=/usr/bin/python3 /usr/lib/rigos/rigos-randomx-msr restore
+RemainAfterExit=yes
+TimeoutStartSec=20s
+TimeoutStopSec=20s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=no
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=CAP_SYS_MODULE CAP_SYS_RAWIO
+AmbientCapabilities=CAP_SYS_MODULE CAP_SYS_RAWIO
+ReadWritePaths=/run/rigos -/dev/cpu
+
+[Install]
+WantedBy=multi-user.target

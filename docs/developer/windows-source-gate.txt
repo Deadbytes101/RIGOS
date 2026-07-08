@@ -1,0 +1,93 @@
+RIGOS WINDOWS SOURCE GATE
+=========================
+
+PURPOSE
+-------
+
+Windows may compile and run cross-platform source tests. Linux remains the
+authoritative environment for Unix runtime integration, image construction,
+filesystem permission semantics, systemd verification, and physical gates.
+
+POWERSHELL RULE
+---------------
+
+PowerShell does not use a trailing backslash as a line continuation. Run Cargo
+commands on one line, or use PowerShell's backtick continuation explicitly.
+
+BASED RECOVERY RULE
+-------------------
+
+The historical raw HiveOS filesystem import must not remain reachable from any
+production branch, tag, or local Git backup branch. Preserve any required
+reference outside Git in encrypted or offline storage, then use a fresh
+single-branch clone as the canonical development checkout.
+
+Never rebase the historical BASED commits onto a production branch.
+
+WINDOWS COMMANDS
+----------------
+
+  cargo fmt --all -- --check
+  cargo test --locked -p rigos-config --test miner_observer_authority -- --nocapture
+  cargo test --locked -p rigos-config --test wsl_source_gate -- --nocapture
+  cargo test --locked -p rigos-config --no-run
+
+The following integration targets are intentionally Unix-only and must retain a
+file-level #![cfg(unix)] gate:
+
+  crates/rigos-config/tests/miner_stability.rs
+  crates/rigos-config/tests/hive_exit_runtime_publish.rs
+  crates/rigos-config/tests/randomx_msr_authority.rs
+
+LINUX AUTHORITY FROM POWERSHELL
+-------------------------------
+
+Run the fail-closed launcher from the repository root:
+
+  powershell -ExecutionPolicy Bypass -File .\scripts\verify-wsl.ps1
+
+The launcher:
+
+  - derives the repository from its own location
+  - normalizes Windows backslashes before invoking wslpath
+  - invokes scripts/verify-wsl-entrypoint.sh as a real file
+  - never transports multiline Bash source through a native command argument
+  - sources $HOME/.cargo/env when present
+  - checks cargo, rustc, python3, bash, sh, git, grep, rg, and mktemp
+  - checks the Rust fmt and clippy cargo components
+  - does not download or install tools
+  - executes scripts/verify.sh only after every prerequisite is present
+
+To select a specific installed WSL distribution:
+
+  powershell -ExecutionPolicy Bypass -File .\scripts\verify-wsl.ps1 -Distribution Ubuntu
+
+or set:
+
+  $env:RIGOS_WSL_DISTRO = "Ubuntu"
+
+A missing executable or Rust component is reported as:
+
+  RIGOS_WSL_TOOL_MISSING=<tool>
+  RIGOS_WSL_CARGO_COMPONENT_MISSING=<component>
+
+Install the missing prerequisite inside the selected WSL distribution and rerun
+the launcher. Do not type /mnt paths or source commands directly into
+PowerShell.
+
+DIRECT LINUX COMMANDS
+---------------------
+
+Inside an actual WSL/Linux shell with Linux Rust installed, change to the
+repository checkout selected by the operator:
+
+  cd /path/to/rigos-checkout
+  source "$HOME/.cargo/env"
+  cargo --version
+  bash ./scripts/verify.sh
+
+EVIDENCE RULE
+-------------
+
+A Windows compile PASS is not a Linux runtime PASS. A Linux source PASS is not
+an exact-image PASS. Exact-image and physical PASS remain separate gates.

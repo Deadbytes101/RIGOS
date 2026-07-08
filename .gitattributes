@@ -10,10 +10,13 @@
 *.conf text eol=lf
 *.ps1 text eol=crlf
 
+build/usb/version.env text eol=lf
 build/usb/hooks/* text eol=lf
 build/usb/package-lists/rigos.list.chroot text eol=lf
 build/usb/includes.chroot/usr/local/bin/* text eol=lf
 build/usb/includes.chroot/usr/local/sbin/rigos-* text eol=lf
+build/usb/includes.chroot/usr/lib/rigos/rigos-randomx-msr text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-miner-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-remote-* text eol=lf
+build/usb/includes.chroot/usr/lib/rigos/rigos-lifecycle-* text eol=lf

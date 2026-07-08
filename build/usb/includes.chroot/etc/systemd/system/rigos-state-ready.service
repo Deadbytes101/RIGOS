@@ -2,7 +2,7 @@
 Description=Verify RIGOS persistent state readiness
 After=rigos-state.service rigos-recovery-access.service
 Requires=rigos-state.service
-Before=rigos-profile-apply.service rigos-firstboot.service rigos-hugepages.service rigos-miner.service
+Before=rigos-ssh-hostkeys.service rigos-profile-apply.service rigos-firstboot.service rigos-hugepages.service rigos-miner.service
 
 [Service]
 Type=oneshot

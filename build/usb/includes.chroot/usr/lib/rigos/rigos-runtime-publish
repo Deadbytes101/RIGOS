@@ -24,7 +24,9 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-RIGOS_RUNTIME_PATH="$stage" "$renderer"
+RIGOS_RUNTIME_PATH="$stage" \
+RIGOS_XMRIG_API_TOKEN_PATH="$runtime/xmrig-api-token" \
+    "$renderer"
 
 "$jq_bin" -e '
   .schema == "rigos.runtime-config-status/v1" and

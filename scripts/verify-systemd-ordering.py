@@ -43,8 +43,9 @@ def includes(actual, expected, message):
 def verify(units):
     names = {
         "rigos-state.service", "rigos-recovery-access.service",
-        "rigos-state-ready.service", "rigos-profile-apply.service",
-        "rigos-firstboot.service", "rigos-hugepages.service", "rigos-miner.service",
+        "rigos-state-ready.service", "rigos-ssh-hostkeys.service",
+        "rigos-profile-apply.service", "rigos-firstboot.service",
+        "rigos-hugepages.service", "rigos-miner.service",
     }
     includes(set(units), names, "RIGOS unit set is incomplete")
     state = units["rigos-state.service"]
@@ -60,10 +61,28 @@ def verify(units):
     require(ready.scalar("Unit", "DefaultDependencies") != "no", "state-ready must use normal dependencies")
     includes(ready.words("Unit", "After"), {"rigos-state.service", "rigos-recovery-access.service"}, "state-ready ordering is incomplete")
     includes(ready.words("Unit", "Requires"), {"rigos-state.service"}, "state-ready must require state")
-    includes(ready.words("Unit", "Before"), {"rigos-profile-apply.service", "rigos-firstboot.service", "rigos-hugepages.service", "rigos-miner.service"}, "state-ready downstream ordering is incomplete")
+    includes(
+        ready.words("Unit", "Before"),
+        {
+            "rigos-ssh-hostkeys.service", "rigos-profile-apply.service",
+            "rigos-firstboot.service", "rigos-hugepages.service",
+            "rigos-miner.service",
+        },
+        "state-ready downstream ordering is incomplete",
+    )
     require("local-fs.target" not in ready.words("Unit", "Before"), "state-ready must not order before local-fs")
     require("local-fs.target" not in ready.words("Install", "WantedBy"), "state-ready must not be installed under local-fs")
     includes(ready.words("Install", "WantedBy"), {"multi-user.target"}, "state-ready must be installed under multi-user")
+
+    hostkeys = units["rigos-ssh-hostkeys.service"]
+    includes(hostkeys.words("Unit", "After"), {"rigos-state-ready.service"}, "SSH host-key authority must follow state readiness")
+    includes(hostkeys.words("Unit", "Requires"), {"rigos-state-ready.service"}, "SSH host-key authority must require state readiness")
+    includes(hostkeys.words("Unit", "Before"), {"ssh.service"}, "SSH host-key authority must precede sshd")
+    require(
+        hostkeys.scalar("Service", "ExecStart") == "/usr/lib/rigos/rigos-ssh-hostkeys",
+        "SSH host-key authority entrypoint is not exact",
+    )
+    includes(hostkeys.words("Install", "WantedBy"), {"multi-user.target"}, "SSH host-key authority must be enabled under multi-user")
 
     firstboot = units["rigos-firstboot.service"]
     includes(firstboot.words("Unit", "Requires"), {"rigos-state-ready.service"}, "firstboot must require state-ready")
@@ -90,6 +109,7 @@ def graph_for(units):
 
 def cycle_in(graph):
     state, stack, positions = {}, [], {}
+
     def visit(node):
         state[node] = 1
         positions[node] = len(stack)
@@ -105,6 +125,7 @@ def cycle_in(graph):
         positions.pop(node)
         state[node] = 2
         return None
+
     for node in sorted(graph):
         if state.get(node, 0) == 0:
             cycle = visit(node)
