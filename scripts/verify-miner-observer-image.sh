@@ -130,7 +130,12 @@ if active_state != ("ready", None):
     raise SystemExit(f"extracted observer rejects active hashrate: {active_state}")
 
 schema_metrics = module.summary_metrics({
+    "uptime": 900.5,
     "connection": {
+        "pool": "pool.example:1234",
+        "ip": None,
+        "uptime": 0.1,
+        "uptime_ms": 0.5,
         "accepted": 43.9,
         "rejected": 1.2,
         "failures": 2.5,
@@ -143,6 +148,9 @@ schema_metrics = module.summary_metrics({
     "hugepages": [1168.5, 1169.5],
 })
 for key in (
+    "uptime_seconds",
+    "connection_uptime_seconds",
+    "connection_uptime_ms",
     "accepted_shares",
     "rejected_shares",
     "connection_failures",
@@ -152,6 +160,8 @@ for key in (
 ):
     if schema_metrics.get(key) is not None:
         raise SystemExit(f"extracted observer truncates fractional counters: {key}")
+if schema_metrics.get("pool_connected") is not False:
+    raise SystemExit("extracted observer trusts fractional uptime as active")
 
 old_ready_new_external = "\n".join([
     "miner    speed 10s/60s/15m 341.2 340.9 340.7 H/s",
@@ -233,7 +243,7 @@ for required in \
     'API_MAX_BYTES = 256 * 1024' \
     'def nonnegative_integer(value: object) -> int | None:' \
     'connection_ip = connection.get("ip")' \
-    'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
+    'connection_uptime_ms = nonnegative_integer(connection.get("uptime_ms"))' \
     '"pool_connected": pool_connected' \
     'current_hashrate = api_metrics.get("hashrate_10s")' \
     'if pool_connected and current_hashrate_positive:' \
