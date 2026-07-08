@@ -54,6 +54,67 @@ timer="$root/etc/systemd/system/rigos-miner-health.timer"
 [[ -x "$observer" ]] || die 'miner observer is missing or not executable'
 python3 -m py_compile "$renderer" "$observer"
 
+python3 - "$observer" <<'PY'
+import importlib.machinery
+import importlib.util
+import sys
+
+path = sys.argv[1]
+loader = importlib.machinery.SourceFileLoader("rigos_image_observer", path)
+spec = importlib.util.spec_from_loader("rigos_image_observer", loader)
+if spec is None:
+    raise SystemExit("could not load extracted observer")
+module = importlib.util.module_from_spec(spec)
+loader.exec_module(module)
+
+properties = {"ActiveState": "active", "SubState": "running", "MainPID": "123"}
+
+def classify(summary):
+    metrics = module.summary_metrics(summary)
+    return metrics, module.classify(
+        properties,
+        "S",
+        600,
+        "r1",
+        "ready",
+        "r1",
+        metrics,
+        None,
+        "",
+        True,
+    )
+
+stale_metrics, stale_state = classify({
+    "hashrate": {"total": [0, 340.8, 339.7], "highest": 341.2},
+    "connection": {
+        "pool": "pool.example:1234",
+        "ip": None,
+        "uptime": 0,
+        "uptime_ms": 0,
+        "failures": 3,
+    },
+})
+if stale_metrics.get("pool_connected") is not False:
+    raise SystemExit("extracted observer trusts stale pool name")
+if stale_state != ("waiting_external", "pool_or_network_unavailable"):
+    raise SystemExit(f"extracted observer misclassifies disconnected historical hashrate: {stale_state}")
+
+active_metrics, active_state = classify({
+    "hashrate": {"total": [341.2, 340.9, 340.7], "highest": 342.1},
+    "connection": {
+        "pool": "pool.example:1234",
+        "ip": "203.0.113.10",
+        "uptime": 590,
+        "uptime_ms": 590125,
+        "failures": 0,
+    },
+})
+if active_metrics.get("pool_connected") is not True:
+    raise SystemExit("extracted observer rejects active pool evidence")
+if active_state != ("ready", None):
+    raise SystemExit(f"extracted observer rejects active hashrate: {active_state}")
+PY
+
 for required in \
     'API_TOKEN = Path(os.environ.get("RIGOS_XMRIG_API_TOKEN_PATH", str(RUNTIME / "xmrig-api-token")))' \
     'API_HOST = "127.0.0.1"' \
@@ -86,6 +147,7 @@ for required in \
     'connection_ip = connection.get("ip")' \
     'connection_uptime_ms = nonnegative_number(connection.get("uptime_ms"))' \
     '"pool_connected": pool_connected' \
+    'if pool_connected and hashrate_positive:' \
     '"source": "xmrig_http_api" if metrics is not None else "journal_fallback"' \
     'return "degraded", "no_hashrate_from_api"' \
     'return "degraded", api_error or "miner_api_unavailable"'
