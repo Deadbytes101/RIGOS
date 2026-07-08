@@ -84,18 +84,20 @@ fn wsl_launcher_is_path_safe_and_fail_closed() {
         );
     }
 
-    for forbidden in [
+    let hard_coded_checkout = ["/mnt/d/TECHNICAL/", "dbyte", "-rigos"].concat();
+    let forbidden = [
         "[string]$Repository = (Split-Path -Parent $PSScriptRoot)",
         "wslpath -a $Repository",
         "$PathConverter",
         "$Shell = @'",
         "bash -lc",
-        "/mnt/d/TECHNICAL/dbyte-rigos",
+        hard_coded_checkout.as_str(),
         "curl | sh",
         "Invoke-WebRequest",
         "rustup-init",
         "exec bash ./scripts/verify.sh",
-    ] {
+    ];
+    for forbidden in forbidden {
         assert!(
             !launcher.contains(forbidden) && !entrypoint.contains(forbidden),
             "WSL gate contains forbidden bootstrap, multiline shell transport, direct path argument, cleanup-bypassing exec, default expression, or hard-coded path: {forbidden}"
