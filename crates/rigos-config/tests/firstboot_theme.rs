@@ -30,6 +30,18 @@ fn firstboot_uses_the_dedicated_console_theme_wrapper() {
 }
 
 #[test]
+fn firstboot_wrapper_is_pinned_to_lf_in_git() {
+    let attributes = repo_file(".gitattributes");
+
+    assert!(
+        attributes
+            .lines()
+            .any(|line| line == "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-* text eol=lf"),
+        "firstboot runtime wrappers must remain LF on Windows and WSL checkouts"
+    );
+}
+
+#[test]
 fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
     let wrapper = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail");
 
