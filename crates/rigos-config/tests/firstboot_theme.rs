@@ -1,10 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
 
-fn repo_file(path: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn repo_path(path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
-        .join(path);
+        .join(path)
+}
+
+fn repo_file(path: &str) -> String {
+    let path = repo_path(path);
     fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
 }
@@ -61,4 +65,85 @@ fn image_hook_installs_the_theme_wrapper_as_executable() {
         hook.contains("/usr/lib/rigos/rigos-firstboot-whiptail"),
         "image construction must install the wrapper as executable"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn firstboot_theme_wrapper_maps_buttons_and_preserves_exit_status() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before Unix epoch")
+        .as_nanos();
+    let temporary = std::env::temp_dir().join(format!(
+        "rigos-firstboot-theme-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temporary).expect("failed to create theme test directory");
+
+    let backend = temporary.join("fake-whiptail");
+    let capture = temporary.join("arguments.txt");
+    fs::write(
+        &backend,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$RIGOS_THEME_CAPTURE\"\nexit \"${RIGOS_THEME_EXIT:-0}\"\n",
+    )
+    .expect("failed to write fake whiptail backend");
+    let mut permissions = fs::metadata(&backend)
+        .expect("failed to stat fake whiptail backend")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&backend, permissions)
+        .expect("failed to make fake whiptail backend executable");
+
+    let wrapper = repo_path(
+        "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail",
+    );
+    let status = Command::new("sh")
+        .arg(&wrapper)
+        .args([
+            "--title",
+            "RIGOS FIRST BOOT",
+            "--menu",
+            "Select Flight Sheet",
+            "20",
+            "76",
+            "2",
+            "manual",
+            "Configure manually",
+            "none",
+            "Leave mining unconfigured",
+        ])
+        .env("RIGOS_WHIPTAIL_REAL", &backend)
+        .env("RIGOS_THEME_CAPTURE", &capture)
+        .env("RIGOS_THEME_EXIT", "7")
+        .env("RIGOS_FIRSTBOOT_BACKTITLE", "TEST BACKTITLE")
+        .status()
+        .expect("failed to execute firstboot theme wrapper");
+
+    assert_eq!(status.code(), Some(7), "wrapper must preserve backend exit status");
+
+    let arguments = fs::read_to_string(&capture)
+        .expect("fake whiptail backend did not capture arguments");
+    let arguments: Vec<_> = arguments.lines().collect();
+    assert_eq!(
+        &arguments[..8],
+        [
+            "--backtitle",
+            "TEST BACKTITLE",
+            "--ok-button",
+            "SELECT",
+            "--cancel-button",
+            "BACK",
+            "--title",
+            "RIGOS FIRST BOOT",
+        ]
+    );
+    assert!(arguments.windows(2).any(|pair| pair == ["--menu", "Select Flight Sheet"]));
+    assert!(arguments.windows(2).any(|pair| pair == ["manual", "Configure manually"]));
+    assert!(arguments.windows(2).any(|pair| pair == ["none", "Leave mining unconfigured"]));
+
+    fs::remove_dir_all(&temporary).expect("failed to clean theme test directory");
 }
