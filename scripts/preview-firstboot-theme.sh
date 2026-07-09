@@ -18,7 +18,7 @@ fi
 run_theme() {
   set +e
   RIGOS_WHIPTAIL_REAL=/usr/bin/whiptail \
-  RIGOS_FIRSTBOOT_BACKTITLE='RIGOS SYSTEM CONFIGURATION // LOCAL NODE SETUP // OFFLINE AUTHORITY' \
+  RIGOS_FIRSTBOOT_BACKTITLE='RIGOS SETUP UTILITY   LOCAL NODE CONFIGURATION' \
   sh "$wrapper" "$@"
   status=$?
   set -e
@@ -27,8 +27,8 @@ run_theme() {
 
 preview_menu() {
   run_theme \
-    --title 'RIGOS FIRST BOOT // FLIGHT CONTROL' \
-    --menu $'SELECT FLIGHT SHEET\n\nChoose the local mining authority for this node.\n\n[UP/DOWN] MOVE   [ENTER] SELECT   [ESC] BACK' \
+    --title 'FLIGHT SHEET SELECTION' \
+    --menu $'SELECT FLIGHT SHEET\n\nChoose how this node should be configured.\n\n[UP/DOWN] MOVE   [ENTER] SELECT   [ESC] BACK' \
     20 76 6 \
     manual 'Configure this node manually' \
     none 'Leave mining unconfigured' \
@@ -38,21 +38,21 @@ preview_menu() {
 
 preview_confirm() {
   run_theme \
-    --title 'RIGOS FIRST BOOT // COMMIT AUTHORITY' \
+    --title 'COMMIT CONFIGURATION' \
     --yesno $'CONFIGURATION SUMMARY\n\nNode          rig01\nFlight Sheet  xmr\nAlgorithm     rx/0\nThreads       exact 2\nHuge Pages    enabled\nStart Policy  on boot\n\nApply this configuration to local persistent state?' \
     20 76
 }
 
 preview_input() {
   run_theme \
-    --title 'RIGOS FIRST BOOT // NODE IDENTITY' \
+    --title 'NODE IDENTITY' \
     --inputbox $'NODE NAME\n\nEnter the local appliance name.\nAllowed: A-Z, a-z, 0-9 and hyphen.' \
     14 72 'rig01'
 }
 
 preview_message() {
   run_theme \
-    --title 'RIGOS FIRST BOOT // SYSTEM READY' \
+    --title 'SETUP COMPLETE' \
     --msgbox $'CONFIGURATION COMMITTED\n\nPersistent state verified.\nRuntime config published.\nMiner activation requested.\n\nThe local console will now return to the system.' \
     16 72
 }
