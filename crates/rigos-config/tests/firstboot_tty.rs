@@ -42,6 +42,46 @@ fn firstboot_releases_tty1_to_getty_after_exit() {
 }
 
 #[test]
+fn firstboot_remains_visible_when_state_readiness_fails() {
+    let unit = unit("rigos-firstboot.service");
+    let after = directive_tokens(&unit, "After=");
+    let wants = directive_tokens(&unit, "Wants=");
+    let requires = directive_tokens(&unit, "Requires=");
+
+    for ordered in [
+        "rigos-state.service",
+        "rigos-state-ready.service",
+        "rigos-profile-apply.service",
+    ] {
+        assert!(
+            after.contains(ordered),
+            "firstboot must start after {ordered} finishes, including failure"
+        );
+    }
+
+    assert!(
+        wants.contains("rigos-state-ready.service"),
+        "firstboot must request state verification without depending on success"
+    );
+    assert!(
+        !requires.contains("rigos-state-ready.service"),
+        "state verification failure must not suppress firstboot diagnostics"
+    );
+    assert!(
+        !unit.contains("network-online.target"),
+        "local firstboot must remain available without network connectivity"
+    );
+    assert!(
+        unit.lines().any(|line| line == "StandardInput=tty-force"),
+        "firstboot must acquire tty1 for the local setup flow"
+    );
+    assert!(
+        unit.lines().any(|line| line == "TTYPath=/dev/tty1"),
+        "firstboot must remain bound to tty1"
+    );
+}
+
+#[test]
 fn recovery_access_does_not_hang_up_the_following_firstboot_session() {
     let unit = unit("rigos-recovery-access.service");
     let before = directive_tokens(&unit, "Before=");
