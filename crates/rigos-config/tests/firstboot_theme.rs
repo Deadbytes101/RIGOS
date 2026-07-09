@@ -1,8 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-const WRAPPER_PATH: &str =
-    "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail";
+const WRAPPER_PATH: &str = "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail";
 
 fn repo_path(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,8 +38,7 @@ fn firstboot_uses_the_dedicated_console_theme_wrapper() {
 #[test]
 fn firstboot_wrapper_is_pinned_to_lf_in_git() {
     let attributes = repo_file(".gitattributes");
-    let required =
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-* text eol=lf";
+    let required = "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-* text eol=lf";
 
     assert!(
         attributes.lines().any(|line| line == required),
