@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+const WRAPPER_PATH: &str =
+    "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail";
+
 fn repo_path(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -24,26 +27,30 @@ fn firstboot_uses_the_dedicated_console_theme_wrapper() {
         "firstboot must select the dedicated presentation wrapper"
     );
     assert!(
-        drop_in.contains("RIGOS SYSTEM CONFIGURATION // LOCAL NODE SETUP // OFFLINE AUTHORITY"),
+        drop_in.contains("RIGOS SETUP UTILITY   LOCAL NODE CONFIGURATION"),
         "firstboot must publish the static non-secret backtitle"
+    );
+    assert!(
+        !drop_in.contains("//"),
+        "setup utility titles must not use synthetic slash separators"
     );
 }
 
 #[test]
 fn firstboot_wrapper_is_pinned_to_lf_in_git() {
     let attributes = repo_file(".gitattributes");
+    let required =
+        "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-* text eol=lf";
 
     assert!(
-        attributes
-            .lines()
-            .any(|line| line == "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-* text eol=lf"),
+        attributes.lines().any(|line| line == required),
         "firstboot runtime wrappers must remain LF on Windows and WSL checkouts"
     );
 }
 
 #[test]
 fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
-    let wrapper = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail");
+    let wrapper = repo_file(WRAPPER_PATH);
 
     assert!(wrapper.is_ascii(), "console theme must remain ASCII-only");
     assert!(wrapper.contains("NEWT_COLORS="));
@@ -56,6 +63,7 @@ fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
     assert!(wrapper.contains("RIGOS_WHIPTAIL_REAL:-/usr/bin/whiptail"));
     assert!(wrapper.contains("exec \"$whiptail_real\""));
     assert!(wrapper.contains("backend is not executable"));
+    assert!(!wrapper.contains("//"));
     assert!(
         !wrapper.contains("xterm")
             && !wrapper.contains("Xorg")
@@ -106,7 +114,7 @@ fn firstboot_theme_wrapper_maps_buttons_and_preserves_exit_status() {
     fs::set_permissions(&backend, permissions)
         .expect("failed to make fake whiptail backend executable");
 
-    let wrapper = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail");
+    let wrapper = repo_path(WRAPPER_PATH);
     let status = Command::new("sh")
         .arg(&wrapper)
         .args([
