@@ -10,6 +10,12 @@ NEWT_COLORS=${NEWT_COLORS:-'root=white,blue:border=blue,lightgray:window=black,l
 export NEWT_COLORS
 
 backtitle=${RIGOS_FIRSTBOOT_BACKTITLE:-'RIGOS SYSTEM CONFIGURATION // LOCAL NODE SETUP // OFFLINE AUTHORITY'}
+whiptail_real=${RIGOS_WHIPTAIL_REAL:-/usr/bin/whiptail}
+
+if [ ! -x "$whiptail_real" ]; then
+    echo "rigos-firstboot-whiptail: backend is not executable: $whiptail_real" >&2
+    exit 127
+fi
 
 case " $* " in
     *' --menu '*)
@@ -26,4 +32,4 @@ case " $* " in
         ;;
 esac
 
-exec /usr/bin/whiptail --backtitle "$backtitle" "$@"
+exec "$whiptail_real" --backtitle "$backtitle" "$@"
