@@ -9,7 +9,7 @@ export TERM
 NEWT_COLORS=${NEWT_COLORS:-'root=white,blue:border=blue,lightgray:window=black,lightgray:shadow=black,black:title=white,blue:button=black,lightgray:actbutton=white,blue:compactbutton=black,lightgray:checkbox=black,lightgray:actcheckbox=white,blue:entry=black,white:disentry=gray,lightgray:label=black,lightgray:listbox=black,lightgray:actlistbox=white,blue:sellistbox=black,cyan:actsellistbox=white,blue:textbox=black,lightgray:acttextbox=white,blue:helpline=white,blue:roottext=white,blue'}
 export NEWT_COLORS
 
-backtitle=${RIGOS_FIRSTBOOT_BACKTITLE:-'RIGOS SYSTEM CONFIGURATION // LOCAL NODE SETUP // OFFLINE AUTHORITY'}
+backtitle=${RIGOS_FIRSTBOOT_BACKTITLE:-'RIGOS SETUP UTILITY   LOCAL NODE CONFIGURATION'}
 whiptail_real=${RIGOS_WHIPTAIL_REAL:-/usr/bin/whiptail}
 
 if [ ! -x "$whiptail_real" ]; then
