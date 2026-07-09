@@ -32,6 +32,11 @@ fn preview_covers_every_firstboot_dialog_class() {
             "preview harness is missing dialog class: {required}"
         );
     }
+
+    assert!(
+        !script.contains("//"),
+        "preview titles must not use synthetic slash separators"
+    );
 }
 
 #[test]
