@@ -44,9 +44,11 @@ export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
 cargo test --locked -p rigos-config --test miner_observer_authority -- --nocapture
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
+cargo test --locked -p rigos-config --test firstboot_tty -- --nocapture
 
 ./scripts/build-usb-image.sh
 
 image="./dist/usb/${RIGOS_IMAGE_ID}-${RIGOS_IMAGE_VERSION}.img"
 bash ./scripts/verify-randomx-performance-image.sh "$image"
 bash ./scripts/verify-miner-observer-image.sh "$image"
+bash ./scripts/verify-firstboot-image.sh "$image"
