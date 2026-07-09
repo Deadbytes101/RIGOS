@@ -72,6 +72,17 @@ fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
 }
 
 #[test]
+fn authoritative_wsl_gate_runs_the_wrapper_behavior_test() {
+    let entrypoint = repo_file("scripts/verify-wsl-entrypoint.sh");
+    let verifier = repo_file("scripts/verify-firstboot-theme-wrapper.sh");
+
+    assert!(entrypoint.contains("bash ./scripts/verify-firstboot-theme-wrapper.sh"));
+    assert!(verifier.contains("RIGOS firstboot theme wrapper verification passed"));
+    assert!(verifier.contains("RIGOS_THEME_EXIT=7"));
+    assert!(verifier.contains("missing-backend"));
+}
+
+#[test]
 fn image_hook_installs_the_theme_wrapper_as_executable() {
     let hook = repo_file("build/usb/hooks/010-rigos.chroot");
 
