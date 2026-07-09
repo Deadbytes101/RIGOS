@@ -20,9 +20,7 @@ fn firstboot_uses_the_dedicated_console_theme_wrapper() {
     );
 
     assert!(
-        drop_in.contains(
-            "Environment=RIGOS_WHIPTAIL=/usr/lib/rigos/rigos-firstboot-whiptail"
-        ),
+        drop_in.contains("Environment=RIGOS_WHIPTAIL=/usr/lib/rigos/rigos-firstboot-whiptail"),
         "firstboot must select the dedicated presentation wrapper"
     );
     assert!(
@@ -33,9 +31,7 @@ fn firstboot_uses_the_dedicated_console_theme_wrapper() {
 
 #[test]
 fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
-    let wrapper = repo_file(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail",
-    );
+    let wrapper = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail");
 
     assert!(wrapper.is_ascii(), "console theme must remain ASCII-only");
     assert!(wrapper.contains("NEWT_COLORS="));
@@ -98,9 +94,7 @@ fn firstboot_theme_wrapper_maps_buttons_and_preserves_exit_status() {
     fs::set_permissions(&backend, permissions)
         .expect("failed to make fake whiptail backend executable");
 
-    let wrapper = repo_path(
-        "build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail",
-    );
+    let wrapper = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-firstboot-whiptail");
     let status = Command::new("sh")
         .arg(&wrapper)
         .args([
@@ -123,10 +117,14 @@ fn firstboot_theme_wrapper_maps_buttons_and_preserves_exit_status() {
         .status()
         .expect("failed to execute firstboot theme wrapper");
 
-    assert_eq!(status.code(), Some(7), "wrapper must preserve backend exit status");
+    assert_eq!(
+        status.code(),
+        Some(7),
+        "wrapper must preserve backend exit status"
+    );
 
-    let arguments = fs::read_to_string(&capture)
-        .expect("fake whiptail backend did not capture arguments");
+    let arguments =
+        fs::read_to_string(&capture).expect("fake whiptail backend did not capture arguments");
     let arguments: Vec<_> = arguments.lines().collect();
     assert_eq!(
         &arguments[..8],
@@ -141,9 +139,21 @@ fn firstboot_theme_wrapper_maps_buttons_and_preserves_exit_status() {
             "RIGOS FIRST BOOT",
         ]
     );
-    assert!(arguments.windows(2).any(|pair| pair == ["--menu", "Select Flight Sheet"]));
-    assert!(arguments.windows(2).any(|pair| pair == ["manual", "Configure manually"]));
-    assert!(arguments.windows(2).any(|pair| pair == ["none", "Leave mining unconfigured"]));
+    assert!(
+        arguments
+            .windows(2)
+            .any(|pair| pair == ["--menu", "Select Flight Sheet"])
+    );
+    assert!(
+        arguments
+            .windows(2)
+            .any(|pair| pair == ["manual", "Configure manually"])
+    );
+    assert!(
+        arguments
+            .windows(2)
+            .any(|pair| pair == ["none", "Leave mining unconfigured"])
+    );
 
     fs::remove_dir_all(&temporary).expect("failed to clean theme test directory");
 }
