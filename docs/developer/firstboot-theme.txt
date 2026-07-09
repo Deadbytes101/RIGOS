@@ -1,0 +1,93 @@
+RIGOS FIRSTBOOT CONSOLE THEME
+=============================
+
+PURPOSE
+-------
+
+Give the local first-boot selector the look of a late-2000s or early-2010s
+firmware utility without adding a graphical desktop, browser, display server,
+or background daemon.
+
+The theme is presentation only. Configuration, identity, persistent state,
+miner, MSR, SSH, runtime publication, and activation behavior stay unchanged.
+
+VISUAL CONTRACT
+---------------
+
+Root background     deep blue
+Dialog window       light gray / silver
+Window border       blue
+Active row          white on blue
+Input field         black on white
+Shadow              black
+Backtitle           static ASCII, no private values
+Buttons             SELECT BACK NEXT APPLY CONTINUE
+
+The source remains ASCII-only so it renders on the Linux console without a
+Unicode-font dependency.
+
+ARCHITECTURE
+------------
+
+Firstboot still executes the Python workflow at:
+
+  /usr/local/sbin/rigos-firstboot
+
+The service sets RIGOS_WHIPTAIL to:
+
+  /usr/lib/rigos/rigos-firstboot-whiptail
+
+The wrapper exports NEWT_COLORS, adds a static backtitle, maps button labels,
+and execs the existing /usr/bin/whiptail backend. Backend exit status and
+selected values retain the original whiptail contract.
+
+PREVIEW
+-------
+
+Run from a Linux or WSL checkout with whiptail installed:
+
+  bash scripts/preview-firstboot-theme.sh menu
+  bash scripts/preview-firstboot-theme.sh input
+  bash scripts/preview-firstboot-theme.sh confirm
+  bash scripts/preview-firstboot-theme.sh message
+  bash scripts/preview-firstboot-theme.sh all
+
+The preview harness does not read or modify /var/lib/rigos and does not call
+systemctl, the configuration engine, miner services, or MSR authority.
+
+VERIFICATION
+------------
+
+Targeted tests:
+
+  cargo test --locked -p rigos-config --test firstboot_theme
+  cargo test --locked -p rigos-config --test firstboot_theme_preview
+
+Authoritative Linux source gate:
+
+  bash scripts/verify-wsl-entrypoint.sh "$PWD"
+
+A PASS may only be claimed for the exact Git head printed by the gate.
+
+BRANCH BOUNDARY
+---------------
+
+UI work belongs on:
+
+  ui/firstboot-2009-theme
+
+It is stacked on performance/randomx-sustained-hash only for review. Do not
+merge it into PR #15 while the physical performance and endurance evidence is
+still tied to the exact performance head.
+
+NON-GOALS
+---------
+
+No X11.
+No Wayland.
+No Electron.
+No browser UI.
+No framebuffer daemon.
+No persistent-state format change.
+No miner behavior change.
+No image-release claim before source and image verification pass.

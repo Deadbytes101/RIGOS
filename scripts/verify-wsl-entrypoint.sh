@@ -20,7 +20,7 @@ if [[ -f "$HOME/.cargo/env" ]]; then
 fi
 
 missing=0
-for tool in cargo rustc python3 bash sh git grep rg mktemp; do
+for tool in cargo rustc python3 bash sh git grep rg mktemp cmp diff; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'RIGOS_WSL_TOOL_MISSING=%s\n' "$tool" >&2
     missing=1
@@ -55,3 +55,4 @@ export PYTHONDONTWRITEBYTECODE=1
 printf 'RIGOS_WSL_REPO=%s\n' "$repo"
 printf 'RIGOS_WSL_CARGO=%s\n' "$(command -v cargo)"
 bash ./scripts/verify.sh
+bash ./scripts/verify-firstboot-theme-wrapper.sh
