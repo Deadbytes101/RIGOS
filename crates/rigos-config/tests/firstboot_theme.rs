@@ -41,7 +41,9 @@ fn firstboot_theme_is_ascii_and_preserves_whiptail_as_the_ui_engine() {
     assert!(wrapper.contains("--backtitle"));
     assert!(wrapper.contains("--ok-button SELECT --cancel-button BACK"));
     assert!(wrapper.contains("--yes-button APPLY --no-button BACK"));
-    assert!(wrapper.contains("exec /usr/bin/whiptail"));
+    assert!(wrapper.contains("RIGOS_WHIPTAIL_REAL:-/usr/bin/whiptail"));
+    assert!(wrapper.contains("exec \"$whiptail_real\""));
+    assert!(wrapper.contains("backend is not executable"));
     assert!(
         !wrapper.contains("xterm")
             && !wrapper.contains("Xorg")
