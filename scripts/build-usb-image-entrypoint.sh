@@ -22,6 +22,9 @@ source "$version_env"
 python3 ./scripts/check-alpha8-ssh-hotfix.py
 python3 ./scripts/verify-systemd-ordering.py
 python3 -m py_compile \
+    ./build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access \
+    ./build/usb/includes.chroot/usr/local/sbin/rigos-state-orchestrate \
+    ./build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-randomx-msr \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
     ./build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys \
@@ -46,6 +49,7 @@ cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocaptu
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 cargo test --locked -p rigos-config --test firstboot_tty -- --nocapture
 cargo test --locked -p rigos-config --test diagnostic_ssh -- --nocapture
+cargo test --locked -p rigos-config --test state_resize_recovery -- --nocapture
 
 ./scripts/build-usb-image.sh
 
