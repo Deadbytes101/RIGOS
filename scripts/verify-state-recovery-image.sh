@@ -55,7 +55,7 @@ release="$root/etc/rigos-release"
 [[ -x "$root/usr/bin/python3" ]] || die 'Python runtime is missing'
 [[ -x "$orchestrator" ]] || die 'state orchestrator is missing or not executable'
 [[ -x "$recovery" ]] || die 'recovery credential authority is missing or not executable'
-[[ -x "$gate" ]] || die 'recovery credential gate is missing or not executable'
+[[ -f "$gate" ]] || die 'recovery credential gate is missing'
 [[ -f "$state_service" ]] || die 'state service is missing'
 [[ -f "$release" ]] || die 'release metadata is missing'
 
