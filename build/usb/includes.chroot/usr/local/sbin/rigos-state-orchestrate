@@ -14,6 +14,8 @@ ATTESTATION = RUNTIME / "boot-device.json"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PARTUUID_ROOT = Path("/dev/disk/by-partuuid")
 PARTUUID_RE = re.compile(r"^[0-9A-Fa-f-]{1,128}$")
+FILESYSTEM_TIMEOUT_SECONDS = 300
+MAX_COMMAND_OUTPUT = 64 * 1024
 
 
 def read_json(path: Path) -> dict:
@@ -128,26 +130,78 @@ def mark_repair_required(message: str) -> None:
     write_status(status)
 
 
+def bounded_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    encoded = value.encode("utf-8", errors="replace")
+    if len(encoded) > MAX_COMMAND_OUTPUT:
+        encoded = encoded[:MAX_COMMAND_OUTPUT]
+        value = encoded.decode("utf-8", errors="replace") + " [truncated]"
+    return value.strip()
+
+
+def run_repair_command(argv: list[str], accepted: tuple[int, ...]) -> tuple[bool, str | None]:
+    program = Path(argv[0]).name
+    try:
+        result = subprocess.run(
+            argv,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=FILESYSTEM_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        detail = bounded_output(error.stderr) or bounded_output(error.stdout)
+        suffix = f": {detail}" if detail else ""
+        return False, f"{program}: timeout after {FILESYSTEM_TIMEOUT_SECONDS}s{suffix}"
+    if result.returncode not in accepted:
+        detail = bounded_output(result.stderr) or bounded_output(result.stdout)
+        suffix = f": {detail}" if detail else ""
+        return False, f"{program}: exit {result.returncode}{suffix}"
+    return True, None
+
+
 def forced_check() -> bool:
     device, error = verified_state_device()
     if error is not None or device is None:
         mark_repair_required(error or "verified state device is unavailable")
         return False
-    result = subprocess.run(
-        ["/usr/sbin/e2fsck", "-f", "-p", str(device)],
-        check=False,
+    ok, failure = run_repair_command(
+        ["/usr/sbin/e2fsck", "-f", "-p", str(device)], (0, 1)
     )
-    if result.returncode in (0, 1):
+    if ok:
         return True
-    mark_repair_required(
-        f"forced ext4 check requires owner intervention with exit code {result.returncode}"
-    )
+    mark_repair_required(f"forced ext4 check failed: {failure}")
     return False
+
+
+def complete_resize_after_timeout() -> bool:
+    device, error = verified_state_device()
+    if error is not None or device is None:
+        mark_repair_required(error or "verified state device is unavailable")
+        return False
+    checked, check_failure = run_repair_command(
+        ["/usr/sbin/e2fsck", "-f", "-p", str(device)], (0, 1)
+    )
+    if not checked:
+        mark_repair_required(f"post-timeout ext4 check failed: {check_failure}")
+        return False
+    resized, resize_failure = run_repair_command(
+        ["/usr/sbin/resize2fs", str(device)], (0,)
+    )
+    if not resized:
+        mark_repair_required(f"state filesystem resize failed: {resize_failure}")
+        return False
+    return True
 
 
 def main() -> int:
     retried_missing_device = False
     repaired_filesystem = False
+    completed_resize_timeout = False
     for _attempt in range(4):
         result = run_core()
         if result != 0:
@@ -156,22 +210,36 @@ def main() -> int:
         if status.get("outcome") == "ready":
             return 0
         message = str(status.get("message") or "")
+        outcome = status.get("outcome")
+        recoverable = outcome in ("limited_capacity", "repair_required")
         if (
-            status.get("outcome") == "limited_capacity"
+            outcome == "limited_capacity"
             and not retried_missing_device
             and "No such file or directory" in message
         ):
             retried_missing_device = True
             time.sleep(1)
             continue
-        if (
-            status.get("outcome") == "limited_capacity"
-            and not repaired_filesystem
-            and "e2fsck -f" in message
-        ):
+        if recoverable and ("e2fsck -f" in message or "e2fsck: timeout" in message):
+            if repaired_filesystem:
+                mark_repair_required(
+                    "state core ext4 check remained incomplete after bounded repair"
+                )
+                return 0
             repaired_filesystem = True
             if forced_check():
                 continue
+            return 0
+        if recoverable and "resize2fs: timeout" in message:
+            if completed_resize_timeout:
+                mark_repair_required(
+                    "state core resize remained incomplete after bounded repair"
+                )
+                return 0
+            completed_resize_timeout = True
+            if complete_resize_after_timeout():
+                continue
+            return 0
         return 0
     return 0
 

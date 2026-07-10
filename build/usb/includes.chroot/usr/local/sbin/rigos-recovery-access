@@ -12,6 +12,7 @@ STATE = Path("/var/lib/rigos")
 CREDENTIAL_DIRECTORY = STATE / "recovery"
 CREDENTIAL_FILE = CREDENTIAL_DIRECTORY / "rigosadmin-password.hash"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+STATE_STATUS = RUNTIME / "state-status.json"
 MAX_HASH_BYTES = 512
 MODULAR_CRYPT = re.compile(r"^\$[A-Za-z0-9][A-Za-z0-9./,_=-]*(?:\$[A-Za-z0-9./,_=-]+){2,}$")
 
@@ -50,6 +51,60 @@ def valid_password_hash(value: str) -> bool:
     if value.startswith(("!", "*")) or any(character in value for character in ":\r\n"):
         return False
     return MODULAR_CRYPT.fullmatch(value) is not None
+
+
+def read_state_status() -> dict:
+    try:
+        raw = STATE_STATUS.read_bytes()
+        if not raw or len(raw) > 64 * 1024:
+            return {}
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else {}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+
+
+def persistent_store_ready(status: dict) -> bool:
+    try:
+        boot_id = BOOT_ID.read_text(encoding="ascii").strip()
+    except OSError:
+        return False
+    if (
+        status.get("schema") != "rigos.state-status/v1"
+        or status.get("boot_id") != boot_id
+        or status.get("outcome") != "ready"
+        or status.get("mountpoint") != str(STATE)
+    ):
+        return False
+    result = subprocess.run(
+        [
+            "/usr/bin/findmnt",
+            "--json",
+            "--target",
+            str(STATE),
+            "--output",
+            "TARGET,FSTYPE,OPTIONS",
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        document = json.loads(result.stdout)
+        filesystems = document.get("filesystems", [])
+        mount = filesystems[0] if isinstance(filesystems, list) and filesystems else {}
+    except (TypeError, json.JSONDecodeError):
+        return False
+    options = set(str(mount.get("options", "")).split(","))
+    required = {"rw", "nosuid", "nodev", "noexec", "noatime"}
+    return (
+        mount.get("target") == str(STATE)
+        and mount.get("fstype") == "ext4"
+        and required.issubset(options)
+    )
 
 
 def ensure_credential_directory() -> None:
@@ -116,15 +171,25 @@ def restore_password_hash(value: str) -> bool:
     return result.returncode == 0 and password_ready()
 
 
-def prompt_for_password(invalid_stored_hash: bool) -> None:
-    message = (
-        "The saved local credential is invalid and will be replaced. Set the local rig "
-        "administrator password next."
-        if invalid_stored_hash
-        else "Set the local rig administrator password next. This enables tty1 diagnostics only."
-    )
+def prompt_for_password(invalid_stored_hash: bool, persistent: bool) -> None:
+    if invalid_stored_hash:
+        message = (
+            "The saved local credential is invalid and will be replaced. "
+            "Set the local rig administrator password next."
+        )
+    elif persistent:
+        message = (
+            "Set the local rig administrator password next. The encrypted password hash "
+            "will be stored in verified persistent state."
+        )
+    else:
+        message = (
+            "Persistent state is unavailable. Set a temporary rig administrator password "
+            "for this boot so local and SSH diagnostics remain available. "
+            "This password is not persistent and may be requested again after reboot."
+        )
     subprocess.run(
-        ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox", message, "11", "72"],
+        ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox", message, "12", "76"],
         check=False,
     )
     subprocess.run(["/usr/bin/passwd", "rigosadmin"], check=True)
@@ -162,49 +227,56 @@ def write_status(value: dict) -> None:
 
 
 def main() -> int:
-    ensure_credential_directory()
-    stored_hash, stored_hash_invalid = load_persistent_hash()
-    credential_action = "existing"
+    state_status = read_state_status()
+    state_outcome = str(state_status.get("outcome") or "unavailable")
+    persistent = persistent_store_ready(state_status)
+    stored_hash = None
+    stored_hash_invalid = False
+    if persistent:
+        ensure_credential_directory()
+        stored_hash, stored_hash_invalid = load_persistent_hash()
 
+    credential_action = "existing"
     if password_ready():
         live_hash = current_password_hash()
         if live_hash is None:
             raise RuntimeError("usable local credential hash is unavailable")
-        if stored_hash != live_hash:
+        if persistent and stored_hash != live_hash:
             persist_password_hash(live_hash)
-    elif stored_hash is not None and restore_password_hash(stored_hash):
+    elif persistent and stored_hash is not None and restore_password_hash(stored_hash):
         credential_action = "restored"
     else:
-        prompt_for_password(stored_hash_invalid)
+        prompt_for_password(stored_hash_invalid, persistent)
         if not password_ready():
             raise RuntimeError("local credential setup did not produce a usable password")
         live_hash = current_password_hash()
         if live_hash is None:
             raise RuntimeError("new local credential hash is unavailable")
-        persist_password_hash(live_hash)
+        if persistent:
+            persist_password_hash(live_hash)
         credential_action = "created"
 
     local_access = password_ready()
-    try:
-        state_outcome = json.loads((RUNTIME / "state-status.json").read_text(encoding="utf-8")).get("outcome", "unavailable")
-    except (OSError, json.JSONDecodeError):
-        state_outcome = "unavailable"
     remote_active = any(unit_active(name) for name in ("ssh.service", "sshd.service"))
     remote_enabled = any(unit_enabled(name) for name in ("ssh.service", "sshd.service"))
     remote_inactive = not remote_active and not remote_enabled
-    configured = (STATE / "current").is_symlink()
+    configured = persistent and (STATE / "current").is_symlink()
     mode = "operational" if state_outcome == "ready" and remote_inactive else "recovery"
-    write_status({
-        "schema": "rigos.recovery-access-status/v1",
-        "boot_id": BOOT_ID.read_text(encoding="ascii").strip(),
-        "mode": mode,
-        "local_console_access": local_access,
-        "state_outcome": state_outcome,
-        "remote_access": "inactive" if remote_inactive else "unexpected_active",
-        "configuration_commit": "present" if configured else "absent",
-        "credential_action": credential_action,
-        "credential_persisted": CREDENTIAL_FILE.is_file(),
-    })
+    credential_persisted = persistent and CREDENTIAL_FILE.is_file()
+    write_status(
+        {
+            "schema": "rigos.recovery-access-status/v1",
+            "boot_id": BOOT_ID.read_text(encoding="ascii").strip(),
+            "mode": mode,
+            "local_console_access": local_access,
+            "state_outcome": state_outcome,
+            "remote_access": "inactive" if remote_inactive else "unexpected_active",
+            "configuration_commit": "present" if configured else "absent",
+            "credential_action": credential_action,
+            "credential_scope": "persistent" if persistent else "boot",
+            "credential_persisted": credential_persisted,
+        }
+    )
     return 0 if local_access and remote_inactive else 1
 
 

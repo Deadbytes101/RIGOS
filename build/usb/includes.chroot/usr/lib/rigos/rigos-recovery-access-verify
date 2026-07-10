@@ -42,10 +42,24 @@ def main() -> int:
         return deny("recovery_status_stale")
     if status.get("local_console_access") is not True:
         return deny("local_credential_unavailable")
-    if status.get("credential_persisted") is not True:
-        return deny("credential_not_persisted")
     if status.get("credential_action") not in ("existing", "created", "restored"):
         return deny("credential_action_invalid")
+
+    scope = status.get("credential_scope")
+    persisted = status.get("credential_persisted")
+    state_outcome = status.get("state_outcome")
+    if scope == "persistent":
+        if persisted is not True:
+            return deny("persistent_credential_missing")
+        if state_outcome != "ready":
+            return deny("persistent_credential_without_ready_state")
+    elif scope == "boot":
+        if persisted is not False:
+            return deny("boot_credential_claims_persistence")
+        if state_outcome == "ready":
+            return deny("ready_state_without_persistent_credential")
+    else:
+        return deny("credential_scope_invalid")
 
     emit("allowed")
     return 0
