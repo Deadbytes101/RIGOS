@@ -185,8 +185,8 @@ def prompt_for_password(invalid_stored_hash: bool, persistent: bool) -> None:
     else:
         message = (
             "Persistent state is unavailable. Set a temporary rig administrator password "
-            "for this boot so local and SSH diagnostics remain available. This password is "
-            "not persistent and may be requested again after reboot."
+            "for this boot so local and SSH diagnostics remain available. "
+            "This password is not persistent and may be requested again after reboot."
         )
     subprocess.run(
         ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox", message, "12", "76"],
