@@ -77,6 +77,10 @@ fn authoritative_wsl_gate_runs_the_wrapper_behavior_test() {
     let verifier = repo_file("scripts/verify-firstboot-theme-wrapper.sh");
 
     assert!(entrypoint.contains("bash ./scripts/verify-firstboot-theme-wrapper.sh"));
+    assert!(
+        entrypoint.contains("cmp diff jq"),
+        "WSL preflight must require jq before runtime publication tests"
+    );
     assert!(verifier.contains("RIGOS firstboot theme wrapper verification passed"));
     assert!(verifier.contains("RIGOS_THEME_EXIT=7"));
     assert!(verifier.contains("missing-backend"));
