@@ -19,6 +19,9 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
         "build/usb/includes.chroot/etc/systemd/system/rigos-state.service",
     ))
     .unwrap();
+    let entrypoint = fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
+    let image_verifier =
+        fs::read_to_string(repo_path("scripts/verify-state-recovery-image.sh")).unwrap();
 
     for required in [
         "FILESYSTEM_TIMEOUT_SECONDS = 300",
@@ -32,8 +35,16 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
             orchestrator.contains(required),
             "state recovery contract is missing: {required}"
         );
+        assert!(
+            image_verifier.contains(required),
+            "exact-image verifier is missing: {required}"
+        );
     }
     assert!(service.contains("TimeoutStartSec=12min"));
+    assert!(image_verifier.contains("losetup --find --show --read-only"));
+    assert!(image_verifier.contains("mount -o ro"));
+    assert!(!image_verifier.contains("mount -o rw"));
+    assert!(entrypoint.contains("bash ./scripts/verify-state-recovery-image.sh \"$image\""));
 }
 
 #[test]
