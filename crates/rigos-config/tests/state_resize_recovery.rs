@@ -27,6 +27,8 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
     for required in [
         "FILESYSTEM_TIMEOUT_SECONDS = 300",
         "E2FSCK_UNCORRECTED_EXIT = 4",
+        "E2FSCK_EXIT_RE = re.compile",
+        "def e2fsck_exit_code(message: str) -> int | None:",
         "def repair_ext4(device: Path, failure_prefix: str) -> bool:",
         "def complete_resize_after_timeout() -> bool:",
         "timeout=FILESYSTEM_TIMEOUT_SECONDS",
@@ -34,7 +36,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
         "state filesystem resize failed",
         "resize2fs: timeout",
         "[\"/usr/sbin/e2fsck\", \"-f\", \"-y\"",
-        "f\"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}\" in message",
+        "e2fsck_exit == E2FSCK_UNCORRECTED_EXIT",
     ] {
         assert!(
             orchestrator.contains(required),
@@ -75,6 +77,12 @@ g['ATTESTATION'] = root / 'boot-device.json'
 g['BOOT_ID'] = root / 'boot-id'
 g['BOOT_ID'].write_text('boot-test\n', encoding='ascii')
 
+# The parser accepts both the Python helper and Rust Option exit formats only.
+assert g['e2fsck_exit_code']('e2fsck: exit 4: inconsistency') == 4
+assert g['e2fsck_exit_code']('e2fsck: exit Some(4): inconsistency') == 4
+assert g['e2fsck_exit_code']('e2fsck: exit Some(8): operational error') == 8
+assert g['e2fsck_exit_code']('e2fsck: exit None: signal') is None
+
 # A core resize timeout is completed under the longer verified repair budget,
 # then core is rerun to perform the normal mount and initialization path.
 statuses = [
@@ -95,11 +103,11 @@ assert len(core_calls) == 2
 assert resize_calls == [True]
 assert statuses == []
 
-# The exact exit-4 message emitted by the core reaches the verified fsck path.
+# The exact Rust exit Some(4) message emitted physically reaches verified fsck.
 statuses = [
     {
         'outcome': 'limited_capacity',
-        'message': 'bounded command failed: e2fsck: exit 4: unexpected inconsistency',
+        'message': 'bounded command failed: e2fsck: exit Some(4): unexpected inconsistency',
     },
     {'outcome': 'ready', 'message': None},
 ]
@@ -109,6 +117,20 @@ g['forced_check'] = lambda: forced_calls.append(True) or True
 assert namespace['main']() == 0
 assert len(core_calls) == 2
 assert forced_calls == [True]
+assert statuses == []
+
+# Rust exit Some(8) remains operational failure and never enters repair.
+statuses = [
+    {
+        'outcome': 'limited_capacity',
+        'message': 'bounded command failed: e2fsck: exit Some(8): operational error',
+    },
+]
+core_calls.clear()
+forced_calls.clear()
+assert namespace['main']() == 0
+assert len(core_calls) == 1
+assert forced_calls == []
 assert statuses == []
 
 # Preen exit 4 is the only condition that escalates to bounded -y repair.
