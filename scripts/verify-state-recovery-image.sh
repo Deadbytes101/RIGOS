@@ -60,8 +60,8 @@ release="$root/etc/rigos-release"
 [[ -f "$release" ]] || die 'release metadata is missing'
 
 python3 -m py_compile "$orchestrator" "$recovery" "$gate"
-grep -Fqx 'VERSION_ID="0.0.4-alpha.13"' "$release" \
-    || die 'embedded alpha.13 version is missing'
+grep -Fqx 'VERSION_ID="0.0.4-alpha.14"' "$release" \
+    || die 'embedded alpha.14 version is missing'
 grep -Fqx 'TimeoutStartSec=20min' "$state_service" \
     || die 'state service full repair window is missing'
 
@@ -77,7 +77,13 @@ for required in \
     'state filesystem resize failed' \
     'resize2fs: timeout' \
     '["/usr/sbin/e2fsck", "-f", "-y"' \
-    'e2fsck_exit == E2FSCK_UNCORRECTED_EXIT'
+    'e2fsck_exit == E2FSCK_UNCORRECTED_EXIT' \
+    'SYS_DEV_BLOCK = Path("/sys/dev/block")' \
+    'MAJOR_MINOR_RE = re.compile' \
+    'def attested_state_device(' \
+    'stat.S_ISBLK' \
+    'state_sysfs.parent != disk_sysfs' \
+    'PARTUUID symlink resolved away from attested state device'
 do
     grep -Fq "$required" "$orchestrator" \
         || die "state repair contract is missing: $required"
@@ -87,7 +93,10 @@ for required in \
     'Some\((?P<option>[0-9]+)\)' \
     'def revalidate_state_device(expected: Path)' \
     'verified state device changed during repair' \
-    'or e2fsck_exit_code(check_failure) != E2FSCK_UNCORRECTED_EXIT'
+    'or e2fsck_exit_code(check_failure) != E2FSCK_UNCORRECTED_EXIT' \
+    'attested state path major:minor changed' \
+    'attested state block is not a child of the attested boot disk' \
+    'except FileNotFoundError:'
 do
     grep -Fq "$required" "$orchestrator" \
         || die "state repair safety boundary is missing: $required"
