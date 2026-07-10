@@ -60,14 +60,16 @@ release="$root/etc/rigos-release"
 [[ -f "$release" ]] || die 'release metadata is missing'
 
 python3 -m py_compile "$orchestrator" "$recovery" "$gate"
-grep -Fqx 'VERSION_ID="0.0.4-alpha.12"' "$release" \
-    || die 'embedded alpha.12 version is missing'
+grep -Fqx 'VERSION_ID="0.0.4-alpha.13"' "$release" \
+    || die 'embedded alpha.13 version is missing'
 grep -Fqx 'TimeoutStartSec=20min' "$state_service" \
     || die 'state service full repair window is missing'
 
 for required in \
     'FILESYSTEM_TIMEOUT_SECONDS = 300' \
     'E2FSCK_UNCORRECTED_EXIT = 4' \
+    'E2FSCK_EXIT_RE = re.compile' \
+    'def e2fsck_exit_code(message: str) -> int | None:' \
     'def repair_ext4(device: Path, failure_prefix: str) -> bool:' \
     'def complete_resize_after_timeout() -> bool:' \
     'timeout=FILESYSTEM_TIMEOUT_SECONDS' \
@@ -75,16 +77,17 @@ for required in \
     'state filesystem resize failed' \
     'resize2fs: timeout' \
     '["/usr/sbin/e2fsck", "-f", "-y"' \
-    'f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}" in message'
+    'e2fsck_exit == E2FSCK_UNCORRECTED_EXIT'
 do
     grep -Fq "$required" "$orchestrator" \
         || die "state repair contract is missing: $required"
 done
 
 for required in \
+    'Some\((?P<option>[0-9]+)\)' \
     'def revalidate_state_device(expected: Path)' \
     'verified state device changed during repair' \
-    'if check_failure is None or not check_failure.startswith(uncorrected):'
+    'or e2fsck_exit_code(check_failure) != E2FSCK_UNCORRECTED_EXIT'
 do
     grep -Fq "$required" "$orchestrator" \
         || die "state repair safety boundary is missing: $required"
