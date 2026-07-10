@@ -26,11 +26,14 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
 
     for required in [
         "FILESYSTEM_TIMEOUT_SECONDS = 300",
+        "E2FSCK_UNCORRECTED_EXIT = 4",
+        "def repair_ext4(device: Path, failure_prefix: str) -> bool:",
         "def complete_resize_after_timeout() -> bool:",
         "timeout=FILESYSTEM_TIMEOUT_SECONDS",
-        "post-timeout ext4 check failed",
+        "automatic ext4 repair failed",
         "state filesystem resize failed",
         "resize2fs: timeout",
+        "[\"/usr/sbin/e2fsck\", \"-f\", \"-y\"",
     ] {
         assert!(
             orchestrator.contains(required),
@@ -41,7 +44,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
             "exact-image verifier is missing: {required}"
         );
     }
-    assert!(service.contains("TimeoutStartSec=12min"));
+    assert!(service.contains("TimeoutStartSec=20min"));
     assert!(image_verifier.contains("losetup --find --show --read-only"));
     assert!(image_verifier.contains("mount -o ro"));
     assert!(!image_verifier.contains("mount -o rw"));
@@ -49,7 +52,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
 }
 
 #[test]
-fn resize_timeout_recovery_retries_core_and_reports_failed_repair_truthfully() {
+fn resize_timeout_recovery_retries_core_and_repairs_only_e2fsck_exit_four() {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -91,12 +94,41 @@ assert len(core_calls) == 2
 assert repair_calls == [True]
 assert statuses == []
 
-# A failed long repair is not reclassified as limited capacity.
+# Preen exit 4 is the only condition that escalates to bounded -y repair.
 recorded = []
+calls = []
 g['verified_state_device'] = lambda: (Path('/dev/test-state'), None)
-results = iter([(True, None), (False, 'resize2fs: timeout after 300s')])
-g['run_repair_command'] = lambda _argv, _accepted: next(results)
+results = iter([
+    (False, 'e2fsck: exit 4: unexpected inconsistency'),
+    (True, None),
+    (True, None),
+])
+def run_repair(argv, accepted):
+    calls.append((argv, accepted))
+    return next(results)
+g['run_repair_command'] = run_repair
 g['mark_repair_required'] = lambda message: recorded.append(message)
+assert namespace['complete_resize_after_timeout']() is True
+assert [call[0][0:3] for call in calls] == [
+    ['/usr/sbin/e2fsck', '-f', '-p'],
+    ['/usr/sbin/e2fsck', '-f', '-y'],
+    ['/usr/sbin/resize2fs', '/dev/test-state'],
+]
+assert recorded == []
+
+# Operational e2fsck failures never escalate to -y.
+recorded.clear()
+calls.clear()
+results = iter([(False, 'e2fsck: exit 8: operational error')])
+assert namespace['complete_resize_after_timeout']() is False
+assert len(calls) == 1
+assert calls[0][0][0:3] == ['/usr/sbin/e2fsck', '-f', '-p']
+assert recorded == ['post-timeout ext4 check failed: e2fsck: exit 8: operational error']
+
+# A failed resize remains repair_required and is never reclassified as capacity.
+recorded.clear()
+calls.clear()
+results = iter([(True, None), (False, 'resize2fs: timeout after 300s')])
 assert namespace['complete_resize_after_timeout']() is False
 assert recorded == ['state filesystem resize failed: resize2fs: timeout after 300s']
 "#;
