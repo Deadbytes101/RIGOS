@@ -9,8 +9,18 @@ fn repo_path(path: &str) -> PathBuf {
         .join(path)
 }
 
+fn run_gate(runtime: &PathBuf, boot: &PathBuf) -> std::process::ExitStatus {
+    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify");
+    Command::new("python3")
+        .arg(gate)
+        .env("RIGOS_RUNTIME_PATH", runtime)
+        .env("RIGOS_BOOT_ID_PATH", boot)
+        .status()
+        .unwrap()
+}
+
 #[test]
-fn recovery_gate_accepts_only_current_persisted_credential_truth() {
+fn recovery_gate_accepts_persistent_or_explicit_boot_scoped_credential_truth() {
     let root = std::env::temp_dir().join(format!("rigos-recovery-gate-{}", Uuid::new_v4()));
     let runtime = root.join("run");
     let boot_id = root.join("boot-id");
@@ -18,46 +28,69 @@ fn recovery_gate_accepts_only_current_persisted_credential_truth() {
     fs::write(&boot_id, "boot-test\n").unwrap();
 
     let status = runtime.join("recovery-access-status.json");
-    let valid = serde_json::json!({
+    let persistent = serde_json::json!({
         "schema": "rigos.recovery-access-status/v1",
         "boot_id": "boot-test",
         "local_console_access": true,
         "credential_action": "created",
-        "credential_persisted": true
+        "credential_scope": "persistent",
+        "credential_persisted": true,
+        "state_outcome": "ready"
     });
-    fs::write(&status, serde_json::to_vec(&valid).unwrap()).unwrap();
+    fs::write(&status, serde_json::to_vec(&persistent).unwrap()).unwrap();
+    assert!(run_gate(&runtime, &boot_id).success());
 
-    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify");
-    let run = |runtime_path: &PathBuf, boot_path: &PathBuf| {
-        Command::new("python3")
-            .arg(&gate)
-            .env("RIGOS_RUNTIME_PATH", runtime_path)
-            .env("RIGOS_BOOT_ID_PATH", boot_path)
-            .status()
-            .unwrap()
-    };
-
-    assert!(run(&runtime, &boot_id).success());
+    let boot_scoped = serde_json::json!({
+        "schema": "rigos.recovery-access-status/v1",
+        "boot_id": "boot-test",
+        "local_console_access": true,
+        "credential_action": "created",
+        "credential_scope": "boot",
+        "credential_persisted": false,
+        "state_outcome": "repair_required"
+    });
+    fs::write(&status, serde_json::to_vec(&boot_scoped).unwrap()).unwrap();
+    assert!(run_gate(&runtime, &boot_id).success());
 
     let stale = serde_json::json!({
         "schema": "rigos.recovery-access-status/v1",
         "boot_id": "old-boot",
         "local_console_access": true,
         "credential_action": "created",
-        "credential_persisted": true
+        "credential_scope": "persistent",
+        "credential_persisted": true,
+        "state_outcome": "ready"
     });
     fs::write(&status, serde_json::to_vec(&stale).unwrap()).unwrap();
-    assert_eq!(run(&runtime, &boot_id).code(), Some(2));
+    assert_eq!(run_gate(&runtime, &boot_id).code(), Some(2));
 
-    let not_persisted = serde_json::json!({
+    let missing_persistent_store = serde_json::json!({
         "schema": "rigos.recovery-access-status/v1",
         "boot_id": "boot-test",
         "local_console_access": true,
         "credential_action": "created",
-        "credential_persisted": false
+        "credential_scope": "persistent",
+        "credential_persisted": false,
+        "state_outcome": "ready"
     });
-    fs::write(&status, serde_json::to_vec(&not_persisted).unwrap()).unwrap();
-    assert_eq!(run(&runtime, &boot_id).code(), Some(2));
+    fs::write(
+        &status,
+        serde_json::to_vec(&missing_persistent_store).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(run_gate(&runtime, &boot_id).code(), Some(2));
+
+    let false_boot_claim = serde_json::json!({
+        "schema": "rigos.recovery-access-status/v1",
+        "boot_id": "boot-test",
+        "local_console_access": true,
+        "credential_action": "created",
+        "credential_scope": "boot",
+        "credential_persisted": true,
+        "state_outcome": "limited_capacity"
+    });
+    fs::write(&status, serde_json::to_vec(&false_boot_claim).unwrap()).unwrap();
+    assert_eq!(run_gate(&runtime, &boot_id).code(), Some(2));
 
     let _ = fs::remove_dir_all(root);
 }
