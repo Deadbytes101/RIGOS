@@ -23,6 +23,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
         fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
     let image_verifier =
         fs::read_to_string(repo_path("scripts/verify-state-recovery-image.sh")).unwrap();
+    let state_init = fs::read_to_string(repo_path("crates/rigos-state/src/main.rs")).unwrap();
 
     for required in [
         "FILESYSTEM_TIMEOUT_SECONDS = 300",
@@ -58,6 +59,27 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
     assert!(image_verifier.contains("mount -o ro"));
     assert!(!image_verifier.contains("mount -o rw"));
     assert!(entrypoint.contains("bash ./scripts/verify-state-recovery-image.sh \"$image\""));
+
+    for required in [
+        "const FILESYSTEM_TIMEOUT: Duration = Duration::from_secs(300);",
+        "const SEED_STATE_UUID: &str = \"dc450e72-daa4-5b82-8d1b-0ae6b11607f9\";",
+        "fn prepare_state_filesystem(device: &str) -> Result<(), InitError>",
+        "run_filesystem(\"e2fsck\", &[\"-p\", device], None, &[0, 1])",
+        "run_filesystem(\"resize2fs\", &[device], None, &[0])",
+        "run_filesystem(",
+        "\"tune2fs\"",
+        "&[\"-U\", \"random\", \"-L\", \"RIGOS_STATE\", device]",
+        "fn inspect_state_filesystem(device: &str) -> Result<FilesystemIdentity, InitError>",
+        "state filesystem label is not RIGOS_STATE after identity update",
+        "state filesystem UUID still matches the cloned seed UUID",
+        "InitError::RepairRequired(format!(\"{program}: timeout after 300s\"))",
+        "StateOutcome::RepairRequired",
+    ] {
+        assert!(
+            state_init.contains(required),
+            "state initializer transaction contract is missing: {required}"
+        );
+    }
 }
 
 #[test]

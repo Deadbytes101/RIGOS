@@ -133,6 +133,17 @@ strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/bin/pyt
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/lib/rigos/lsblk-compat' >/dev/null || die 'state initializer does not use the packaged compatibility wrapper'
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F -- '--tree' >/dev/null || die 'state initializer does not require hierarchical lsblk output'
 if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigos/compat-bin/lsblk' >/dev/null; then die 'state initializer executes compatibility code from the runtime directory'; fi
+for required in \
+  'tune2fs: timeout after 300s' \
+  'resize2fs: timeout after 300s' \
+  'e2fsck: timeout after 300s' \
+  'state filesystem label is not RIGOS_STATE after identity update' \
+  'state filesystem UUID still matches the cloned seed UUID' \
+  'dc450e72-daa4-5b82-8d1b-0ae6b11607f9' \
+  'filesystem repair required'
+do
+  strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F "$required" >/dev/null || die "state initializer filesystem transaction contract is missing: $required"
+done
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-state-ready' "$temporary/root/etc/systemd/system/rigos-state-ready.service" || die 'state readiness verifier is not wired'
 if grep -Fq 'Wants=rigos-recovery-access.service' "$temporary/root/etc/systemd/system/rigos-state-ready.service"; then die 'state readiness retriggers interactive recovery access'; fi
 grep -Fq 'Requires=rigos-state-ready.service' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply bypasses state readiness'

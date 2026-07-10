@@ -20,6 +20,10 @@ use std::{
 };
 use uuid::Uuid;
 
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
+const FILESYSTEM_TIMEOUT: Duration = Duration::from_secs(300);
+const SEED_STATE_UUID: &str = "dc450e72-daa4-5b82-8d1b-0ae6b11607f9";
+
 #[derive(Parser)]
 struct Args {
     #[arg(long, default_value = "/usr/lib/rigos/image-layout.json")]
@@ -89,6 +93,9 @@ fn main() -> ExitCode {
             None,
             Some(error.to_string()),
         ),
+        Err(error @ InitError::RepairRequired(_)) => {
+            (StateOutcome::RepairRequired, None, Some(error.to_string()))
+        }
         Err(error) => (StateOutcome::LimitedCapacity, None, Some(error.to_string())),
     };
     let attestation: Option<serde_json::Value> = fs::read(&args.attestation)
@@ -134,6 +141,8 @@ enum InitError {
     Discovery(String),
     #[error("bounded command failed: {0}")]
     Command(String),
+    #[error("filesystem repair required: {0}")]
+    RepairRequired(String),
 }
 
 fn execute(args: &Args) -> Result<StateOutcome, InitError> {
@@ -299,24 +308,7 @@ fn execute(args: &Args) -> Result<StateOutcome, InitError> {
         grown = true;
     }
 
-    run("e2fsck", &["-p", &verified.state_path], None, &[0, 1])?;
-    run("resize2fs", &[&verified.state_path], None, &[0])?;
-    let blkid = String::from_utf8_lossy(&run(
-        "blkid",
-        &["-o", "export", &verified.state_path],
-        None,
-        &[0],
-    )?)
-    .into_owned();
-    let initialized = blkid.lines().any(|line| line == "LABEL=RIGOS_STATE");
-    if !initialized {
-        run(
-            "tune2fs",
-            &["-U", "random", "-L", "RIGOS_STATE", &verified.state_path],
-            None,
-            &[0],
-        )?;
-    }
+    prepare_state_filesystem(&verified.state_path)?;
 
     fs::create_dir_all(&args.mountpoint)?;
     if !mountpoint(&args.mountpoint)? {
@@ -459,6 +451,87 @@ fn validate_exact_state_device(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FilesystemIdentity {
+    filesystem_type: Option<String>,
+    label: Option<String>,
+    uuid: Option<String>,
+    partuuid: Option<String>,
+}
+
+impl FilesystemIdentity {
+    fn from_export(value: &str) -> Self {
+        let property = |name: &str| {
+            value
+                .lines()
+                .find_map(|line| line.strip_prefix(&format!("{name}=")))
+                .map(str::to_owned)
+        };
+        Self {
+            filesystem_type: property("TYPE"),
+            label: property("LABEL"),
+            uuid: property("UUID"),
+            partuuid: property("PARTUUID"),
+        }
+    }
+}
+
+fn prepare_state_filesystem(device: &str) -> Result<(), InitError> {
+    run_filesystem("e2fsck", &["-p", device], None, &[0, 1])?;
+    run_filesystem("resize2fs", &[device], None, &[0])?;
+    let current = inspect_state_filesystem(device)?;
+    if current.filesystem_type.as_deref() != Some("ext4") {
+        return Err(InitError::RepairRequired(
+            "state partition is not an ext4 filesystem after resize".into(),
+        ));
+    }
+    let needs_identity_update = current.label.as_deref() != Some("RIGOS_STATE")
+        || current
+            .uuid
+            .as_deref()
+            .is_none_or(|uuid| uuid.eq_ignore_ascii_case(SEED_STATE_UUID));
+    if needs_identity_update {
+        run_filesystem(
+            "tune2fs",
+            &["-U", "random", "-L", "RIGOS_STATE", device],
+            None,
+            &[0],
+        )?;
+    }
+    let finalized = inspect_state_filesystem(device)?;
+    if finalized.filesystem_type.as_deref() != Some("ext4") {
+        return Err(InitError::RepairRequired(
+            "state partition is not ext4 after identity update".into(),
+        ));
+    }
+    if finalized.label.as_deref() != Some("RIGOS_STATE") {
+        return Err(InitError::RepairRequired(
+            "state filesystem label is not RIGOS_STATE after identity update".into(),
+        ));
+    }
+    if finalized
+        .uuid
+        .as_deref()
+        .is_none_or(|uuid| uuid.eq_ignore_ascii_case(SEED_STATE_UUID))
+    {
+        return Err(InitError::RepairRequired(
+            "state filesystem UUID still matches the cloned seed UUID".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn inspect_state_filesystem(device: &str) -> Result<FilesystemIdentity, InitError> {
+    let output = String::from_utf8_lossy(&run_filesystem(
+        "blkid",
+        &["-o", "export", device],
+        None,
+        &[0],
+    )?)
+    .into_owned();
+    Ok(FilesystemIdentity::from_export(&output))
+}
+
 fn read_lsblk() -> Result<LsblkDocument, InitError> {
     let raw = run(
         "/usr/bin/python3",
@@ -540,6 +613,48 @@ fn run(
     input: Option<&[u8]>,
     accepted: &[i32],
 ) -> Result<Vec<u8>, InitError> {
+    run_bounded(program, args, input, accepted, COMMAND_TIMEOUT).map_err(|error| match error {
+        BoundedCommandError::Io(error) => InitError::Io(error),
+        BoundedCommandError::Command(message) => InitError::Command(message),
+        BoundedCommandError::Timeout(program) => InitError::Command(format!("{program}: timeout")),
+    })
+}
+
+fn run_filesystem(
+    program: &str,
+    args: &[&str],
+    input: Option<&[u8]>,
+    accepted: &[i32],
+) -> Result<Vec<u8>, InitError> {
+    run_bounded(program, args, input, accepted, FILESYSTEM_TIMEOUT).map_err(|error| match error {
+        BoundedCommandError::Io(error) => InitError::Io(error),
+        BoundedCommandError::Command(message) => InitError::RepairRequired(message),
+        BoundedCommandError::Timeout(program) => {
+            InitError::RepairRequired(format!("{program}: timeout after 300s"))
+        }
+    })
+}
+
+#[derive(Debug)]
+enum BoundedCommandError {
+    Io(std::io::Error),
+    Command(String),
+    Timeout(String),
+}
+
+impl From<std::io::Error> for BoundedCommandError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+fn run_bounded(
+    program: &str,
+    args: &[&str],
+    input: Option<&[u8]>,
+    accepted: &[i32],
+    timeout: Duration,
+) -> Result<Vec<u8>, BoundedCommandError> {
     let temp = std::env::temp_dir().join(format!("rigos-state-{}", Uuid::new_v4()));
     fs::create_dir_all(&temp)?;
     let stdout_path = temp.join("stdout");
@@ -559,10 +674,10 @@ fn run(
         child
             .stdin
             .take()
-            .ok_or_else(|| InitError::Command(format!("{program}: stdin unavailable")))?
+            .ok_or_else(|| BoundedCommandError::Command(format!("{program}: stdin unavailable")))?
             .write_all(bytes)?;
     }
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
             break status;
@@ -570,15 +685,15 @@ fn run(
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(InitError::Command(format!("{program}: timeout")));
+            return Err(BoundedCommandError::Timeout(program.to_owned()));
         }
         thread::sleep(Duration::from_millis(50));
     };
-    let stdout = read_bounded(&stdout_path)?;
-    let stderr = String::from_utf8_lossy(&read_bounded(&stderr_path)?).into_owned();
+    let stdout = read_command_output_bounded(&stdout_path)?;
+    let stderr = String::from_utf8_lossy(&read_command_output_bounded(&stderr_path)?).into_owned();
     let _ = fs::remove_dir_all(temp);
     if !accepted.contains(&status.code().unwrap_or(-1)) {
-        return Err(InitError::Command(format!(
+        return Err(BoundedCommandError::Command(format!(
             "{program}: exit {:?}: {stderr}",
             status.code()
         )));
@@ -586,10 +701,12 @@ fn run(
     Ok(stdout)
 }
 
-fn read_bounded(path: &Path) -> Result<Vec<u8>, InitError> {
+fn read_command_output_bounded(path: &Path) -> Result<Vec<u8>, BoundedCommandError> {
     let data = fs::read(path)?;
     if data.len() > 1_048_576 {
-        return Err(InitError::Command("command output exceeded 1 MiB".into()));
+        return Err(BoundedCommandError::Command(
+            "command output exceeded 1 MiB".into(),
+        ));
     }
     Ok(data)
 }
@@ -611,4 +728,38 @@ fn write_atomic<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), InitE
         File::open(parent)?.sync_all()?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filesystem_identity_parses_exported_blkid_properties() {
+        let identity = FilesystemIdentity::from_export(
+            "TYPE=ext4\nLABEL=RIGOS_STATE\nUUID=abc\nPARTUUID=5249474f-04\n",
+        );
+        assert_eq!(identity.filesystem_type.as_deref(), Some("ext4"));
+        assert_eq!(identity.label.as_deref(), Some("RIGOS_STATE"));
+        assert_eq!(identity.uuid.as_deref(), Some("abc"));
+        assert_eq!(identity.partuuid.as_deref(), Some("5249474f-04"));
+    }
+
+    #[test]
+    fn filesystem_timeout_is_repair_required_not_capacity() {
+        let error = BoundedCommandError::Timeout("tune2fs".to_owned());
+        let mapped = match error {
+            BoundedCommandError::Timeout(program) => {
+                InitError::RepairRequired(format!("{program}: timeout after 300s"))
+            }
+            _ => unreachable!(),
+        };
+        assert!(matches!(mapped, InitError::RepairRequired(_)));
+        assert!(mapped.to_string().contains("tune2fs: timeout after 300s"));
+    }
+
+    #[test]
+    fn seed_uuid_constant_matches_image_seed_contract() {
+        assert_eq!(SEED_STATE_UUID, "dc450e72-daa4-5b82-8d1b-0ae6b11607f9");
+    }
 }

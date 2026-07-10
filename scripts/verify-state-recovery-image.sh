@@ -38,6 +38,7 @@ squashfs="$temporary/root-a/live/filesystem.squashfs"
 
 unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
     usr/bin/python3 usr/bin/python3.11 \
+    usr/lib/rigos/rigos-state-init \
     usr/local/sbin/rigos-state-orchestrate \
     usr/local/sbin/rigos-recovery-access \
     usr/lib/rigos/rigos-recovery-access-verify \
@@ -47,12 +48,14 @@ unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
 
 root="$temporary/squash"
 orchestrator="$root/usr/local/sbin/rigos-state-orchestrate"
+state_init="$root/usr/lib/rigos/rigos-state-init"
 recovery="$root/usr/local/sbin/rigos-recovery-access"
 gate="$root/usr/lib/rigos/rigos-recovery-access-verify"
 state_service="$root/etc/systemd/system/rigos-state.service"
 release="$root/etc/rigos-release"
 
 [[ -x "$root/usr/bin/python3" ]] || die 'Python runtime is missing'
+[[ -x "$state_init" ]] || die 'state initializer is missing or not executable'
 [[ -x "$orchestrator" ]] || die 'state orchestrator is missing or not executable'
 [[ -x "$recovery" ]] || die 'recovery credential authority is missing or not executable'
 [[ -f "$gate" ]] || die 'recovery credential gate is missing'
@@ -60,8 +63,8 @@ release="$root/etc/rigos-release"
 [[ -f "$release" ]] || die 'release metadata is missing'
 
 python3 -m py_compile "$orchestrator" "$recovery" "$gate"
-grep -Fqx 'VERSION_ID="0.0.4-alpha.14"' "$release" \
-    || die 'embedded alpha.14 version is missing'
+grep -Fqx 'VERSION_ID="0.0.4-alpha.15"' "$release" \
+    || die 'embedded alpha.15 version is missing'
 grep -Fqx 'TimeoutStartSec=20min' "$state_service" \
     || die 'state service full repair window is missing'
 
@@ -120,6 +123,19 @@ for required in \
 do
     grep -Fq "$required" "$gate" \
         || die "recovery credential gate contract is missing: $required"
+done
+
+for required in \
+    'tune2fs: timeout after 300s' \
+    'resize2fs: timeout after 300s' \
+    'e2fsck: timeout after 300s' \
+    'state filesystem label is not RIGOS_STATE after identity update' \
+    'state filesystem UUID still matches the cloned seed UUID' \
+    'dc450e72-daa4-5b82-8d1b-0ae6b11607f9' \
+    'filesystem repair required'
+do
+    strings "$state_init" | grep -Fq "$required" \
+        || die "state initializer filesystem transaction contract is missing: $required"
 done
 
 printf 'RIGOS state recovery and credential image verification passed: %s\n' "$image"

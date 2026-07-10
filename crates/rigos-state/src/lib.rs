@@ -81,6 +81,7 @@ pub enum StateOutcome {
     Ready,
     Grown,
     LimitedCapacity,
+    RepairRequired,
     Stateless,
     BlockedLayoutMismatch,
     BlockedAmbiguousBootDevice,
