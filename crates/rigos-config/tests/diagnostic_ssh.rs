@@ -17,17 +17,13 @@ fn repo_file(path: &str) -> String {
 
 #[test]
 fn diagnostic_ssh_keeps_host_identity_mandatory_without_requiring_ready_state() {
-    let service = repo_file(
-        "build/usb/includes.chroot/etc/systemd/system/rigos-ssh-hostkeys.service",
-    );
-    let ssh_dropin = repo_file(
-        "build/usb/includes.chroot/etc/systemd/system/ssh.service.d/rigos-observe.conf",
-    );
-    let policy = repo_file(
-        "build/usb/includes.chroot/etc/ssh/sshd_config.d/01-rigos-hostkeys.conf",
-    );
-    let authority =
-        repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys");
+    let service =
+        repo_file("build/usb/includes.chroot/etc/systemd/system/rigos-ssh-hostkeys.service");
+    let ssh_dropin =
+        repo_file("build/usb/includes.chroot/etc/systemd/system/ssh.service.d/rigos-observe.conf");
+    let policy =
+        repo_file("build/usb/includes.chroot/etc/ssh/sshd_config.d/01-rigos-hostkeys.conf");
+    let authority = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-ssh-hostkeys");
     let version = repo_file("build/usb/version.env");
 
     assert!(service.contains("After=rigos-state-ready.service"));
@@ -53,7 +49,10 @@ fn diagnostic_ssh_keeps_host_identity_mandatory_without_requiring_ready_state() 
         "persistent_state_ready",
         "install_active_keyset",
     ] {
-        assert!(authority.contains(required), "authority is missing {required}");
+        assert!(
+            authority.contains(required),
+            "authority is missing {required}"
+        );
     }
 
     assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.10"));
