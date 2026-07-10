@@ -141,28 +141,42 @@ hostkey_service="$temporary/root/etc/systemd/system/rigos-ssh-hostkeys.service"
 hostkey_policy="$temporary/root/etc/ssh/sshd_config.d/01-rigos-hostkeys.conf"
 ssh_dropin="$temporary/root/etc/systemd/system/ssh.service.d/rigos-observe.conf"
 hostkey_authority="$temporary/root/usr/lib/rigos/rigos-ssh-hostkeys"
-[[ -x "$hostkey_authority" ]] || die 'persistent SSH host-key authority is missing or not executable'
-[[ -L "$temporary/root/etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service" ]] || die 'persistent SSH host-key service is not enabled'
+[[ -x "$hostkey_authority" ]] || die 'SSH host-key authority is missing or not executable'
+[[ -L "$temporary/root/etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service" ]] || die 'SSH host-key service is not enabled'
 for required in \
   'After=rigos-state-ready.service' \
-  'Requires=rigos-state-ready.service' \
+  'Wants=rigos-state-ready.service' \
   'Before=ssh.service' \
   'ExecStart=/usr/lib/rigos/rigos-ssh-hostkeys' \
   'ReadWritePaths=/var/lib/rigos /run/rigos'
 do
-  grep -Fqx "$required" "$hostkey_service" || die "persistent SSH host-key service contract is missing: $required"
+  grep -Fqx "$required" "$hostkey_service" || die "SSH host-key service contract is missing: $required"
 done
-grep -Fqx 'HostKey /var/lib/rigos/system/ssh-hostkeys/ssh_host_ed25519_key' "$hostkey_policy" || die 'sshd persistent HostKey policy is missing'
-grep -Fqx 'Requires=rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service does not require persistent host identity'
-grep -Fqx 'After=rigos-recovery-access.service rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service ordering bypasses persistent host identity'
+if grep -Fqx 'Requires=rigos-state-ready.service' "$hostkey_service"; then
+  die 'SSH diagnostics are still hard-blocked by persistent state readiness'
+fi
+for required in \
+  'HostKey /run/rigos/ssh-hostkeys/ssh_host_ed25519_key' \
+  'PasswordAuthentication yes' \
+  'PermitRootLogin no' \
+  'AllowUsers rigosadmin'
+do
+  grep -Fqx "$required" "$hostkey_policy" || die "sshd diagnostic access policy is missing: $required"
+done
+grep -Fqx 'Requires=rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service does not require an established host identity'
+grep -Fqx 'After=rigos-recovery-access.service rigos-ssh-hostkeys.service' "$ssh_dropin" || die 'ssh.service ordering bypasses host identity establishment'
 for required in \
   'STATE = Path("/var/lib/rigos")' \
   'KEYS = SYSTEM / "ssh-hostkeys"' \
+  'ACTIVE_KEYS = RUNTIME / "ssh-hostkeys"' \
   '"schema": "rigos.ssh-hostkeys/v1"' \
-  'os.rename(temporary, KEYS)' \
-  '"persistent SSH host identity exists without a valid manifest"'
+  '"schema": "rigos.ssh-active-hostkeys/v1"' \
+  'mode = "persistent"' \
+  'mode = "ephemeral"' \
+  'install_active_keyset' \
+  'persistent_state_ready'
 do
-  grep -Fq "$required" "$hostkey_authority" || die "persistent SSH host-key authority contract is missing: $required"
+  grep -Fq "$required" "$hostkey_authority" || die "SSH host-key authority contract is missing: $required"
 done
 
 [[ -x "$temporary/root/usr/lib/rigos/rigos-performance" ]] || die 'performance authority is missing or not executable'
