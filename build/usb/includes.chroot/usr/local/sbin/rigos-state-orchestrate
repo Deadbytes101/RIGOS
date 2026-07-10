@@ -15,6 +15,7 @@ BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PARTUUID_ROOT = Path("/dev/disk/by-partuuid")
 PARTUUID_RE = re.compile(r"^[0-9A-Fa-f-]{1,128}$")
 FILESYSTEM_TIMEOUT_SECONDS = 300
+E2FSCK_UNCORRECTED_EXIT = 4
 MAX_COMMAND_OUTPUT = 64 * 1024
 
 
@@ -111,6 +112,15 @@ def verified_state_device() -> tuple[Path | None, str | None]:
     return device, None
 
 
+def revalidate_state_device(expected: Path) -> tuple[Path | None, str | None]:
+    observed, error = verified_state_device()
+    if error is not None or observed is None:
+        return None, error or "verified state device is unavailable"
+    if observed != expected:
+        return None, "verified state device changed during repair"
+    return observed, None
+
+
 def mark_repair_required(message: str) -> None:
     status = read_json(STATUS)
     attestation = read_json(ATTESTATION)
@@ -164,18 +174,41 @@ def run_repair_command(argv: list[str], accepted: tuple[int, ...]) -> tuple[bool
     return True, None
 
 
+def repair_ext4(device: Path, failure_prefix: str) -> bool:
+    checked, check_failure = run_repair_command(
+        ["/usr/sbin/e2fsck", "-f", "-p", str(device)], (0, 1)
+    )
+    if checked:
+        return True
+    uncorrected = f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}"
+    if check_failure is None or not check_failure.startswith(uncorrected):
+        mark_repair_required(f"{failure_prefix}: {check_failure}")
+        return False
+
+    revalidated, error = revalidate_state_device(device)
+    if error is not None or revalidated is None:
+        mark_repair_required(error or "verified state device is unavailable before repair")
+        return False
+    repaired, repair_failure = run_repair_command(
+        ["/usr/sbin/e2fsck", "-f", "-y", str(revalidated)], (0, 1)
+    )
+    if not repaired:
+        mark_repair_required(f"automatic ext4 repair failed: {repair_failure}")
+        return False
+
+    revalidated, error = revalidate_state_device(device)
+    if error is not None or revalidated is None:
+        mark_repair_required(error or "verified state device is unavailable after repair")
+        return False
+    return True
+
+
 def forced_check() -> bool:
     device, error = verified_state_device()
     if error is not None or device is None:
         mark_repair_required(error or "verified state device is unavailable")
         return False
-    ok, failure = run_repair_command(
-        ["/usr/sbin/e2fsck", "-f", "-p", str(device)], (0, 1)
-    )
-    if ok:
-        return True
-    mark_repair_required(f"forced ext4 check failed: {failure}")
-    return False
+    return repair_ext4(device, "forced ext4 check failed")
 
 
 def complete_resize_after_timeout() -> bool:
@@ -183,14 +216,14 @@ def complete_resize_after_timeout() -> bool:
     if error is not None or device is None:
         mark_repair_required(error or "verified state device is unavailable")
         return False
-    checked, check_failure = run_repair_command(
-        ["/usr/sbin/e2fsck", "-f", "-p", str(device)], (0, 1)
-    )
-    if not checked:
-        mark_repair_required(f"post-timeout ext4 check failed: {check_failure}")
+    if not repair_ext4(device, "post-timeout ext4 check failed"):
+        return False
+    revalidated, error = revalidate_state_device(device)
+    if error is not None or revalidated is None:
+        mark_repair_required(error or "verified state device is unavailable before resize")
         return False
     resized, resize_failure = run_repair_command(
-        ["/usr/sbin/resize2fs", str(device)], (0,)
+        ["/usr/sbin/resize2fs", str(revalidated)], (0,)
     )
     if not resized:
         mark_repair_required(f"state filesystem resize failed: {resize_failure}")
