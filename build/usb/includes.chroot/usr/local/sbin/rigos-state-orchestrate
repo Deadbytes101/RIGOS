@@ -210,28 +210,32 @@ def main() -> int:
         if status.get("outcome") == "ready":
             return 0
         message = str(status.get("message") or "")
+        outcome = status.get("outcome")
+        recoverable = outcome in ("limited_capacity", "repair_required")
         if (
-            status.get("outcome") == "limited_capacity"
+            outcome == "limited_capacity"
             and not retried_missing_device
             and "No such file or directory" in message
         ):
             retried_missing_device = True
             time.sleep(1)
             continue
-        if (
-            status.get("outcome") in ("limited_capacity", "repair_required")
-            and not repaired_filesystem
-            and "e2fsck -f" in message
-        ):
+        if recoverable and ("e2fsck -f" in message or "e2fsck: timeout" in message):
+            if repaired_filesystem:
+                mark_repair_required(
+                    "state core ext4 check remained incomplete after bounded repair"
+                )
+                return 0
             repaired_filesystem = True
             if forced_check():
                 continue
             return 0
-        if (
-            status.get("outcome") in ("limited_capacity", "repair_required")
-            and not completed_resize_timeout
-            and "resize2fs: timeout" in message
-        ):
+        if recoverable and "resize2fs: timeout" in message:
+            if completed_resize_timeout:
+                mark_repair_required(
+                    "state core resize remained incomplete after bounded repair"
+                )
+                return 0
             completed_resize_timeout = True
             if complete_resize_after_timeout():
                 continue
