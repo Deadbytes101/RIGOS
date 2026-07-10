@@ -1,7 +1,7 @@
 [Unit]
-Description=Establish persistent RIGOS SSH host identity
+Description=Establish RIGOS SSH host identity
 After=rigos-state-ready.service
-Requires=rigos-state-ready.service
+Wants=rigos-state-ready.service
 Before=ssh.service
 
 [Service]
