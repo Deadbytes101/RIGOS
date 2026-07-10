@@ -18,6 +18,10 @@ PRIVATE_KEY = KEYS / "ssh_host_ed25519_key"
 PUBLIC_KEY = KEYS / "ssh_host_ed25519_key.pub"
 MANIFEST = KEYS / "manifest.json"
 RUNTIME = Path("/run/rigos")
+ACTIVE_KEYS = RUNTIME / "ssh-hostkeys"
+ACTIVE_PRIVATE_KEY = ACTIVE_KEYS / "ssh_host_ed25519_key"
+ACTIVE_PUBLIC_KEY = ACTIVE_KEYS / "ssh_host_ed25519_key.pub"
+ACTIVE_MANIFEST = ACTIVE_KEYS / "manifest.json"
 STATUS = RUNTIME / "ssh-hostkeys-status.json"
 STATE_STATUS = RUNTIME / "state-status.json"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
@@ -141,6 +145,20 @@ def ensure_secure_directory(path: Path, mode: int) -> None:
         raise AuthorityError(f"{path} has unsafe mode")
 
 
+def ensure_runtime_root() -> None:
+    if not RUNTIME.exists():
+        RUNTIME.mkdir(mode=0o755, parents=True)
+        os.chown(RUNTIME, 0, 0)
+        RUNTIME.chmod(0o755)
+    observed = RUNTIME.lstat()
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+        raise AuthorityError("runtime root is not a real directory")
+    if observed.st_uid != 0 or observed.st_gid != 0:
+        raise AuthorityError("runtime root is not owned by root:root")
+    if stat.S_IMODE(observed.st_mode) != 0o755:
+        raise AuthorityError("runtime root has unsafe mode")
+
+
 def validate_regular_file(path: Path, mode: int) -> None:
     try:
         observed = path.lstat()
@@ -176,18 +194,21 @@ def key_fingerprint(public_key: Path) -> str:
     return fields[1]
 
 
-def validate_keyset() -> str:
+def validate_key_pair(private_key: Path, public_key: Path) -> str:
+    public_fields = public_key.read_text(encoding="ascii").strip().split()
+    derived_fields = command_output([SSH_KEYGEN, "-y", "-f", str(private_key)]).split()
+    if len(public_fields) < 2 or derived_fields[:2] != public_fields[:2]:
+        raise AuthorityError("SSH public and private keys do not match")
+    return key_fingerprint(public_key)
+
+
+def validate_persistent_keyset() -> str:
     ensure_secure_directory(KEYS, 0o700)
     validate_regular_file(PRIVATE_KEY, 0o600)
     validate_regular_file(PUBLIC_KEY, 0o644)
     validate_regular_file(MANIFEST, 0o644)
 
-    public_fields = PUBLIC_KEY.read_text(encoding="ascii").strip().split()
-    derived_fields = command_output([SSH_KEYGEN, "-y", "-f", str(PRIVATE_KEY)]).split()
-    if len(public_fields) < 2 or derived_fields[:2] != public_fields[:2]:
-        raise AuthorityError("persistent SSH public and private keys do not match")
-
-    fingerprint = key_fingerprint(PUBLIC_KEY)
+    fingerprint = validate_key_pair(PRIVATE_KEY, PUBLIC_KEY)
     public_sha256 = hashlib.sha256(PUBLIC_KEY.read_bytes()).hexdigest()
     manifest = read_json(MANIFEST)
     if (
@@ -202,21 +223,45 @@ def validate_keyset() -> str:
     return fingerprint
 
 
-def remove_stale_staging() -> None:
-    for candidate in SYSTEM.glob(".ssh-hostkeys.tmp-*"):
+def validate_active_keyset(
+    boot_id: str, mode: str, expected_source_fingerprint: str | None
+) -> str:
+    ensure_secure_directory(ACTIVE_KEYS, 0o700)
+    validate_regular_file(ACTIVE_PRIVATE_KEY, 0o600)
+    validate_regular_file(ACTIVE_PUBLIC_KEY, 0o644)
+    validate_regular_file(ACTIVE_MANIFEST, 0o644)
+
+    fingerprint = validate_key_pair(ACTIVE_PRIVATE_KEY, ACTIVE_PUBLIC_KEY)
+    public_sha256 = hashlib.sha256(ACTIVE_PUBLIC_KEY.read_bytes()).hexdigest()
+    manifest = read_json(ACTIVE_MANIFEST)
+    if (
+        manifest.get("schema") != "rigos.ssh-active-hostkeys/v1"
+        or manifest.get("algorithm") != "ssh-ed25519"
+        or manifest.get("boot_id") != boot_id
+        or manifest.get("mode") != mode
+        or manifest.get("fingerprint") != fingerprint
+        or manifest.get("public_key_sha256") != public_sha256
+        or manifest.get("source_fingerprint") != expected_source_fingerprint
+    ):
+        raise AuthorityError("active SSH host identity manifest is invalid")
+    return fingerprint
+
+
+def remove_stale_staging(parent: Path, prefix: str) -> None:
+    for candidate in parent.glob(f"{prefix}*"):
         observed = candidate.lstat()
         if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
             raise AuthorityError("unsafe SSH host identity staging path exists")
         if observed.st_uid != 0 or observed.st_gid != 0:
             raise AuthorityError("untrusted SSH host identity staging directory exists")
         shutil.rmtree(candidate)
-    fsync_directory(SYSTEM)
+    fsync_directory(parent)
 
 
-def generate_keyset(boot_id: str) -> str:
+def generate_persistent_keyset(boot_id: str) -> str:
     if KEYS.exists() or KEYS.is_symlink():
         raise AuthorityError("persistent SSH host identity exists without a valid manifest")
-    remove_stale_staging()
+    remove_stale_staging(SYSTEM, ".ssh-hostkeys.tmp-")
 
     temporary = Path(tempfile.mkdtemp(prefix=".ssh-hostkeys.tmp-", dir=SYSTEM))
     try:
@@ -275,7 +320,92 @@ def generate_keyset(boot_id: str) -> str:
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
-    return validate_keyset()
+    return validate_persistent_keyset()
+
+
+def install_active_keyset(
+    boot_id: str,
+    mode: str,
+    source_private: Path | None = None,
+    source_public: Path | None = None,
+    source_fingerprint: str | None = None,
+) -> str:
+    ensure_runtime_root()
+    if ACTIVE_KEYS.exists() or ACTIVE_KEYS.is_symlink():
+        raise AuthorityError("active SSH host identity exists without a valid manifest")
+    remove_stale_staging(RUNTIME, ".ssh-hostkeys.active-")
+
+    temporary = Path(tempfile.mkdtemp(prefix=".ssh-hostkeys.active-", dir=RUNTIME))
+    try:
+        os.chown(temporary, 0, 0)
+        temporary.chmod(0o700)
+        private_key = temporary / ACTIVE_PRIVATE_KEY.name
+        public_key = temporary / ACTIVE_PUBLIC_KEY.name
+        manifest_path = temporary / ACTIVE_MANIFEST.name
+
+        if mode == "persistent":
+            if source_private is None or source_public is None or source_fingerprint is None:
+                raise AuthorityError("persistent active identity source is incomplete")
+            shutil.copyfile(source_private, private_key)
+            shutil.copyfile(source_public, public_key)
+        elif mode == "ephemeral":
+            result = subprocess.run(
+                [
+                    SSH_KEYGEN,
+                    "-q",
+                    "-t",
+                    "ed25519",
+                    "-N",
+                    "",
+                    "-C",
+                    "rigos-diagnostic-host",
+                    "-f",
+                    str(private_key),
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise AuthorityError("ephemeral SSH host identity generation failed")
+        else:
+            raise AuthorityError("unknown active SSH host identity mode")
+
+        os.chown(private_key, 0, 0)
+        os.chown(public_key, 0, 0)
+        private_key.chmod(0o600)
+        public_key.chmod(0o644)
+        fingerprint = validate_key_pair(private_key, public_key)
+        if mode == "persistent" and fingerprint != source_fingerprint:
+            raise AuthorityError("active SSH host identity differs from persistent source")
+
+        manifest = {
+            "schema": "rigos.ssh-active-hostkeys/v1",
+            "algorithm": "ssh-ed25519",
+            "boot_id": boot_id,
+            "mode": mode,
+            "fingerprint": fingerprint,
+            "public_key_sha256": hashlib.sha256(public_key.read_bytes()).hexdigest(),
+            "source_fingerprint": source_fingerprint,
+        }
+        write_atomic_json(manifest_path, manifest, 0o644)
+
+        for path in (private_key, public_key, manifest_path):
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        fsync_directory(temporary)
+        os.rename(temporary, ACTIVE_KEYS)
+        fsync_directory(RUNTIME)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+    return validate_active_keyset(boot_id, mode, source_fingerprint)
 
 
 def write_status(boot_id: str, outcome: str, **extra: object) -> None:
@@ -283,6 +413,7 @@ def write_status(boot_id: str, outcome: str, **extra: object) -> None:
         "schema": "rigos.ssh-hostkeys-status/v1",
         "boot_id": boot_id,
         "outcome": outcome,
+        "active_path": str(ACTIVE_PRIVATE_KEY),
         "persistent_path": str(PRIVATE_KEY),
     }
     value.update(extra)
@@ -296,19 +427,61 @@ def main() -> int:
     boot_id = "unavailable"
     try:
         boot_id = current_boot_id()
-        validate_state_ready(boot_id)
-        secure_state_root()
-        ensure_secure_directory(SYSTEM, 0o700)
-        reused = KEYS.exists()
-        fingerprint = validate_keyset() if reused else generate_keyset(boot_id)
+        state_reason = None
+        try:
+            validate_state_ready(boot_id)
+            persistent_state_ready = True
+        except AuthorityError as error:
+            persistent_state_ready = False
+            state_reason = str(error)
+
+        ensure_runtime_root()
+        active_reused = ACTIVE_KEYS.exists() or ACTIVE_KEYS.is_symlink()
+
+        if persistent_state_ready:
+            secure_state_root()
+            ensure_secure_directory(SYSTEM, 0o700)
+            persistent_reused = KEYS.exists() or KEYS.is_symlink()
+            persistent_fingerprint = (
+                validate_persistent_keyset()
+                if persistent_reused
+                else generate_persistent_keyset(boot_id)
+            )
+            fingerprint = (
+                validate_active_keyset(boot_id, "persistent", persistent_fingerprint)
+                if active_reused
+                else install_active_keyset(
+                    boot_id,
+                    "persistent",
+                    PRIVATE_KEY,
+                    PUBLIC_KEY,
+                    persistent_fingerprint,
+                )
+            )
+            mode = "persistent"
+        else:
+            persistent_reused = False
+            fingerprint = (
+                validate_active_keyset(boot_id, "ephemeral", None)
+                if active_reused
+                else install_active_keyset(boot_id, "ephemeral")
+            )
+            mode = "ephemeral"
+
         write_status(
             boot_id,
             "ready",
             algorithm="ssh-ed25519",
             fingerprint=fingerprint,
-            reused=reused,
+            persistence_mode=mode,
+            active_reused=active_reused,
+            persistent_reused=persistent_reused,
+            state_reason=state_reason,
         )
-        print(f"RIGOS_SSH_HOSTKEYS=READY fingerprint={fingerprint} reused={str(reused).lower()}")
+        print(
+            "RIGOS_SSH_HOSTKEYS=READY "
+            f"mode={mode} fingerprint={fingerprint} active_reused={str(active_reused).lower()}"
+        )
         return 0
     except (AuthorityError, OSError, subprocess.SubprocessError) as error:
         write_status(boot_id, "error", reason=str(error))

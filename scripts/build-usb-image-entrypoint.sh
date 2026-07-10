@@ -45,6 +45,7 @@ cargo test --locked -p rigos-config --test miner_observer_authority -- --nocaptu
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 cargo test --locked -p rigos-config --test firstboot_tty -- --nocapture
+cargo test --locked -p rigos-config --test diagnostic_ssh -- --nocapture
 
 ./scripts/build-usb-image.sh
 

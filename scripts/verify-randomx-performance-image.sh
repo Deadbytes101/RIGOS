@@ -86,11 +86,11 @@ root="$temporary/squash"
 [[ -L "$root/usr/sbin/modprobe" || -x "$root/usr/sbin/modprobe" ]] || die 'modprobe entrypoint is missing'
 [[ -f "$root/usr/lib/rigos/rigos-randomx-msr" ]] || die 'RandomX MSR authority is missing'
 [[ -f "$root/usr/lib/rigos/rigos-miner-gate" ]] || die 'miner safety gate is missing'
-[[ -f "$root/usr/lib/rigos/rigos-ssh-hostkeys" ]] || die 'persistent SSH host-key authority is missing'
+[[ -f "$root/usr/lib/rigos/rigos-ssh-hostkeys" ]] || die 'SSH host-key authority is missing'
 [[ -L "$root/etc/systemd/system/multi-user.target.wants/rigos-randomx-msr.service" ]] \
     || die 'RandomX MSR authority is not enabled in the appliance'
 [[ -L "$root/etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service" ]] \
-    || die 'persistent SSH host-key authority is not enabled in the appliance'
+    || die 'SSH host-key authority is not enabled in the appliance'
 python3 -m py_compile \
     "$root/usr/lib/rigos/rigos-randomx-msr" \
     "$root/usr/lib/rigos/rigos-miner-gate" \
@@ -127,29 +127,43 @@ grep -Fqx 'ExecCondition=/usr/lib/rigos/rigos-miner-gate' "$miner" \
 
 for required in \
     'After=rigos-state-ready.service' \
-    'Requires=rigos-state-ready.service' \
+    'Wants=rigos-state-ready.service' \
     'Before=ssh.service' \
     'ExecStart=/usr/lib/rigos/rigos-ssh-hostkeys' \
     'ReadWritePaths=/var/lib/rigos /run/rigos'
 do
     grep -Fqx "$required" "$hostkey_service" \
-        || die "persistent SSH host-key service contract is missing: $required"
+        || die "SSH host-key service contract is missing: $required"
 done
-grep -Fqx 'HostKey /var/lib/rigos/system/ssh-hostkeys/ssh_host_ed25519_key' "$hostkey_policy" \
-    || die 'sshd does not use the persistent RIGOS host identity'
+if grep -Fqx 'Requires=rigos-state-ready.service' "$hostkey_service"; then
+    die 'SSH diagnostics are hard-blocked by persistent state readiness'
+fi
+for required in \
+    'HostKey /run/rigos/ssh-hostkeys/ssh_host_ed25519_key' \
+    'PasswordAuthentication yes' \
+    'PermitRootLogin no' \
+    'AllowUsers rigosadmin'
+do
+    grep -Fqx "$required" "$hostkey_policy" \
+        || die "sshd diagnostic access policy is missing: $required"
+done
 grep -Fqx 'Requires=rigos-ssh-hostkeys.service' "$ssh_dropin" \
-    || die 'ssh.service does not require persistent host identity'
+    || die 'ssh.service does not require an established host identity'
 grep -Fqx 'After=rigos-recovery-access.service rigos-ssh-hostkeys.service' "$ssh_dropin" \
-    || die 'ssh.service ordering bypasses persistent host identity'
+    || die 'ssh.service ordering bypasses host identity establishment'
 for required in \
     'STATE = Path("/var/lib/rigos")' \
     'KEYS = SYSTEM / "ssh-hostkeys"' \
+    'ACTIVE_KEYS = RUNTIME / "ssh-hostkeys"' \
     '"schema": "rigos.ssh-hostkeys/v1"' \
-    'os.rename(temporary, KEYS)' \
-    '"persistent SSH host identity exists without a valid manifest"'
+    '"schema": "rigos.ssh-active-hostkeys/v1"' \
+    'mode = "persistent"' \
+    'mode = "ephemeral"' \
+    'install_active_keyset' \
+    'persistent_state_ready'
 do
     grep -Fq "$required" "$hostkey_authority" \
-        || die "persistent SSH host-key authority contract is missing: $required"
+        || die "SSH host-key authority contract is missing: $required"
 done
 
 for required in \
@@ -174,5 +188,5 @@ do
 done
 
 printf 'RIGOS RandomX kernel MSR support: %s\n' "$msr_support"
-printf 'RIGOS persistent SSH host-key image verification passed\n'
+printf 'RIGOS SSH host-key image verification passed\n'
 printf 'RIGOS RandomX performance image verification passed: %s\n' "$image"

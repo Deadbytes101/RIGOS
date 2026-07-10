@@ -44,8 +44,14 @@ def main() -> int:
         raise RuntimeError("OpenSSH server package is missing")
 
     hostkey_policy = normalized_lf_bytes(HOSTKEY_POLICY)
-    if hostkey_policy != b"HostKey /var/lib/rigos/system/ssh-hostkeys/ssh_host_ed25519_key\n":
-        raise RuntimeError("persistent SSH HostKey policy is not exact")
+    expected_hostkey_policy = (
+        b"HostKey /run/rigos/ssh-hostkeys/ssh_host_ed25519_key\n"
+        b"PasswordAuthentication yes\n"
+        b"PermitRootLogin no\n"
+        b"AllowUsers rigosadmin\n"
+    )
+    if hostkey_policy != expected_hostkey_policy:
+        raise RuntimeError("diagnostic SSH HostKey and authentication policy is not exact")
     baked_keys = sorted(path for path in SSH_DIRECTORY.glob("ssh_host_*_key*") if path.is_file())
     if baked_keys:
         raise RuntimeError("appliance source contains a baked SSH host private or public key")
@@ -67,26 +73,32 @@ def main() -> int:
     for required in (
         'STATE = Path("/var/lib/rigos")',
         'KEYS = SYSTEM / "ssh-hostkeys"',
+        'ACTIVE_KEYS = RUNTIME / "ssh-hostkeys"',
         '"schema": "rigos.ssh-hostkeys/v1"',
-        'os.rename(temporary, KEYS)',
+        '"schema": "rigos.ssh-active-hostkeys/v1"',
+        'mode = "persistent"',
+        'mode = "ephemeral"',
         'or status.get("outcome") != "ready"',
-        '"persistent SSH public and private keys do not match"',
+        '"SSH public and private keys do not match"',
         '"persistent SSH host identity exists without a valid manifest"',
+        '"ephemeral SSH host identity generation failed"',
     ):
         if required not in authority:
-            raise RuntimeError(f"persistent SSH host-key authority contract is missing: {required}")
+            raise RuntimeError(f"SSH host-key authority contract is missing: {required}")
 
     require_lines(
         HOSTKEY_UNIT,
         (
             "After=rigos-state-ready.service",
-            "Requires=rigos-state-ready.service",
+            "Wants=rigos-state-ready.service",
             "Before=ssh.service",
             "ExecStart=/usr/lib/rigos/rigos-ssh-hostkeys",
             "ReadWritePaths=/var/lib/rigos /run/rigos",
             "WantedBy=multi-user.target",
         ),
     )
+    if "Requires=rigos-state-ready.service" in HOSTKEY_UNIT.read_text(encoding="utf-8"):
+        raise RuntimeError("diagnostic SSH is still hard-blocked by state readiness")
     require_lines(
         SSH_DROPIN,
         (
@@ -96,7 +108,7 @@ def main() -> int:
         ),
     )
     if "Before=rigos-ssh-hostkeys.service" not in STATE_READY_UNIT.read_text(encoding="utf-8"):
-        raise RuntimeError("state readiness is not ordered before persistent SSH identity")
+        raise RuntimeError("state readiness attempt is not ordered before SSH identity selection")
 
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     if 'ENV PATH="/usr/local/cargo/bin:/usr/local/rustup/bin:${PATH}"' not in dockerfile:
@@ -128,7 +140,7 @@ def main() -> int:
         if required not in recovery_gate:
             raise RuntimeError(f"recovery access validator contract is missing: {required}")
 
-    print("RIGOS Alpha8 SSH, recovery, and persistent host-key verification passed")
+    print("RIGOS SSH, recovery, and diagnostic host-key verification passed")
     return 0
 
 
