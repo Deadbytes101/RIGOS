@@ -123,12 +123,16 @@ def verify(units):
     includes(
         hostkeys.words("Unit", "After"),
         {"rigos-state-ready.service"},
-        "SSH host-key authority must follow state readiness",
+        "SSH host-key authority must follow the state readiness attempt",
     )
     includes(
-        hostkeys.words("Unit", "Requires"),
+        hostkeys.words("Unit", "Wants"),
         {"rigos-state-ready.service"},
-        "SSH host-key authority must require state readiness",
+        "SSH host-key authority must request state readiness",
+    )
+    require(
+        "rigos-state-ready.service" not in hostkeys.words("Unit", "Requires"),
+        "diagnostic SSH must survive state readiness failure",
     )
     includes(
         hostkeys.words("Unit", "Before"),
