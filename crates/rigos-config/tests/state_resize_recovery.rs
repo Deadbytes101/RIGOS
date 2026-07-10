@@ -37,6 +37,12 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
         "resize2fs: timeout",
         "[\"/usr/sbin/e2fsck\", \"-f\", \"-y\"",
         "e2fsck_exit == E2FSCK_UNCORRECTED_EXIT",
+        "SYS_DEV_BLOCK = Path(\"/sys/dev/block\")",
+        "MAJOR_MINOR_RE = re.compile",
+        "def attested_state_device(",
+        "stat.S_ISBLK",
+        "state_sysfs.parent != disk_sysfs",
+        "PARTUUID symlink resolved away from attested state device",
     ] {
         assert!(
             orchestrator.contains(required),
@@ -64,6 +70,7 @@ fn resize_timeout_recovery_retries_core_and_repairs_only_e2fsck_exit_four() {
     fs::create_dir_all(&root).unwrap();
 
     let fixture = r#"
+import json
 import runpy
 import sys
 from pathlib import Path
@@ -82,6 +89,65 @@ assert g['e2fsck_exit_code']('e2fsck: exit 4: inconsistency') == 4
 assert g['e2fsck_exit_code']('e2fsck: exit Some(4): inconsistency') == 4
 assert g['e2fsck_exit_code']('e2fsck: exit Some(8): operational error') == 8
 assert g['e2fsck_exit_code']('e2fsck: exit None: signal') is None
+
+# The attested-path fallback requires exact path, major:minor, and disk parent identity.
+attestation = {
+    'schema': 'rigos.boot-device/v1',
+    'boot_id': 'boot-test',
+    'verification_outcome': 'verified',
+    'disk': {'path': '/dev/test-disk', 'major_minor': '8:16'},
+    'state': {
+        'path': '/dev/test-state',
+        'major_minor': '8:20',
+        'partuuid': '5249474f-04',
+    },
+}
+state = attestation['state']
+real_resolve_strict = g['resolve_strict']
+g['resolve_strict'] = lambda _path: Path('/dev/test-state')
+g['block_device_major_minor'] = lambda _path: ('8:20', None)
+g['state_belongs_to_attested_disk'] = lambda state_mm, disk_mm: (
+    state_mm == '8:20' and disk_mm == '8:16',
+    None,
+)
+device, error = g['attested_state_device'](attestation, state)
+assert device == Path('/dev/test-state')
+assert error is None
+g['block_device_major_minor'] = lambda _path: ('8:21', None)
+device, error = g['attested_state_device'](attestation, state)
+assert device is None
+assert error == 'attested state path major:minor changed'
+g['resolve_strict'] = real_resolve_strict
+
+# Missing PARTUUID link may use only the already-verified attested block path.
+links = root / 'by-partuuid'
+links.mkdir()
+g['PARTUUID_ROOT'] = links
+g['attested_state_device'] = lambda _attestation, _state: (Path('/dev/test-state'), None)
+g['ATTESTATION'].write_text(json.dumps(attestation), encoding='utf-8')
+class Result:
+    def __init__(self, returncode, stdout=''):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = ''
+def fake_run(argv, **_kwargs):
+    if argv[0] == '/usr/bin/findmnt':
+        return Result(1)
+    if argv[0] == '/usr/sbin/blkid':
+        return Result(0, 'TYPE=ext4\nLABEL=RIGOS_STATE_SEED\nPARTUUID=5249474f-04\n')
+    raise AssertionError(f'unexpected command: {argv}')
+g['subprocess'].run = fake_run
+device, error = g['verified_state_device']()
+assert device == Path('/dev/test-state')
+assert error is None
+
+# An existing PARTUUID link that points elsewhere is rejected, never used as fallback.
+other = root / 'other-state'
+other.touch()
+(links / '5249474f-04').symlink_to(other)
+device, error = g['verified_state_device']()
+assert device is None
+assert error == 'PARTUUID symlink resolved away from attested state device'
 
 # A core resize timeout is completed under the longer verified repair budget,
 # then core is rerun to perform the normal mount and initialization path.
