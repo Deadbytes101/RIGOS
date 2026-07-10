@@ -42,51 +42,145 @@ def includes(actual, expected, message):
 
 def verify(units):
     names = {
-        "rigos-state.service", "rigos-recovery-access.service",
-        "rigos-state-ready.service", "rigos-ssh-hostkeys.service",
-        "rigos-profile-apply.service", "rigos-firstboot.service",
-        "rigos-hugepages.service", "rigos-miner.service",
+        "rigos-state.service",
+        "rigos-recovery-access.service",
+        "rigos-state-ready.service",
+        "rigos-ssh-hostkeys.service",
+        "rigos-profile-apply.service",
+        "rigos-firstboot.service",
+        "rigos-hugepages.service",
+        "rigos-miner.service",
     }
     includes(set(units), names, "RIGOS unit set is incomplete")
     state = units["rigos-state.service"]
-    require(state.scalar("Unit", "DefaultDependencies") == "no", "state must retain early boot dependencies")
-    includes(state.words("Unit", "Before"), {"local-fs.target", "rigos-state-ready.service"}, "state ordering is incomplete")
+    require(
+        state.scalar("Unit", "DefaultDependencies") == "no",
+        "state must retain early boot dependencies",
+    )
+    includes(
+        state.words("Unit", "Before"),
+        {"local-fs.target", "rigos-state-ready.service"},
+        "state ordering is incomplete",
+    )
 
     recovery = units["rigos-recovery-access.service"]
-    includes(recovery.words("Unit", "After"), {"rigos-state.service"}, "recovery must follow state")
-    includes(recovery.words("Unit", "Before"), {"rigos-state-ready.service", "rigos-firstboot.service"}, "recovery ordering is incomplete")
-    require(recovery.scalar("Service", "TTYVHangup") != "yes", "recovery must not hang up tty1")
+    includes(
+        recovery.words("Unit", "After"),
+        {"rigos-state.service"},
+        "recovery must follow state",
+    )
+    includes(
+        recovery.words("Unit", "Before"),
+        {"rigos-state-ready.service", "rigos-firstboot.service"},
+        "recovery ordering is incomplete",
+    )
+    require(
+        recovery.scalar("Service", "TTYVHangup") != "yes",
+        "recovery must not hang up tty1",
+    )
 
     ready = units["rigos-state-ready.service"]
-    require(ready.scalar("Unit", "DefaultDependencies") != "no", "state-ready must use normal dependencies")
-    includes(ready.words("Unit", "After"), {"rigos-state.service", "rigos-recovery-access.service"}, "state-ready ordering is incomplete")
-    includes(ready.words("Unit", "Requires"), {"rigos-state.service"}, "state-ready must require state")
+    require(
+        ready.scalar("Unit", "DefaultDependencies") != "no",
+        "state-ready must use normal dependencies",
+    )
+    includes(
+        ready.words("Unit", "After"),
+        {"rigos-state.service", "rigos-recovery-access.service"},
+        "state-ready ordering is incomplete",
+    )
+    includes(
+        ready.words("Unit", "Requires"),
+        {"rigos-state.service"},
+        "state-ready must require state",
+    )
     includes(
         ready.words("Unit", "Before"),
         {
-            "rigos-ssh-hostkeys.service", "rigos-profile-apply.service",
-            "rigos-firstboot.service", "rigos-hugepages.service",
+            "rigos-ssh-hostkeys.service",
+            "rigos-profile-apply.service",
+            "rigos-firstboot.service",
+            "rigos-hugepages.service",
             "rigos-miner.service",
         },
         "state-ready downstream ordering is incomplete",
     )
-    require("local-fs.target" not in ready.words("Unit", "Before"), "state-ready must not order before local-fs")
-    require("local-fs.target" not in ready.words("Install", "WantedBy"), "state-ready must not be installed under local-fs")
-    includes(ready.words("Install", "WantedBy"), {"multi-user.target"}, "state-ready must be installed under multi-user")
+    require(
+        "local-fs.target" not in ready.words("Unit", "Before"),
+        "state-ready must not order before local-fs",
+    )
+    require(
+        "local-fs.target" not in ready.words("Install", "WantedBy"),
+        "state-ready must not be installed under local-fs",
+    )
+    includes(
+        ready.words("Install", "WantedBy"),
+        {"multi-user.target"},
+        "state-ready must be installed under multi-user",
+    )
 
     hostkeys = units["rigos-ssh-hostkeys.service"]
-    includes(hostkeys.words("Unit", "After"), {"rigos-state-ready.service"}, "SSH host-key authority must follow state readiness")
-    includes(hostkeys.words("Unit", "Requires"), {"rigos-state-ready.service"}, "SSH host-key authority must require state readiness")
-    includes(hostkeys.words("Unit", "Before"), {"ssh.service"}, "SSH host-key authority must precede sshd")
+    includes(
+        hostkeys.words("Unit", "After"),
+        {"rigos-state-ready.service"},
+        "SSH host-key authority must follow state readiness",
+    )
+    includes(
+        hostkeys.words("Unit", "Requires"),
+        {"rigos-state-ready.service"},
+        "SSH host-key authority must require state readiness",
+    )
+    includes(
+        hostkeys.words("Unit", "Before"),
+        {"ssh.service"},
+        "SSH host-key authority must precede sshd",
+    )
     require(
         hostkeys.scalar("Service", "ExecStart") == "/usr/lib/rigos/rigos-ssh-hostkeys",
         "SSH host-key authority entrypoint is not exact",
     )
-    includes(hostkeys.words("Install", "WantedBy"), {"multi-user.target"}, "SSH host-key authority must be enabled under multi-user")
+    includes(
+        hostkeys.words("Install", "WantedBy"),
+        {"multi-user.target"},
+        "SSH host-key authority must be enabled under multi-user",
+    )
 
     firstboot = units["rigos-firstboot.service"]
-    includes(firstboot.words("Unit", "Requires"), {"rigos-state-ready.service"}, "firstboot must require state-ready")
-    require(firstboot.scalar("Service", "TTYVHangup") != "yes", "firstboot must not hang up tty1")
+    includes(
+        firstboot.words("Unit", "After"),
+        {
+            "rigos-state.service",
+            "rigos-state-ready.service",
+            "rigos-profile-apply.service",
+        },
+        "firstboot ordering is incomplete",
+    )
+    includes(
+        firstboot.words("Unit", "Wants"),
+        {"rigos-state-ready.service"},
+        "firstboot must request state verification",
+    )
+    require(
+        "rigos-state-ready.service" not in firstboot.words("Unit", "Requires"),
+        "firstboot diagnostics must survive state readiness failure",
+    )
+    require(
+        "network-online.target" not in firstboot.words("Unit", "After")
+        and "network-online.target" not in firstboot.words("Unit", "Wants"),
+        "firstboot must remain available offline",
+    )
+    require(
+        firstboot.scalar("Service", "StandardInput") == "tty-force",
+        "firstboot must acquire tty1",
+    )
+    require(
+        firstboot.scalar("Service", "TTYPath") == "/dev/tty1",
+        "firstboot must use tty1",
+    )
+    require(
+        firstboot.scalar("Service", "TTYVHangup") != "yes",
+        "firstboot must not hang up tty1",
+    )
 
 
 def graph_for(units):
@@ -120,7 +214,7 @@ def cycle_in(graph):
                 if cycle:
                     return cycle
             elif state[target] == 1:
-                return stack[positions[target]:] + [target]
+                return stack[positions[target] :] + [target]
         stack.pop()
         positions.pop(node)
         state[node] = 2
@@ -136,7 +230,11 @@ def cycle_in(graph):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("unit_dir", nargs="?", default="build/usb/includes.chroot/etc/systemd/system")
+    parser.add_argument(
+        "unit_dir",
+        nargs="?",
+        default="build/usb/includes.chroot/etc/systemd/system",
+    )
     directory = Path(parser.parse_args().unit_dir)
     try:
         units = {path.name: Unit(path) for path in directory.glob("rigos-*.service")}

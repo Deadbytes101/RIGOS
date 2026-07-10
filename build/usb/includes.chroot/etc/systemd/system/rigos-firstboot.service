@@ -1,15 +1,14 @@
 [Unit]
 Description=RIGOS first-boot configuration
-After=network-online.target rigos-state-ready.service rigos-profile-apply.service
-Wants=network-online.target
-Requires=rigos-state-ready.service
+After=rigos-state.service rigos-state-ready.service rigos-profile-apply.service
+Wants=rigos-state-ready.service
 Before=getty@tty1.service
 
 [Service]
 Type=oneshot
 ExecCondition=/usr/lib/rigos/rigos-config needs-activation
 ExecStart=/usr/local/sbin/rigos-firstboot
-StandardInput=tty
+StandardInput=tty-force
 StandardOutput=tty
 StandardError=tty
 TTYPath=/dev/tty1
