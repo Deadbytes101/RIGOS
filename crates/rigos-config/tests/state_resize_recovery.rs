@@ -45,9 +45,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
     assert!(image_verifier.contains("losetup --find --show --read-only"));
     assert!(image_verifier.contains("mount -o ro"));
     assert!(!image_verifier.contains("mount -o rw"));
-    assert!(
-        entrypoint.contains("bash ./scripts/verify-state-recovery-image.sh \"$image\"")
-    );
+    assert!(entrypoint.contains("bash ./scripts/verify-state-recovery-image.sh \"$image\""));
 }
 
 #[test]
