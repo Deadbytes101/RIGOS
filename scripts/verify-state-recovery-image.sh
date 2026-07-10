@@ -74,7 +74,8 @@ for required in \
     'automatic ext4 repair failed' \
     'state filesystem resize failed' \
     'resize2fs: timeout' \
-    '["/usr/sbin/e2fsck", "-f", "-y"'
+    '["/usr/sbin/e2fsck", "-f", "-y"' \
+    'f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}" in message'
 do
     grep -Fq "$required" "$orchestrator" \
         || die "state repair contract is missing: $required"
