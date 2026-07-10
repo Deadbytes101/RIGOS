@@ -34,6 +34,7 @@ fn state_resize_timeout_has_a_bounded_verified_recovery_path() {
         "state filesystem resize failed",
         "resize2fs: timeout",
         "[\"/usr/sbin/e2fsck\", \"-f\", \"-y\"",
+        "f\"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}\" in message",
     ] {
         assert!(
             orchestrator.contains(required),
@@ -81,17 +82,33 @@ statuses = [
     {'outcome': 'ready', 'message': None},
 ]
 core_calls = []
-repair_calls = []
+resize_calls = []
 g['run_core'] = lambda: core_calls.append(True) or 0
 def read_json(path):
     if path == g['STATUS']:
         return statuses.pop(0)
     return {}
 g['read_json'] = read_json
-g['complete_resize_after_timeout'] = lambda: repair_calls.append(True) or True
+g['complete_resize_after_timeout'] = lambda: resize_calls.append(True) or True
 assert namespace['main']() == 0
 assert len(core_calls) == 2
-assert repair_calls == [True]
+assert resize_calls == [True]
+assert statuses == []
+
+# The exact exit-4 message emitted by the core reaches the verified fsck path.
+statuses = [
+    {
+        'outcome': 'limited_capacity',
+        'message': 'bounded command failed: e2fsck: exit 4: unexpected inconsistency',
+    },
+    {'outcome': 'ready', 'message': None},
+]
+core_calls.clear()
+forced_calls = []
+g['forced_check'] = lambda: forced_calls.append(True) or True
+assert namespace['main']() == 0
+assert len(core_calls) == 2
+assert forced_calls == [True]
 assert statuses == []
 
 # Preen exit 4 is the only condition that escalates to bounded -y repair.
