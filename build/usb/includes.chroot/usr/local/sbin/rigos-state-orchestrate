@@ -14,6 +14,9 @@ ATTESTATION = RUNTIME / "boot-device.json"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PARTUUID_ROOT = Path("/dev/disk/by-partuuid")
 PARTUUID_RE = re.compile(r"^[0-9A-Fa-f-]{1,128}$")
+E2FSCK_EXIT_RE = re.compile(
+    r"\be2fsck: exit (?:(?P<plain>[0-9]+)|Some\((?P<option>[0-9]+)\))(?=[:\s]|$)"
+)
 FILESYSTEM_TIMEOUT_SECONDS = 300
 E2FSCK_UNCORRECTED_EXIT = 4
 MAX_COMMAND_OUTPUT = 64 * 1024
@@ -60,6 +63,14 @@ def properties(output: str) -> dict[str, str]:
             key, value = line.split("=", 1)
             result[key] = value
     return result
+
+
+def e2fsck_exit_code(message: str) -> int | None:
+    match = E2FSCK_EXIT_RE.search(message)
+    if match is None:
+        return None
+    value = match.group("plain") or match.group("option")
+    return int(value)
 
 
 def verified_state_device() -> tuple[Path | None, str | None]:
@@ -180,8 +191,10 @@ def repair_ext4(device: Path, failure_prefix: str) -> bool:
     )
     if checked:
         return True
-    uncorrected = f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}"
-    if check_failure is None or not check_failure.startswith(uncorrected):
+    if (
+        check_failure is None
+        or e2fsck_exit_code(check_failure) != E2FSCK_UNCORRECTED_EXIT
+    ):
         mark_repair_required(f"{failure_prefix}: {check_failure}")
         return False
 
@@ -253,10 +266,11 @@ def main() -> int:
             retried_missing_device = True
             time.sleep(1)
             continue
+        e2fsck_exit = e2fsck_exit_code(message)
         e2fsck_failure = (
             "e2fsck -f" in message
             or "e2fsck: timeout" in message
-            or f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}" in message
+            or e2fsck_exit == E2FSCK_UNCORRECTED_EXIT
         )
         if recoverable and e2fsck_failure:
             if repaired_filesystem:

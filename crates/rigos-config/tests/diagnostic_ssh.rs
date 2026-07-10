@@ -55,8 +55,8 @@ fn diagnostic_ssh_keeps_host_identity_mandatory_without_requiring_ready_state() 
         );
     }
 
-    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.12"));
-    assert!(version.contains("RIGOS_BUILD_ORDINAL=12"));
+    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.13"));
+    assert!(version.contains("RIGOS_BUILD_ORDINAL=13"));
 }
 
 #[test]
