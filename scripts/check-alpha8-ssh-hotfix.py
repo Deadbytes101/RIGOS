@@ -9,6 +9,7 @@ PACKAGES = ROOT / "build/usb/package-lists/rigos.list.chroot"
 HOOK = ROOT / "build/usb/hooks/010-rigos.chroot"
 DOCKERFILE = ROOT / "build/usb/Dockerfile"
 RECOVERY_UNIT = ROOT / "build/usb/includes.chroot/etc/systemd/system/rigos-recovery-access.service"
+RECOVERY_AUTHORITY = ROOT / "build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access"
 RECOVERY_GATE = ROOT / "build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify"
 STATE_READY_UNIT = ROOT / "build/usb/includes.chroot/etc/systemd/system/rigos-state-ready.service"
 HOSTKEY_UNIT = ROOT / "build/usb/includes.chroot/etc/systemd/system/rigos-ssh-hostkeys.service"
@@ -130,12 +131,27 @@ def main() -> int:
         if required not in recovery_unit:
             raise RuntimeError(f"recovery access hotfix wiring is missing: {required}")
 
+    recovery_authority = RECOVERY_AUTHORITY.read_text(encoding="utf-8")
+    compile(recovery_authority, str(RECOVERY_AUTHORITY), "exec")
+    for required in (
+        "def persistent_store_ready(status: dict) -> bool:",
+        '"credential_scope": "persistent" if persistent else "boot"',
+        "credential_persisted = persistent and CREDENTIAL_FILE.is_file()",
+        "if persistent:",
+        "This password is not persistent",
+    ):
+        if required not in recovery_authority:
+            raise RuntimeError(f"recovery credential authority contract is missing: {required}")
+
     recovery_gate = RECOVERY_GATE.read_text(encoding="utf-8")
     compile(recovery_gate, str(RECOVERY_GATE), "exec")
     for required in (
         'status.get("boot_id") != boot_id',
         'status.get("local_console_access") is not True',
-        'status.get("credential_persisted") is not True',
+        'scope = status.get("credential_scope")',
+        'if scope == "persistent":',
+        'elif scope == "boot":',
+        'return deny("boot_credential_claims_persistence")',
     ):
         if required not in recovery_gate:
             raise RuntimeError(f"recovery access validator contract is missing: {required}")
