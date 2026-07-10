@@ -253,7 +253,12 @@ def main() -> int:
             retried_missing_device = True
             time.sleep(1)
             continue
-        if recoverable and ("e2fsck -f" in message or "e2fsck: timeout" in message):
+        e2fsck_failure = (
+            "e2fsck -f" in message
+            or "e2fsck: timeout" in message
+            or f"e2fsck: exit {E2FSCK_UNCORRECTED_EXIT}" in message
+        )
+        if recoverable and e2fsck_failure:
             if repaired_filesystem:
                 mark_repair_required(
                     "state core ext4 check remained incomplete after bounded repair"
