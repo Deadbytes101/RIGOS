@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import stat
 import subprocess
 import tempfile
 import time
@@ -13,7 +14,9 @@ STATUS = RUNTIME / "state-status.json"
 ATTESTATION = RUNTIME / "boot-device.json"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PARTUUID_ROOT = Path("/dev/disk/by-partuuid")
+SYS_DEV_BLOCK = Path("/sys/dev/block")
 PARTUUID_RE = re.compile(r"^[0-9A-Fa-f-]{1,128}$")
+MAJOR_MINOR_RE = re.compile(r"^[0-9]+:[0-9]+$")
 E2FSCK_EXIT_RE = re.compile(
     r"\be2fsck: exit (?:(?P<plain>[0-9]+)|Some\((?P<option>[0-9]+)\))(?=[:\s]|$)"
 )
@@ -73,6 +76,70 @@ def e2fsck_exit_code(message: str) -> int | None:
     return int(value)
 
 
+def resolve_strict(path: Path) -> Path:
+    return path.resolve(strict=True)
+
+
+def block_device_major_minor(path: Path) -> tuple[str | None, str | None]:
+    try:
+        metadata = os.stat(path)
+    except OSError as error:
+        return None, f"attested state path is unavailable: {error}"
+    if not stat.S_ISBLK(metadata.st_mode):
+        return None, "attested state path is not a block device"
+    return f"{os.major(metadata.st_rdev)}:{os.minor(metadata.st_rdev)}", None
+
+
+def state_belongs_to_attested_disk(
+    state_major_minor: str, disk_major_minor: str
+) -> tuple[bool, str | None]:
+    if not MAJOR_MINOR_RE.fullmatch(state_major_minor) or not MAJOR_MINOR_RE.fullmatch(
+        disk_major_minor
+    ):
+        return False, "attested block major:minor is invalid"
+    try:
+        state_sysfs = resolve_strict(SYS_DEV_BLOCK / state_major_minor)
+        disk_sysfs = resolve_strict(SYS_DEV_BLOCK / disk_major_minor)
+    except (OSError, RuntimeError) as error:
+        return False, f"attested block sysfs identity is unavailable: {error}"
+    if state_sysfs.parent != disk_sysfs:
+        return False, "attested state block is not a child of the attested boot disk"
+    return True, None
+
+
+def attested_state_device(
+    attestation: dict, state: dict
+) -> tuple[Path | None, str | None]:
+    disk = attestation.get("disk")
+    if not isinstance(disk, dict):
+        return None, "attested boot disk identity is unavailable"
+    raw_path = state.get("path")
+    state_major_minor = state.get("major_minor")
+    disk_major_minor = disk.get("major_minor")
+    if not isinstance(raw_path, str):
+        return None, "attested state path is invalid"
+    path = Path(raw_path)
+    if len(path.parts) < 3 or path.parts[0] != "/" or path.parts[1] != "dev":
+        return None, "attested state path is outside /dev"
+    if not isinstance(state_major_minor, str) or not isinstance(disk_major_minor, str):
+        return None, "attested block major:minor is unavailable"
+    try:
+        device = resolve_strict(path)
+    except (OSError, RuntimeError) as error:
+        return None, f"attested state path is unavailable: {error}"
+    observed_major_minor, error = block_device_major_minor(device)
+    if error is not None or observed_major_minor is None:
+        return None, error or "attested state block identity is unavailable"
+    if observed_major_minor != state_major_minor:
+        return None, "attested state path major:minor changed"
+    belongs, error = state_belongs_to_attested_disk(
+        state_major_minor, disk_major_minor
+    )
+    if not belongs:
+        return None, error or "attested state block parent changed"
+    return device, None
+
+
 def verified_state_device() -> tuple[Path | None, str | None]:
     attestation = read_json(ATTESTATION)
     try:
@@ -90,10 +157,19 @@ def verified_state_device() -> tuple[Path | None, str | None]:
     partuuid = state.get("partuuid")
     if not isinstance(partuuid, str) or not PARTUUID_RE.fullmatch(partuuid):
         return None, "attested state PARTUUID is invalid"
+    attested_device, error = attested_state_device(attestation, state)
+    if error is not None or attested_device is None:
+        return None, error or "attested state device is unavailable"
     try:
-        device = (PARTUUID_ROOT / partuuid).resolve(strict=True)
-    except OSError as error:
-        return None, f"attested state PARTUUID is unavailable: {error}"
+        partuuid_device = resolve_strict(PARTUUID_ROOT / partuuid)
+    except FileNotFoundError:
+        device = attested_device
+    except (OSError, RuntimeError) as error:
+        return None, f"attested state PARTUUID lookup failed: {error}"
+    else:
+        if partuuid_device != attested_device:
+            return None, "PARTUUID symlink resolved away from attested state device"
+        device = partuuid_device
     mounted = subprocess.run(
         ["/usr/bin/findmnt", "--noheadings", "--source", str(device)],
         check=False,
