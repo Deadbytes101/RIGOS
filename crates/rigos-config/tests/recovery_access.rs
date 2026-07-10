@@ -39,10 +39,17 @@ g['STATE'] = root / 'state'
 g['CREDENTIAL_DIRECTORY'] = root / 'state' / 'recovery'
 g['CREDENTIAL_FILE'] = g['CREDENTIAL_DIRECTORY'] / 'rigosadmin-password.hash'
 g['BOOT_ID'] = root / 'boot-id'
+g['STATE_STATUS'] = g['RUNTIME'] / 'state-status.json'
 g['BOOT_ID'].write_text('boot-test\n', encoding='ascii')
 g['RUNTIME'].mkdir()
 g['STATE'].mkdir()
-(g['RUNTIME'] / 'state-status.json').write_text('{"outcome":"ready"}', encoding='utf-8')
+g['STATE_STATUS'].write_text(json.dumps({
+    'schema': 'rigos.state-status/v1',
+    'boot_id': 'boot-test',
+    'outcome': 'ready',
+    'mountpoint': str(g['STATE']),
+}), encoding='utf-8')
+g['persistent_store_ready'] = lambda _status: True
 valid_hash = '$y$j9T$syntheticSalt$syntheticHashValue'
 
 assert namespace['valid_password_hash'](valid_hash)
@@ -54,7 +61,8 @@ live_ready = {'value': False}
 prompts = []
 persisted = []
 g['password_ready'] = lambda: live_ready['value']
-def prompt(_invalid):
+def prompt(_invalid, persistent):
+    assert persistent is True
     prompts.append(True)
     live_ready['value'] = True
 g['prompt_for_password'] = prompt
@@ -72,6 +80,7 @@ assert stat.S_IMODE(g['CREDENTIAL_DIRECTORY'].stat().st_mode) == 0o700
 assert stat.S_IMODE(g['CREDENTIAL_FILE'].stat().st_mode) == 0o600
 status = json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text())
 assert status['credential_action'] == 'created'
+assert status['credential_scope'] == 'persistent'
 assert status['credential_persisted'] is True
 assert valid_hash not in json.dumps(status)
 
@@ -95,6 +104,8 @@ assert not prompts
 assert not any('/usr/bin/passwd' in argv for argv, _kwargs in calls)
 status = json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text())
 assert status['credential_action'] == 'restored'
+assert status['credential_scope'] == 'persistent'
+assert status['credential_persisted'] is True
 assert valid_hash not in json.dumps(status)
 
 # Existing live credential migrates without a prompt.
@@ -109,15 +120,43 @@ g['CREDENTIAL_FILE'].write_text('!unsafe\n', encoding='ascii')
 g['CREDENTIAL_FILE'].chmod(0o600)
 live_ready['value'] = False
 invalid_flags = []
-def replacement(invalid):
-    invalid_flags.append(invalid)
+def replacement(invalid, persistent):
+    invalid_flags.append((invalid, persistent))
     live_ready['value'] = True
 g['prompt_for_password'] = replacement
 calls.clear()
 assert namespace['main']() == 0
-assert invalid_flags == [True]
+assert invalid_flags == [(True, True)]
 assert not any(argv == ['/usr/sbin/chpasswd', '--encrypted'] for argv, _kwargs in calls)
 assert valid_hash not in json.dumps(json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text()))
+
+# Unready state uses a truthful boot-scoped credential and never touches the store.
+g['CREDENTIAL_FILE'].unlink(missing_ok=True)
+g['STATE_STATUS'].write_text(json.dumps({
+    'schema': 'rigos.state-status/v1',
+    'boot_id': 'boot-test',
+    'outcome': 'repair_required',
+    'mountpoint': None,
+}), encoding='utf-8')
+g['persistent_store_ready'] = lambda _status: False
+live_ready['value'] = False
+boot_prompts = []
+def boot_prompt(invalid, persistent):
+    assert invalid is False and persistent is False
+    boot_prompts.append(True)
+    live_ready['value'] = True
+g['prompt_for_password'] = boot_prompt
+g['persist_password_hash'] = lambda _value: (_ for _ in ()).throw(
+    AssertionError('boot credential touched persistent state')
+)
+assert namespace['main']() == 0
+assert boot_prompts == [True]
+assert not g['CREDENTIAL_FILE'].exists()
+status = json.loads((g['RUNTIME'] / 'recovery-access-status.json').read_text())
+assert status['credential_scope'] == 'boot'
+assert status['credential_persisted'] is False
+assert status['state_outcome'] == 'repair_required'
+assert valid_hash not in json.dumps(status)
 "#;
     let result = Command::new("python3")
         .arg("-c")
