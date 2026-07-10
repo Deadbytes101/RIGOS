@@ -10,7 +10,9 @@ fn repo_path(path: &str) -> PathBuf {
 }
 
 fn run_gate(runtime: &PathBuf, boot: &PathBuf) -> std::process::ExitStatus {
-    let gate = repo_path("build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify");
+    let gate = repo_path(
+        "build/usb/includes.chroot/usr/lib/rigos/rigos-recovery-access-verify",
+    );
     Command::new("python3")
         .arg(gate)
         .env("RIGOS_RUNTIME_PATH", runtime)
