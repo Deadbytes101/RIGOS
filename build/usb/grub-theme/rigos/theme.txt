@@ -1,67 +1,112 @@
-desktop-color: "#07111f"
-title-color: "#e8f0f8"
+desktop-color: "#000000"
+title-color: "#45ff7a"
 title-font: "Unifont Regular 16"
 title-text: "RIGOS"
 message-font: "Unifont Regular 16"
 terminal-font: "Unifont Regular 16"
 
 + label {
-        top = 18%
-        left = 12%
-        width = 76%
+        top = 9%
+        left = 8%
+        width = 84%
         height = 24
-        text = "USB COMPUTE APPLIANCE"
-        color = "#8da2b8"
+        text = "+--------------------------------------------------------------+"
+        color = "#207038"
         font = "Unifont Regular 16"
         align = "center"
 }
 
 + label {
-        top = 24%
-        left = 12%
-        width = 76%
+        top = 13%
+        left = 8%
+        width = 84%
         height = 24
-        text = "0.0.4-alpha.17   alpha channel"
-        color = "#b8c6d1"
+        text = "|  RIGOS DEADBYTE BOOT MONITOR                                |"
+        color = "#45ff7a"
         font = "Unifont Regular 16"
         align = "center"
 }
 
++ label {
+        top = 17%
+        left = 8%
+        width = 84%
+        height = 24
+        text = "|  USB COMPUTE APPLIANCE   0.0.4-alpha.17   ALPHA CHANNEL     |"
+        color = "#d6a84f"
+        font = "Unifont Regular 16"
+        align = "center"
+}
+
++ label {
+        top = 21%
+        left = 8%
+        width = 84%
+        height = 24
+        text = "+--------------------------------------------------------------+"
+        color = "#207038"
+        font = "Unifont Regular 16"
+        align = "center"
+}
+
++ label {
+        top = 31%
+        left = 8%
+        width = 84%
+        height = 24
+        text = "SELECT BOOT TARGET"
+        color = "#d6a84f"
+        font = "Unifont Regular 16"
+        align = "left"
+}
+
 + boot_menu {
-        left = 14%
-        width = 72%
-        top = 35%
-        height = 32%
-        item_color = "#b8c6d1"
+        left = 12%
+        width = 76%
+        top = 37%
+        height = 28%
+        item_color = "#45ff7a"
         item_font = "Unifont Regular 16"
-        selected_item_color = "#ffffff"
+        selected_item_color = "#000000"
         selected_item_font = "Unifont Regular 16"
-        item_height = 24
-        item_padding = 2
-        item_spacing = 4
+        selected_item_pixmap_style = "select_*.txt"
+        item_height = 26
+        item_padding = 4
+        item_spacing = 5
+}
+
++ label {
+        top = 72%
+        left = 8%
+        width = 84%
+        height = 24
+        text = "STATUS  READY    MEDIA  USB    MODE  LOCAL"
+        color = "#207038"
+        font = "Unifont Regular 16"
+        align = "left"
 }
 
 + label {
         top = 82%
-        left = 10%
-        width = 80%
+        left = 8%
+        width = 84%
         height = 24
-        text = "ENTER BOOT     E EDIT     C CONSOLE"
-        color = "#8da2b8"
+        text = "[ ENTER BOOT ]     [ E EDIT ]     [ C CONSOLE ]"
+        color = "#d6a84f"
         font = "Unifont Regular 16"
         align = "center"
 }
 
 + progress_bar {
         id = "__timeout__"
-        left = 20%
+        left = 14%
         top = 88%
         height = 12
-        width = 60%
+        width = 72%
         font = "Unifont Regular 16"
-        text_color = "#07111f"
-        fg_color = "#b8c6d1"
-        bg_color = "#203040"
-        border_color = "#516172"
+        text_color = "#000000"
+        fg_color = "#45ff7a"
+        bg_color = "#06120a"
+        border_color = "#207038"
         text = "@TIMEOUT_NOTIFICATION_SHORT@"
 }
