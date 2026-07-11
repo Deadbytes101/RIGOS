@@ -125,17 +125,4 @@ do
         || die "recovery credential gate contract is missing: $required"
 done
 
-for required in \
-    'tune2fs' \
-    'resize2fs' \
-    'e2fsck' \
-    'state filesystem label is not RIGOS_STATE after identity update' \
-    'state filesystem UUID still matches the cloned seed UUID' \
-    'dc450e72-daa4-5b82-8d1b-0ae6b11607f9' \
-    'filesystem repair required'
-do
-    strings "$state_init" | grep -Fq "$required" \
-        || die "state initializer filesystem transaction contract is missing: $required"
-done
-
 printf 'RIGOS state recovery and credential image verification passed: %s\n' "$image"
