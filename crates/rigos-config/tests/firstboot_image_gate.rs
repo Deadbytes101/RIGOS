@@ -10,15 +10,15 @@ fn repo_file(path: &str) -> String {
 }
 
 #[test]
-fn alpha15_build_runs_source_and_exact_image_firstboot_gates() {
+fn alpha16_build_runs_source_and_exact_image_firstboot_gates() {
     let version = repo_file("build/usb/version.env");
     let entrypoint = repo_file("scripts/build-usb-image-entrypoint.sh");
     let verifier = repo_file("scripts/verify-firstboot-image.sh");
     let hook = repo_file("build/usb/hooks/010-rigos.chroot");
 
-    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.15"));
-    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.15"));
-    assert!(version.contains("RIGOS_BUILD_ORDINAL=14"));
+    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.16"));
+    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.16"));
+    assert!(version.contains("RIGOS_BUILD_ORDINAL=16"));
 
     assert!(entrypoint.contains("--test firstboot_tty"));
     assert!(entrypoint.contains("--test state_resize_recovery"));
