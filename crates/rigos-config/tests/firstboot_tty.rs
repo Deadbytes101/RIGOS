@@ -216,7 +216,7 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
     for required in [
         "title-text: \"RIGOS\"",
         "USB COMPUTE APPLIANCE",
-        "0.0.4-alpha.19",
+        "0.0.4-alpha.20",
         "ENTER BOOT",
         "selected_item_pixmap_style = \"select_*.png\"",
     ] {

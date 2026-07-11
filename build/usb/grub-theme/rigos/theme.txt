@@ -1,5 +1,5 @@
-desktop-color: "#000000"
-title-color: "#45ff7a"
+desktop-color: "#00040a"
+title-color: "#00ff66"
 title-font: "Unifont Regular 16"
 title-text: "RIGOS"
 message-font: "Unifont Regular 16"
@@ -11,7 +11,7 @@ terminal-font: "Unifont Regular 16"
         width = 84%
         height = 24
         text = "+--------------------------------------------------------------+"
-        color = "#207038"
+        color = "#008f39"
         font = "Unifont Regular 16"
         align = "center"
 }
@@ -21,8 +21,8 @@ terminal-font: "Unifont Regular 16"
         left = 8%
         width = 84%
         height = 24
-        text = "|  RIGOS DEADBYTE BOOT MONITOR                                |"
-        color = "#45ff7a"
+        text = "|  RIGOS DEADBYTE UTILITY BIOS                                |"
+        color = "#00ff66"
         font = "Unifont Regular 16"
         align = "center"
 }
@@ -32,8 +32,8 @@ terminal-font: "Unifont Regular 16"
         left = 8%
         width = 84%
         height = 24
-        text = "|  USB COMPUTE APPLIANCE   0.0.4-alpha.19   ALPHA CHANNEL     |"
-        color = "#d6a84f"
+        text = "|  USB COMPUTE APPLIANCE   0.0.4-alpha.20   ALPHA CHANNEL     |"
+        color = "#ffcc33"
         font = "Unifont Regular 16"
         align = "center"
 }
@@ -44,7 +44,7 @@ terminal-font: "Unifont Regular 16"
         width = 84%
         height = 24
         text = "+--------------------------------------------------------------+"
-        color = "#207038"
+        color = "#008f39"
         font = "Unifont Regular 16"
         align = "center"
 }
@@ -54,8 +54,8 @@ terminal-font: "Unifont Regular 16"
         left = 8%
         width = 84%
         height = 24
-        text = "SELECT BOOT TARGET"
-        color = "#d6a84f"
+        text = "SELECT BOOT TARGET  //  LOCAL CONTROL"
+        color = "#ff66cc"
         font = "Unifont Regular 16"
         align = "left"
 }
@@ -65,9 +65,9 @@ terminal-font: "Unifont Regular 16"
         width = 76%
         top = 37%
         height = 28%
-        item_color = "#45ff7a"
+        item_color = "#00ff66"
         item_font = "Unifont Regular 16"
-        selected_item_color = "#000000"
+        selected_item_color = "#00040a"
         selected_item_font = "Unifont Regular 16"
         selected_item_pixmap_style = "select_*.png"
         item_height = 26
@@ -80,8 +80,8 @@ terminal-font: "Unifont Regular 16"
         left = 8%
         width = 84%
         height = 24
-        text = "STATUS  READY    MEDIA  USB    MODE  LOCAL"
-        color = "#207038"
+        text = "STATUS READY  MEDIA USB  MODE LOCAL  STYLE RETRO"
+        color = "#00bfff"
         font = "Unifont Regular 16"
         align = "left"
 }
@@ -92,7 +92,7 @@ terminal-font: "Unifont Regular 16"
         width = 84%
         height = 24
         text = "[ ENTER BOOT ]     [ E EDIT ]     [ C CONSOLE ]"
-        color = "#d6a84f"
+        color = "#ffcc33"
         font = "Unifont Regular 16"
         align = "center"
 }
@@ -105,8 +105,8 @@ terminal-font: "Unifont Regular 16"
         width = 72%
         font = "Unifont Regular 16"
         text_color = "#000000"
-        fg_color = "#45ff7a"
-        bg_color = "#06120a"
-        border_color = "#207038"
+        fg_color = "#00ff66"
+        bg_color = "#001018"
+        border_color = "#008f39"
         text = "@TIMEOUT_NOTIFICATION_SHORT@"
 }
