@@ -192,7 +192,11 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
     .expect("read primary GRUB theme");
 
     for required in [
-        "install -d -m 0755 \"$work/mnt/$slot/boot/grub/themes/rigos\"",
+        "theme_source=\"$source_root/build/usb/grub-theme/rigos\"",
+        "[[ -f \"$theme_source/theme.txt\" ]] || die \"RIGOS GRUB theme definition is missing\"",
+        "cp -a \"$theme_source/.\" \"$theme_dest/\"",
+        "find \"$theme_dest\" -type d -exec chmod 0755 {} +",
+        "find \"$theme_dest\" -type f -exec chmod 0644 {} +",
         "set theme=/boot/grub/themes/rigos/theme.txt",
         "set menu_color_highlight=white/blue",
         "terminal_output gfxterm",
@@ -202,6 +206,11 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
             "primary USB GRUB theme wiring is missing: {required}"
         );
     }
+
+    assert!(
+        !builder.contains("install -m 0644 build/usb/grub-theme/rigos/*"),
+        "primary USB GRUB theme installation must not use caller cwd or flat globs"
+    );
 
     for required in [
         "title-text: \"RIGOS\"",

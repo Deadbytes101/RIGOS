@@ -18,6 +18,9 @@ mkdir -p "$source_root" "$live"
 git -c safe.directory="$repo" archive HEAD | tar -x -C "$source_root"
 # shellcheck disable=SC1091
 source "$source_root/build/usb/version.env"
+theme_source="$source_root/build/usb/grub-theme/rigos"
+[[ -d "$theme_source" ]] || die "RIGOS GRUB theme source is missing: $theme_source"
+[[ -f "$theme_source/theme.txt" ]] || die "RIGOS GRUB theme definition is missing"
 
 export RIGOS_BUILD_COMMIT="$commit"
 export RIGOS_PRODUCT_VERSION RIGOS_IMAGE_ID RIGOS_IMAGE_VERSION RIGOS_IMAGE_CHANNEL
@@ -171,7 +174,10 @@ grub-install --target=x86_64-efi --efi-directory="$work/mnt/efi" --boot-director
 cp -a "$work/mnt/a/boot/grub/." "$work/mnt/b/boot/grub/"
 for slot in a b; do
   install -d -m 0755 "$work/mnt/$slot/boot/grub/themes/rigos"
-  install -m 0644 build/usb/grub-theme/rigos/* "$work/mnt/$slot/boot/grub/themes/rigos/"
+  theme_dest="$work/mnt/$slot/boot/grub/themes/rigos"
+  cp -a "$theme_source/." "$theme_dest/"
+  find "$theme_dest" -type d -exec chmod 0755 {} +
+  find "$theme_dest" -type f -exec chmod 0644 {} +
 done
 cat >"$work/grub.cfg" <<EOF
 set timeout=5
