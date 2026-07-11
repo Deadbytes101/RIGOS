@@ -107,6 +107,10 @@ unsquashfs -ll "$squashfs" >"$listing"
 if awk '{print $NF}' "$listing" | grep -E '^squashfs-root/etc/ssh/ssh_host_.*_key(\.pub)?$' >/dev/null; then
   die 'appliance image contains a baked SSH host key'
 fi
+awk '{print $NF}' "$listing" | grep -Fx 'squashfs-root/usr/bin/setfont' >/dev/null \
+  || die 'setfont runtime dependency is missing from the appliance'
+awk '{print $NF}' "$listing" | grep -E '^squashfs-root/usr/share/consolefonts/(Lat15|Uni3)-TerminusBold(18|20)x10\.psf\.gz$' >/dev/null \
+  || die 'large setup console font asset is missing from the appliance'
 
 unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   etc/rigos-release etc/os-release \
@@ -129,7 +133,7 @@ unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   etc/systemd/system/rigos-miner-health.timer \
   etc/systemd/system/rigos-runtime-render.service \
   etc/systemd/system/rigos-profile-apply.service \
-  usr/bin/jq usr/bin/python3 usr/bin/python3.11 usr/bin/findmnt usr/bin/ssh-keygen \
+  usr/bin/jq usr/bin/python3 usr/bin/python3.11 usr/bin/findmnt usr/bin/ssh-keygen usr/bin/setfont \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
   usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/rigos-ssh-hostkeys usr/lib/rigos/xmrig \
   usr/lib/rigos/rigos-admin-password \
@@ -141,6 +145,7 @@ grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS iden
 [[ -x "$temporary/root/usr/bin/jq" ]] || die 'jq runtime dependency is missing from the appliance'
 [[ -x "$temporary/root/usr/bin/findmnt" ]] || die 'findmnt runtime dependency is missing from the appliance'
 [[ -x "$temporary/root/usr/bin/ssh-keygen" ]] || die 'ssh-keygen runtime dependency is missing from the appliance'
+[[ -x "$temporary/root/usr/bin/setfont" ]] || die 'setfont runtime dependency is not executable in the appliance'
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
@@ -253,6 +258,8 @@ grep -Fq '["/usr/sbin/chpasswd", "--encrypted"]' "$temporary/root/usr/local/sbin
 grep -Fq 'PASSWORD_HELPER' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'controlled admin password helper is not wired'
 grep -Fq '["/usr/sbin/chpasswd"]' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password helper does not apply via protected stdin'
 grep -Fq 'SHOW PASSWORD' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password reveal toggle is missing'
+grep -Fq '/usr/bin/setfont' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password helper does not apply a setup console font'
+grep -Fq 'RIGOS_ADMIN_PASSWORD_SKIP_SETFONT' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password helper lacks a deterministic font-test bypass'
 grep -Fq 'RIGOS DEADBYTE UTILITY' "$temporary/root/usr/local/sbin/rigos-utility" || die 'RIGOS utility title is missing'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-lifecycle-cycles" ]] || die 'booted lifecycle cycle test is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi

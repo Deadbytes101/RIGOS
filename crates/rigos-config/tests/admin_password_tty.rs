@@ -185,6 +185,14 @@ fn admin_password_terminal_mode_preserves_output_processing() {
     );
 
     assert!(
+        helper.contains("apply_console_font()")
+            && helper.contains("RIGOS_ADMIN_PASSWORD_SKIP_SETFONT")
+            && helper.contains("/usr/bin/setfont")
+            && helper.contains("TerminusBold20x10"),
+        "password helper must try a larger setup console font without making it mandatory"
+    );
+
+    assert!(
         helper.contains("termios.tcsetattr(fd, termios.TCSADRAIN, old)"),
         "password helper must restore the original terminal mode"
     );

@@ -178,6 +178,7 @@ assert valid_hash not in json.dumps(status)
 fn admin_password_helper_masks_by_default_and_applies_only_over_stdin() {
     let helper = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-admin-password");
     let recovery = repo_file("build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access");
+    let packages = repo_file("build/usb/package-lists/rigos.list.chroot");
 
     for required in [
         "SHOW PASSWORD",
@@ -187,6 +188,11 @@ fn admin_password_helper_masks_by_default_and_applies_only_over_stdin() {
         "Password confirmation does not match.",
         "[\"/usr/sbin/chpasswd\"]",
         "input=payload",
+        "apply_console_font",
+        "/usr/bin/setfont",
+        "RIGOS_ADMIN_PASSWORD_SKIP_SETFONT",
+        "stdout=subprocess.DEVNULL",
+        "stderr=subprocess.DEVNULL",
     ] {
         assert!(
             helper.contains(required),
@@ -206,6 +212,11 @@ fn admin_password_helper_masks_by_default_and_applies_only_over_stdin() {
         recovery.contains("PASSWORD_HELPER")
             && !recovery.contains("[\"/usr/bin/passwd\", \"rigosadmin\"]"),
         "recovery access must route administrator setup through the controlled helper"
+    );
+    assert!(
+        packages.lines().any(|line| line == "kbd")
+            && packages.lines().any(|line| line == "console-setup-linux"),
+        "image must include setfont and console font assets for setup TTY"
     );
 }
 

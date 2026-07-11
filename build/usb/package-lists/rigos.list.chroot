@@ -1,10 +1,12 @@
 # Runtime dependencies required by boot-time RIGOS authorities.
 ca-certificates
+console-setup-linux
 curl
 e2fsprogs
 fdisk
 gdisk
 jq
+kbd
 kmod
 live-boot
 live-config
