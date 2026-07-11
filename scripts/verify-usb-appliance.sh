@@ -69,8 +69,20 @@ for slot_root in "$temporary/a" "$temporary/b"; do
   theme_dir="$slot_root/boot/grub/themes/rigos"
   [[ -f "$grub_cfg" ]] || die 'primary GRUB config is missing'
   [[ -f "$theme_dir/theme.txt" ]] || die 'primary RIGOS GRUB theme is missing'
-  [[ -f "$theme_dir/background.txt" ]] || die 'primary RIGOS GRUB theme background asset is missing'
+  grep -Fq 'selected_item_pixmap_style = "select_*.png"' "$theme_dir/theme.txt" \
+    || die 'primary RIGOS GRUB selected-item style is missing'
+  if grep -Fq 'select_*.txt' "$theme_dir/theme.txt"; then
+    die 'primary RIGOS GRUB theme still references text pseudo-images'
+  fi
+  for slice in c n ne e se s sw w nw; do
+    asset="$theme_dir/select_${slice}.png"
+    [[ -f "$asset" ]] || die "primary RIGOS GRUB theme slice is missing: select_${slice}.png"
+    signature="$(od -An -tx1 -N8 "$asset" | tr -d ' \n')"
+    [[ "$signature" == 89504e470d0a1a0a ]] \
+      || die "primary RIGOS GRUB theme slice is not a PNG: select_${slice}.png"
+  done
   grep -Fq 'set theme=/boot/grub/themes/rigos/theme.txt' "$grub_cfg" || die 'primary GRUB config does not load the RIGOS theme'
+  grep -Fq 'insmod png' "$grub_cfg" || die 'primary GRUB config does not load PNG support'
   grep -Fq 'set menu_color_highlight=white/blue' "$grub_cfg" || die 'primary GRUB text fallback is missing'
   grep -Fq "menuentry 'RIGOS $image_version'" "$grub_cfg" || die 'normal RIGOS boot entry is missing'
   grep -Fq "menuentry 'RIGOS $image_version  SAFE MODE'" "$grub_cfg" || die 'safe mode RIGOS boot entry is missing'

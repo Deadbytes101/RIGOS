@@ -23,3 +23,5 @@ build/usb/includes.chroot/usr/lib/rigos/rigos-runtime-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-miner-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-remote-* text eol=lf
 build/usb/includes.chroot/usr/lib/rigos/rigos-lifecycle-* text eol=lf
+build/usb/grub-theme/** text eol=lf
+build/usb/grub-theme/**/*.png -text

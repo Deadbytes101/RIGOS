@@ -200,6 +200,7 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
         "set theme=/boot/grub/themes/rigos/theme.txt",
         "set menu_color_highlight=white/blue",
         "terminal_output gfxterm",
+        "insmod png",
     ] {
         assert!(
             builder.contains(required),
@@ -217,10 +218,37 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
         "USB COMPUTE APPLIANCE",
         "0.0.4-alpha.17",
         "ENTER BOOT",
+        "selected_item_pixmap_style = \"select_*.png\"",
     ] {
         assert!(
             theme.contains(required),
             "primary USB GRUB theme is missing: {required}"
+        );
+    }
+
+    assert!(
+        !theme.contains("select_*.txt"),
+        "primary USB GRUB theme must not reference text pseudo-images"
+    );
+
+    let theme_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../build/usb/grub-theme/rigos");
+
+    for slice in ["c", "n", "ne", "e", "se", "s", "sw", "w", "nw"] {
+        let asset = theme_dir.join(format!("select_{slice}.png"));
+
+        assert!(
+            asset.is_file(),
+            "primary USB GRUB selected-item slice is missing: {}",
+            asset.display()
+        );
+
+        let bytes = fs::read(&asset).expect("read primary GRUB PNG slice");
+
+        assert!(
+            bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "primary USB GRUB selected-item slice is not PNG: {}",
+            asset.display()
         );
     }
 }

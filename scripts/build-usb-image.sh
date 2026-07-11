@@ -192,6 +192,7 @@ if loadfont /boot/grub/fonts/unicode.pf2; then
     insmod gfxterm
     terminal_output gfxterm
 fi
+insmod png
 insmod gfxmenu
 if [ -f /boot/grub/themes/rigos/theme.txt ]; then
     set theme=/boot/grub/themes/rigos/theme.txt
