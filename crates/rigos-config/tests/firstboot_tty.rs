@@ -161,6 +161,11 @@ fn bootloader_uses_quiet_productized_console_entries() {
         "safe mode GRUB label must be productized"
     );
     assert!(
+        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  UTILITY MODE'")
+            && builder.contains("rigos.utility=1"),
+        "utility GRUB entry must boot the local console utility mode"
+    );
+    assert!(
         builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  FALLBACK SLOT B'"),
         "fallback GRUB label must be productized"
     );
@@ -176,6 +181,42 @@ fn bootloader_uses_quiet_productized_console_entries() {
     assert!(
         theme.contains("title-text: \"RIGOS Recovery\""),
         "recovery GRUB theme must use a productized title"
+    );
+}
+
+#[test]
+fn utility_boot_mode_owns_tty_without_competing_with_firstboot() {
+    let firstboot = unit("rigos-firstboot.service");
+    let utility = unit("rigos-boot-utility.service");
+
+    assert!(
+        firstboot
+            .lines()
+            .any(|line| line == "ConditionKernelCommandLine=!rigos.utility=1"),
+        "firstboot must be disabled on utility boot mode"
+    );
+    assert!(
+        utility
+            .lines()
+            .any(|line| line == "ConditionKernelCommandLine=rigos.utility=1"),
+        "utility mode must be selected by an explicit kernel argument"
+    );
+    assert!(
+        directive_tokens(&utility, "Conflicts=").contains("rigos-firstboot.service"),
+        "utility mode must not share tty1 with firstboot"
+    );
+    assert!(
+        utility
+            .lines()
+            .any(|line| line == "ExecStart=/usr/local/sbin/rigos-utility"),
+        "utility mode must launch the local utility"
+    );
+    assert!(
+        utility
+            .lines()
+            .any(|line| line == "StandardInput=tty-force")
+            && utility.lines().any(|line| line == "TTYPath=/dev/tty1"),
+        "utility mode must own tty1"
     );
 }
 

@@ -53,6 +53,8 @@ fn alpha20_primary_image_verifier_requires_real_grub_theme_and_utility() {
         "primary GRUB config does not load the RIGOS theme",
         "primary GRUB text fallback is missing",
         "SAFE MODE",
+        "UTILITY MODE",
+        "rigos.utility=1",
         "rigos-utility is not executable in the appliance PATH",
         "controlled admin password helper is not wired",
         "admin password reveal toggle is missing",

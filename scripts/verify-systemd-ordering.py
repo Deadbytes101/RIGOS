@@ -48,6 +48,7 @@ def verify(units):
         "rigos-ssh-hostkeys.service",
         "rigos-profile-apply.service",
         "rigos-firstboot.service",
+        "rigos-boot-utility.service",
         "rigos-hugepages.service",
         "rigos-miner.service",
     }
@@ -200,6 +201,43 @@ def verify(units):
     require(
         firstboot.scalar("Service", "StandardError") == "journal",
         "firstboot diagnostics must not write over tty1",
+    )
+    require(
+        firstboot.scalar("Unit", "ConditionKernelCommandLine") == "!rigos.utility=1",
+        "firstboot must not compete with utility boot mode",
+    )
+
+    utility = units["rigos-boot-utility.service"]
+    require(
+        utility.scalar("Unit", "ConditionKernelCommandLine") == "rigos.utility=1",
+        "utility console must require the utility boot argument",
+    )
+    includes(
+        utility.words("Unit", "After"),
+        {"rigos-recovery-access.service", "rigos-state-ready.service"},
+        "utility console ordering is incomplete",
+    )
+    includes(
+        utility.words("Unit", "Wants"),
+        {"rigos-recovery-access.service", "rigos-state-ready.service"},
+        "utility console must request recovery and state readiness",
+    )
+    includes(
+        utility.words("Unit", "Conflicts"),
+        {"rigos-firstboot.service"},
+        "utility console must not share tty1 with firstboot",
+    )
+    require(
+        utility.scalar("Service", "ExecStart") == "/usr/local/sbin/rigos-utility",
+        "utility console entrypoint is not exact",
+    )
+    require(
+        utility.scalar("Service", "StandardInput") == "tty-force",
+        "utility console must acquire tty1",
+    )
+    require(
+        utility.scalar("Service", "TTYPath") == "/dev/tty1",
+        "utility console must use tty1",
     )
 
 

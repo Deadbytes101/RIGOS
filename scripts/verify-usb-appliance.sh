@@ -86,6 +86,8 @@ for slot_root in "$temporary/a" "$temporary/b"; do
   grep -Fq 'set menu_color_highlight=white/blue' "$grub_cfg" || die 'primary GRUB text fallback is missing'
   grep -Fq "menuentry 'RIGOS $image_version'" "$grub_cfg" || die 'normal RIGOS boot entry is missing'
   grep -Fq "menuentry 'RIGOS $image_version  SAFE MODE'" "$grub_cfg" || die 'safe mode RIGOS boot entry is missing'
+  grep -Fq "menuentry 'RIGOS $image_version  UTILITY MODE'" "$grub_cfg" || die 'utility mode RIGOS boot entry is missing'
+  grep -Fq 'rigos.utility=1' "$grub_cfg" || die 'utility mode kernel argument is missing'
   grep -Fq "menuentry 'RIGOS $image_version  FALLBACK SLOT B'" "$grub_cfg" || die 'fallback RIGOS boot entry is missing'
   grep -Fq 'title-text: "RIGOS"' "$theme_dir/theme.txt" || die 'RIGOS GRUB theme title is missing'
 done
@@ -117,6 +119,8 @@ unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   etc/systemd/system/ssh.service.d/rigos-observe.conf \
   etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service \
   etc/systemd/system/rigos-firstboot.service \
+  etc/systemd/system/multi-user.target.wants/rigos-boot-utility.service \
+  etc/systemd/system/rigos-boot-utility.service \
   etc/systemd/system/rigos-hugepages.service \
   etc/systemd/system/rigos-miner.service \
   etc/systemd/system/rigos-miner.service.d/runtime-render.conf \
@@ -238,6 +242,11 @@ grep -Fq 'Restart=on-failure' "$temporary/root/etc/systemd/system/rigos-miner.se
 grep -Fq 'StartLimitBurst=5' "$temporary/root/etc/systemd/system/rigos-miner.service.d/stability.conf" || die 'miner crash-loop ceiling is missing'
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'
 grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'first boot activation gate is missing'
+grep -Fqx 'ConditionKernelCommandLine=!rigos.utility=1' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'firstboot is not suppressed during utility boot mode'
+[[ -L "$temporary/root/etc/systemd/system/multi-user.target.wants/rigos-boot-utility.service" ]] || die 'utility console service is not enabled'
+grep -Fqx 'ConditionKernelCommandLine=rigos.utility=1' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console is not bound to utility boot mode'
+grep -Fqx 'ExecStart=/usr/local/sbin/rigos-utility' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console does not launch rigos-utility'
+grep -Fqx 'StandardInput=tty-force' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console does not acquire tty1'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'
 grep -Fq 'CREDENTIAL_DIRECTORY = STATE / "recovery"' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'persistent recovery credential store is missing'
 grep -Fq '["/usr/sbin/chpasswd", "--encrypted"]' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'encrypted credential restore is missing'

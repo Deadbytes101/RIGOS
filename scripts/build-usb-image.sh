@@ -211,6 +211,11 @@ menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  SAFE MODE' {
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false nomodeset console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  UTILITY MODE' {
+    search --no-floppy --label RIGOS_ROOT_A --set=root
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false rigos.utility=1 console=ttyS0,115200n8 console=tty0
+    initrd /live/initrd.img
+}
 menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  FALLBACK SLOT B' {
     search --no-floppy --label RIGOS_ROOT_B --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false console=ttyS0,115200n8 console=tty0
