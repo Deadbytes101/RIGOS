@@ -164,9 +164,12 @@ def verify(units):
         {
             "rigos-state.service",
             "rigos-state-ready.service",
-            "rigos-profile-apply.service",
         },
         "firstboot ordering is incomplete",
+    )
+    require(
+        "rigos-profile-apply.service" not in firstboot.words("Unit", "After"),
+        "firstboot must not wait on profile apply before the initial commit",
     )
     includes(
         firstboot.words("Unit", "Wants"),
@@ -205,6 +208,34 @@ def verify(units):
     require(
         firstboot.scalar("Unit", "ConditionKernelCommandLine") == "!rigos.utility=1",
         "firstboot must not compete with utility boot mode",
+    )
+
+    getty_dropin = (
+        Path(firstboot.path)
+        .parent.joinpath("getty@tty1.service.d", "rigos-firstboot.conf")
+    )
+    require(getty_dropin.is_file(), "tty1 getty firstboot drop-in is missing")
+    getty = Unit(getty_dropin)
+    includes(
+        getty.words("Unit", "Wants"),
+        {"rigos-firstboot.service"},
+        "tty1 getty must queue firstboot",
+    )
+    includes(
+        getty.words("Unit", "After"),
+        {"rigos-firstboot.service"},
+        "tty1 getty must wait for firstboot to finish or skip",
+    )
+
+    profile = units["rigos-profile-apply.service"]
+    includes(
+        profile.words("Service", "ExecStart"),
+        {"/usr/lib/rigos/rigos-config", "profile"},
+        "profile apply must use the complete machine profile command",
+    )
+    require(
+        "rigos-firstboot.service" not in profile.words("Unit", "Before"),
+        "profile apply must not gate initial firstboot",
     )
 
     utility = units["rigos-boot-utility.service"]

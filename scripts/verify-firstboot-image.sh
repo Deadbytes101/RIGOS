@@ -42,12 +42,14 @@ unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
     usr/lib/rigos/rigos-firstboot-whiptail \
     etc/systemd/system/rigos-firstboot.service \
     etc/systemd/system/rigos-firstboot.service.d/2009-console-theme.conf \
+    etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf \
     etc/systemd/system/multi-user.target.wants/rigos-firstboot.service \
     >/dev/null
 
 root="$temporary/squash"
 service="$root/etc/systemd/system/rigos-firstboot.service"
 dropin="$root/etc/systemd/system/rigos-firstboot.service.d/2009-console-theme.conf"
+getty_dropin="$root/etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf"
 firstboot="$root/usr/local/sbin/rigos-firstboot"
 wrapper="$root/usr/lib/rigos/rigos-firstboot-whiptail"
 
@@ -58,12 +60,13 @@ wrapper="$root/usr/lib/rigos/rigos-firstboot-whiptail"
 [[ -x "$firstboot" ]] || die 'firstboot program is missing or not executable'
 [[ -x "$wrapper" ]] || die 'firstboot theme wrapper is missing or not executable'
 [[ -f "$dropin" ]] || die 'firstboot theme drop-in is missing'
+[[ -f "$getty_dropin" ]] || die 'tty1 getty firstboot drop-in is missing'
 
 python3 -m py_compile "$firstboot"
 sh -n "$wrapper"
 
 for required in \
-    'After=rigos-state.service rigos-state-ready.service rigos-profile-apply.service' \
+    'After=rigos-state.service rigos-state-ready.service' \
     'Wants=rigos-state-ready.service' \
     'Before=getty@tty1.service' \
     'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' \
@@ -77,6 +80,17 @@ for required in \
 do
     grep -Fqx "$required" "$service" \
         || die "firstboot service contract is missing: $required"
+done
+
+if grep -Fq 'rigos-profile-apply.service' "$service"; then
+    die 'firstboot still waits on profile apply before initial commit'
+fi
+for required in \
+    'Wants=rigos-firstboot.service' \
+    'After=rigos-firstboot.service'
+do
+    grep -Fqx "$required" "$getty_dropin" \
+        || die "tty1 getty firstboot queue contract is missing: $required"
 done
 
 if grep -Fqx 'Requires=rigos-state-ready.service' "$service"; then

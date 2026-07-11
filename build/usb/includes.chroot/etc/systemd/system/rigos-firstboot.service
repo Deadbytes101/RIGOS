@@ -1,7 +1,7 @@
 [Unit]
 Description=RIGOS first-boot configuration
 ConditionKernelCommandLine=!rigos.utility=1
-After=rigos-state.service rigos-state-ready.service rigos-profile-apply.service
+After=rigos-state.service rigos-state-ready.service
 Wants=rigos-state-ready.service
 Before=getty@tty1.service
 

@@ -73,6 +73,10 @@ enum Commands {
         #[arg(long, default_value = "/var/lib/rigos")]
         state: PathBuf,
     },
+    Profile {
+        #[arg(long, default_value = "/var/lib/rigos")]
+        state: PathBuf,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -112,6 +116,7 @@ struct CommitRequest {
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Policy {
+    node_name: String,
     timezone: String,
     miner_start_mode: MinerStartMode,
 }
@@ -186,6 +191,17 @@ fn execute(cli: Cli) -> Result<Value, ConfigError> {
             let policy: Policy = read_json(&policy_path)?;
             apply_timezone(&policy.timezone)?;
             Ok(json!({"outcome":"timezone_applied"}))
+        }
+        Commands::Profile { state } => {
+            let policy_path = state.join("current/policy.json");
+            if !policy_path.is_file() {
+                return Ok(json!({"outcome":"no_configuration"}));
+            }
+            let policy: Policy = read_json(&policy_path)?;
+            apply_profile(&policy, &mut SystemRuntime)?;
+            Ok(
+                json!({"outcome":"profile_applied","node_name":policy.node_name,"timezone":policy.timezone}),
+            )
         }
     }
 }
@@ -340,10 +356,7 @@ fn prepare_from_root(
     }
     let config = read_bounded(&config_path, rigos_config::MAX_CONFIG_BYTES)?;
     let mut profile = parse_rig_profile(&config)?;
-    if !Path::new("/usr/share/zoneinfo")
-        .join(&profile.timezone)
-        .is_file()
-    {
+    if !timezone_is_installed(&profile.timezone) {
         return Err(diagnostic(
             "RIGOS_CONFIG_INVALID_VALUE",
             "configured IANA timezone is not installed",
@@ -443,6 +456,7 @@ fn discover(root: &Path) -> Result<Value, ConfigError> {
 
 trait RuntimeOps {
     fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError>;
+    fn set_hostname(&mut self, hostname: &str) -> Result<(), ConfigError>;
     fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError>;
     fn miner_active(&mut self) -> Result<bool, ConfigError>;
     fn stop_miner(&mut self) -> Result<(), ConfigError>;
@@ -455,6 +469,9 @@ struct SystemRuntime;
 impl RuntimeOps for SystemRuntime {
     fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError> {
         run("timedatectl", &["set-timezone", timezone])
+    }
+    fn set_hostname(&mut self, hostname: &str) -> Result<(), ConfigError> {
+        run("hostnamectl", &["set-hostname", hostname])
     }
     fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError> {
         run(
@@ -563,9 +580,8 @@ fn apply_activation_runtime(
                 "miner remained active before activation",
             ));
         }
-        runtime
-            .set_timezone(&policy.timezone)
-            .map_err(|_| transaction_error("timezone", "timezone apply failed"))?;
+        apply_profile(policy, runtime)
+            .map_err(|_| transaction_error("profile", "machine profile apply failed"))?;
         let enabled = policy.miner_start_mode == MinerStartMode::OnBoot;
         runtime
             .set_miner_enabled(enabled)
@@ -649,14 +665,78 @@ fn cmdline_blocks_mining(cmdline: &Path) -> bool {
 }
 
 fn apply_timezone(timezone: &str) -> Result<(), ConfigError> {
-    let zone = Path::new("/usr/share/zoneinfo").join(timezone);
-    if !zone.is_file() {
+    if !timezone_is_installed(timezone) {
         return Err(diagnostic(
             "RIGOS_CONFIG_INVALID_VALUE",
             "configured timezone is not installed",
         ));
     }
     run("timedatectl", &["set-timezone", timezone])
+}
+
+fn validate_node_name(value: &str) -> Result<(), ConfigError> {
+    let valid = !value.is_empty()
+        && value.len() <= 63
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && value
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric);
+    if valid {
+        Ok(())
+    } else {
+        Err(diagnostic(
+            "RIGOS_CONFIG_INVALID_VALUE",
+            "configured node_name is not a valid static hostname",
+        ))
+    }
+}
+
+fn validate_profile(policy: &Policy) -> Result<(), ConfigError> {
+    validate_node_name(&policy.node_name)?;
+    if !timezone_is_installed(&policy.timezone) {
+        return Err(diagnostic(
+            "RIGOS_CONFIG_INVALID_VALUE",
+            "configured timezone is not installed",
+        ));
+    }
+    Ok(())
+}
+
+fn zoneinfo_root() -> PathBuf {
+    std::env::var_os("RIGOS_ZONEINFO_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/share/zoneinfo"))
+}
+
+fn timezone_is_installed(timezone: &str) -> bool {
+    if zoneinfo_root().join(timezone).is_file() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        matches!(timezone, "UTC" | "Asia/Bangkok")
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+fn apply_profile(policy: &Policy, runtime: &mut impl RuntimeOps) -> Result<(), ConfigError> {
+    validate_profile(policy)?;
+    runtime
+        .set_timezone(&policy.timezone)
+        .map_err(|_| transaction_error("timezone", "timezone apply failed"))?;
+    runtime
+        .set_hostname(&policy.node_name)
+        .map_err(|_| transaction_error("hostname", "hostname apply failed"))
 }
 
 fn transaction_error(stage: &str, message: impl Into<String>) -> ConfigError {
@@ -820,6 +900,7 @@ mod tests {
     #[derive(Default)]
     struct FakeRuntime {
         timezone: String,
+        hostname: String,
         enabled: bool,
         active: bool,
         fail_once: Option<&'static str>,
@@ -842,6 +923,11 @@ mod tests {
         fn set_timezone(&mut self, timezone: &str) -> Result<(), ConfigError> {
             self.fail("timezone")?;
             self.timezone = timezone.into();
+            Ok(())
+        }
+        fn set_hostname(&mut self, hostname: &str) -> Result<(), ConfigError> {
+            self.fail("hostname")?;
+            self.hostname = hostname.into();
             Ok(())
         }
         fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError> {
@@ -870,11 +956,13 @@ mod tests {
     #[test]
     fn activation_orders_hugepages_before_miner() {
         let policy = Policy {
+            node_name: "rig02".into(),
             timezone: "Asia/Bangkok".into(),
             miner_start_mode: MinerStartMode::OnBoot,
         };
         let mut runtime = FakeRuntime {
             timezone: "UTC".into(),
+            hostname: "debian".into(),
             enabled: false,
             active: false,
             fail_once: None,
@@ -888,6 +976,7 @@ mod tests {
             [
                 "stop",
                 "timezone",
+                "hostname",
                 "enabled_state",
                 "hugepages",
                 "miner_start"
@@ -898,12 +987,20 @@ mod tests {
     #[test]
     fn activation_failure_leaves_miner_stopped() {
         let policy = Policy {
+            node_name: "rig02".into(),
             timezone: "Asia/Bangkok".into(),
             miner_start_mode: MinerStartMode::OnBoot,
         };
-        for stage in ["timezone", "enabled_state", "hugepages", "miner_start"] {
+        for stage in [
+            "timezone",
+            "hostname",
+            "enabled_state",
+            "hugepages",
+            "miner_start",
+        ] {
             let mut runtime = FakeRuntime {
                 timezone: "UTC".into(),
+                hostname: "debian".into(),
                 enabled: false,
                 active: false,
                 fail_once: Some(stage),
@@ -912,7 +1009,14 @@ mod tests {
             let error =
                 apply_activation_runtime(&policy, Path::new("missing-cmdline"), &mut runtime)
                     .unwrap_err();
-            assert_eq!(error.diagnostic.key.as_deref(), Some(stage));
+            assert_eq!(
+                error.diagnostic.key.as_deref(),
+                Some(if stage == "hostname" || stage == "timezone" {
+                    "profile"
+                } else {
+                    stage
+                })
+            );
             runtime.stop_miner().unwrap();
             assert!(!runtime.active);
         }
@@ -929,7 +1033,7 @@ mod tests {
         fs::create_dir_all(&revision_path).unwrap();
         fs::write(
             revision_path.join("policy.json"),
-            br#"{"timezone":"Asia/Bangkok","miner_start_mode":"on_boot"}"#,
+            br#"{"node_name":"rig02","timezone":"Asia/Bangkok","miner_start_mode":"on_boot"}"#,
         )
         .unwrap();
         fs::write(revision_path.join("xmrig.json"), b"{}\n").unwrap();
@@ -941,6 +1045,7 @@ mod tests {
 
         let mut failed = FakeRuntime {
             timezone: "UTC".into(),
+            hostname: "debian".into(),
             enabled: false,
             active: false,
             fail_once: Some("hugepages"),
@@ -954,6 +1059,7 @@ mod tests {
 
         let mut retry = FakeRuntime {
             timezone: "UTC".into(),
+            hostname: "debian".into(),
             enabled: false,
             active: false,
             fail_once: None,
@@ -966,5 +1072,64 @@ mod tests {
         assert_eq!(fs::read_dir(state.join("revisions")).unwrap().count(), 1);
         assert!(activation_ready(&state).unwrap());
         let _ = fs::remove_dir_all(state);
+    }
+
+    #[test]
+    fn node_name_validation_accepts_safe_static_hostnames_only() {
+        assert!(validate_node_name("rig02").is_ok());
+        assert!(validate_node_name("rig-02").is_ok());
+        for invalid in [
+            "",
+            "-rig",
+            "rig-",
+            "rig_02",
+            "rig.02",
+            "rig02!",
+            &"a".repeat(64),
+        ] {
+            assert!(validate_node_name(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn profile_apply_validates_before_any_runtime_mutation() {
+        let policy = Policy {
+            node_name: "-bad".into(),
+            timezone: "Missing/Zone".into(),
+            miner_start_mode: MinerStartMode::OnBoot,
+        };
+        let mut runtime = FakeRuntime {
+            timezone: "UTC".into(),
+            hostname: "debian".into(),
+            enabled: false,
+            active: false,
+            fail_once: None,
+            events: vec![],
+        };
+        assert!(apply_profile(&policy, &mut runtime).is_err());
+        assert!(runtime.events.is_empty());
+        assert_eq!(runtime.hostname, "debian");
+    }
+
+    #[test]
+    fn profile_apply_reports_hostname_failure_without_claiming_success() {
+        let policy = Policy {
+            node_name: "rig02".into(),
+            timezone: "Asia/Bangkok".into(),
+            miner_start_mode: MinerStartMode::OnBoot,
+        };
+        let mut runtime = FakeRuntime {
+            timezone: "UTC".into(),
+            hostname: "debian".into(),
+            enabled: false,
+            active: false,
+            fail_once: Some("hostname"),
+            events: vec![],
+        };
+        let error = apply_profile(&policy, &mut runtime).unwrap_err();
+        assert_eq!(error.diagnostic.key.as_deref(), Some("hostname"));
+        assert_eq!(runtime.events, ["timezone", "hostname"]);
+        assert_eq!(runtime.timezone, "Asia/Bangkok");
+        assert_eq!(runtime.hostname, "debian");
     }
 }

@@ -226,6 +226,12 @@ fn read_cmdline(root: &Path, pid: u32, diagnostics: &mut Vec<Diagnostic>) -> Opt
 
 pub fn extract_config_path(args: &[String]) -> Option<PathBuf> {
     for (index, arg) in args.iter().enumerate() {
+        if arg == "-c" {
+            return args
+                .get(index + 1)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from);
+        }
         if arg == "--config" {
             return args
                 .get(index + 1)
@@ -375,24 +381,46 @@ fn inspect_config(
             );
         }
     };
-    let pools = raw
-        .get("pools")
-        .and_then(Value::as_array)
+    let pools_array = raw.get("pools").and_then(Value::as_array);
+    let pools = pools_array
         .into_iter()
         .flatten()
         .filter_map(|v| v.get("url")?.as_str())
         .map(redact_url)
         .collect();
+    let algorithm = raw
+        .get("algo")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            pools_array?
+                .iter()
+                .filter_map(|pool| pool.get("algo")?.as_str())
+                .find(|value| !value.is_empty())
+                .map(str::to_owned)
+        });
+    let huge_pages_requested = raw
+        .get("cpu")
+        .and_then(|v| v.get("huge-pages"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            raw.get("randomx")
+                .and_then(|v| v.get("huge-pages"))
+                .and_then(Value::as_bool)
+        });
+    let thread_hint = raw
+        .get("cpu")
+        .and_then(|v| v.get("max-threads-hint"))
+        .and_then(Value::as_u64)
+        .or_else(|| raw.get("threads").and_then(Value::as_u64));
     let config = ConfigInspectionV1 {
         path: display,
         parse_state: ConfigParseState::Valid,
         pools,
-        algorithm: raw.get("algo").and_then(Value::as_str).map(str::to_owned),
-        huge_pages_requested: raw
-            .get("randomx")
-            .and_then(|v| v.get("huge-pages"))
-            .and_then(Value::as_bool),
-        thread_hint: raw.get("threads").and_then(Value::as_u64),
+        algorithm,
+        huge_pages_requested,
+        thread_hint,
         log_path: raw
             .get("log-file")
             .and_then(Value::as_str)
@@ -655,12 +683,21 @@ mod tests {
     #[test]
     fn extracts_both_config_forms() {
         assert_eq!(
+            extract_config_path(&["xmrig".into(), "-c".into(), "/run/rigos/xmrig.json".into()]),
+            Some("/run/rigos/xmrig.json".into())
+        );
+        assert_eq!(
             extract_config_path(&["xmrig".into(), "--config".into(), "/a.json".into()]),
             Some("/a.json".into())
         );
         assert_eq!(
             extract_config_path(&["xmrig".into(), "--config=/b.json".into()]),
             Some("/b.json".into())
+        );
+        assert_eq!(extract_config_path(&["xmrig".into(), "-c".into()]), None);
+        assert_eq!(
+            extract_config_path(&["xmrig".into(), "-c".into(), "".into()]),
+            None
         );
     }
 
@@ -697,6 +734,55 @@ mod tests {
                 .unwrap()
                 .contains("SENTINEL_SECRET")
         );
+    }
+
+    #[test]
+    fn generated_rigos_xmrig_schema_is_inspected_without_secret_leakage() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("rigos-xmrig-generated-{unique}.json"));
+        fs::write(
+            &path,
+            r#"{"autosave":false,"cpu":{"huge-pages":true,"max-threads-hint":100},"pools":[{"url":"139.99.69.109:10001","user":"SYNTHETIC_IDENTITY","pass":"rig02","algo":"rx/0"}],"http":{"enabled":false}}"#,
+        )
+        .unwrap();
+        let mut diagnostics = Vec::new();
+        let (config, raw) = inspect_config(Some(&path), &mut diagnostics);
+        let _ = fs::remove_file(path);
+        assert!(diagnostics.is_empty());
+        assert!(matches!(config.parse_state, ConfigParseState::Valid));
+        assert_eq!(config.pools, vec!["139.99.69.109:10001"]);
+        assert_eq!(config.algorithm.as_deref(), Some("rx/0"));
+        assert_eq!(config.huge_pages_requested, Some(true));
+        assert_eq!(config.thread_hint, Some(100));
+        let snapshot = serde_json::to_string(&config).unwrap();
+        assert!(!snapshot.contains("SYNTHETIC_IDENTITY"));
+        assert!(raw.unwrap().pointer("/pools/0/user").is_some());
+    }
+
+    #[test]
+    fn legacy_xmrig_schema_remains_supported() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("rigos-xmrig-legacy-{unique}.json"));
+        fs::write(
+            &path,
+            r#"{"algo":"rx/0","threads":8,"randomx":{"huge-pages":true},"pools":[{"url":"identity:redacted@pool.test:3333"}],"http":{"enabled":false}}"#,
+        )
+        .unwrap();
+        let mut diagnostics = Vec::new();
+        let (config, raw) = inspect_config(Some(&path), &mut diagnostics);
+        let _ = fs::remove_file(path);
+        assert!(diagnostics.is_empty());
+        assert_eq!(config.pools, vec!["pool.test:3333"]);
+        assert_eq!(config.algorithm.as_deref(), Some("rx/0"));
+        assert_eq!(config.huge_pages_requested, Some(true));
+        assert_eq!(config.thread_hint, Some(8));
+        assert!(raw.is_some());
     }
 
     #[test]

@@ -123,6 +123,7 @@ unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   etc/systemd/system/ssh.service.d/rigos-observe.conf \
   etc/systemd/system/multi-user.target.wants/rigos-ssh-hostkeys.service \
   etc/systemd/system/rigos-firstboot.service \
+  etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf \
   etc/systemd/system/multi-user.target.wants/rigos-boot-utility.service \
   etc/systemd/system/rigos-boot-utility.service \
   etc/systemd/system/rigos-hugepages.service \
@@ -175,6 +176,11 @@ if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigo
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-state-ready' "$temporary/root/etc/systemd/system/rigos-state-ready.service" || die 'state readiness verifier is not wired'
 if grep -Fq 'Wants=rigos-recovery-access.service' "$temporary/root/etc/systemd/system/rigos-state-ready.service"; then die 'state readiness retriggers interactive recovery access'; fi
 grep -Fq 'Requires=rigos-state-ready.service' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply bypasses state readiness'
+grep -Fqx 'ExecStart=/usr/lib/rigos/rigos-config profile' "$temporary/root/etc/systemd/system/rigos-profile-apply.service" || die 'profile apply does not use the complete machine profile command'
+if grep -Fq 'rigos-config timezone' "$temporary/root/etc/systemd/system/rigos-profile-apply.service"; then die 'profile apply still uses the timezone-only path'; fi
+[[ -f "$temporary/root/etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf" ]] || die 'tty1 getty firstboot queue drop-in is missing'
+grep -Fqx 'Wants=rigos-firstboot.service' "$temporary/root/etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf" || die 'tty1 getty does not queue firstboot'
+grep -Fqx 'After=rigos-firstboot.service' "$temporary/root/etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf" || die 'tty1 getty does not wait for firstboot'
 
 hostkey_service="$temporary/root/etc/systemd/system/rigos-ssh-hostkeys.service"
 hostkey_policy="$temporary/root/etc/ssh/sshd_config.d/01-rigos-hostkeys.conf"

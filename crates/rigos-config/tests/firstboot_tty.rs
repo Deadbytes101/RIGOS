@@ -10,6 +10,14 @@ fn unit(name: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
 }
 
+fn system_file(path: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../build/usb/includes.chroot/etc/systemd/system")
+        .join(path);
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
 fn directive_tokens<'a>(unit: &'a str, prefix: &str) -> BTreeSet<&'a str> {
     unit.lines()
         .filter_map(|line| line.strip_prefix(prefix))
@@ -48,16 +56,16 @@ fn firstboot_remains_visible_when_state_readiness_fails() {
     let wants = directive_tokens(&unit, "Wants=");
     let requires = directive_tokens(&unit, "Requires=");
 
-    for ordered in [
-        "rigos-state.service",
-        "rigos-state-ready.service",
-        "rigos-profile-apply.service",
-    ] {
+    for ordered in ["rigos-state.service", "rigos-state-ready.service"] {
         assert!(
             after.contains(ordered),
             "firstboot must start after {ordered} finishes, including failure"
         );
     }
+    assert!(
+        !after.contains("rigos-profile-apply.service"),
+        "firstboot must not wait on profile apply before the initial interactive commit"
+    );
 
     assert!(
         wants.contains("rigos-state-ready.service"),
@@ -90,6 +98,44 @@ fn firstboot_remains_visible_when_state_readiness_fails() {
     assert!(
         !unit.lines().any(|line| line == "StandardError=tty"),
         "firstboot stderr must not write diagnostics over the local UI"
+    );
+}
+
+#[test]
+fn tty1_getty_transaction_queues_firstboot_before_login_prompt() {
+    let firstboot = unit("rigos-firstboot.service");
+    let getty_dropin = system_file("getty@tty1.service.d/rigos-firstboot.conf");
+
+    assert!(
+        directive_tokens(&firstboot, "Before=").contains("getty@tty1.service"),
+        "firstboot must still order before tty1 getty"
+    );
+    assert!(
+        directive_tokens(&getty_dropin, "Wants=").contains("rigos-firstboot.service"),
+        "tty1 getty must pull firstboot into the boot transaction"
+    );
+    assert!(
+        directive_tokens(&getty_dropin, "After=").contains("rigos-firstboot.service"),
+        "tty1 getty must wait for firstboot to finish or skip"
+    );
+}
+
+#[test]
+fn profile_apply_uses_complete_machine_profile_command() {
+    let profile = unit("rigos-profile-apply.service");
+    assert!(
+        profile
+            .lines()
+            .any(|line| line == "ExecStart=/usr/lib/rigos/rigos-config profile"),
+        "profile apply must apply hostname and timezone together"
+    );
+    assert!(
+        !profile.contains("rigos-config timezone"),
+        "profile apply must not use the legacy timezone-only path"
+    );
+    assert!(
+        !directive_tokens(&profile, "Before=").contains("rigos-firstboot.service"),
+        "profile apply must not be required before interactive firstboot is queued"
     );
 }
 
@@ -257,7 +303,7 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
     for required in [
         "title-text: \"RIGOS\"",
         "USB COMPUTE APPLIANCE",
-        "0.0.4-alpha.20",
+        "0.0.4-alpha.21",
         "ENTER BOOT",
         "selected_item_pixmap_style = \"select_*.png\"",
     ] {
@@ -324,7 +370,6 @@ fn state_ready_stays_out_of_the_local_fs_transaction() {
 
     for required in [
         "rigos-ssh-hostkeys.service",
-        "rigos-profile-apply.service",
         "rigos-firstboot.service",
         "rigos-hugepages.service",
         "rigos-miner.service",

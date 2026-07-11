@@ -3,6 +3,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(unix)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn repo_path(path: &str) -> PathBuf {

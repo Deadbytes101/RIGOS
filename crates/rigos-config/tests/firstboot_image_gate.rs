@@ -10,15 +10,15 @@ fn repo_file(path: &str) -> String {
 }
 
 #[test]
-fn alpha20_build_runs_source_and_exact_image_firstboot_gates() {
+fn alpha21_build_runs_source_and_exact_image_firstboot_gates() {
     let version = repo_file("build/usb/version.env");
     let entrypoint = repo_file("scripts/build-usb-image-entrypoint.sh");
     let verifier = repo_file("scripts/verify-firstboot-image.sh");
     let hook = repo_file("build/usb/hooks/010-rigos.chroot");
 
-    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.20"));
-    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.20"));
-    assert!(version.contains("RIGOS_BUILD_ORDINAL=20"));
+    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.21"));
+    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.21"));
+    assert!(version.contains("RIGOS_BUILD_ORDINAL=21"));
 
     assert!(entrypoint.contains("--test firstboot_tty"));
     assert!(entrypoint.contains("--test state_resize_recovery"));
@@ -45,7 +45,7 @@ fn alpha20_build_runs_source_and_exact_image_firstboot_gates() {
 }
 
 #[test]
-fn alpha20_primary_image_verifier_requires_real_grub_theme_and_utility() {
+fn alpha21_primary_image_verifier_requires_real_grub_theme_and_utility() {
     let verifier = repo_file("scripts/verify-usb-appliance.sh");
 
     for required in [
