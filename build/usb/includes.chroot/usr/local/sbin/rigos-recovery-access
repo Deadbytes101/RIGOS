@@ -9,6 +9,7 @@ from pathlib import Path
 
 RUNTIME = Path("/run/rigos")
 STATE = Path("/var/lib/rigos")
+CONSOLE = Path(os.environ.get("RIGOS_CONSOLE", "/dev/tty1"))
 CREDENTIAL_DIRECTORY = STATE / "recovery"
 CREDENTIAL_FILE = CREDENTIAL_DIRECTORY / "rigosadmin-password.hash"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
@@ -188,11 +189,29 @@ def prompt_for_password(invalid_stored_hash: bool, persistent: bool) -> None:
             "for this boot so local and SSH diagnostics remain available. "
             "This password is not persistent and may be requested again after reboot."
         )
-    subprocess.run(
-        ["/usr/bin/whiptail", "--title", "RIGOS RECOVERY ACCESS", "--msgbox", message, "12", "76"],
-        check=False,
-    )
-    subprocess.run(["/usr/bin/passwd", "rigosadmin"], check=True)
+    with CONSOLE.open("r+b", buffering=0) as console:
+        subprocess.run(
+            [
+                "/usr/bin/whiptail",
+                "--title",
+                "RIGOS RECOVERY ACCESS",
+                "--msgbox",
+                message,
+                "12",
+                "76",
+            ],
+            stdin=console,
+            stdout=console,
+            stderr=console,
+            check=False,
+        )
+        subprocess.run(
+            ["/usr/bin/passwd", "rigosadmin"],
+            stdin=console,
+            stdout=console,
+            stderr=console,
+            check=True,
+        )
 
 
 def unit_active(name: str) -> bool:

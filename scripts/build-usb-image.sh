@@ -111,7 +111,7 @@ lb config noauto --mode debian --distribution bookworm --architectures amd64 \
   --binary-images iso-hybrid --bootloaders syslinux,grub-efi \
   --archive-areas 'main contrib non-free-firmware' --apt-recommends false \
   --debian-installer none --iso-application RIGOS --iso-publisher RIGOS \
-  --iso-volume RIGOS_RECOVERY --bootappend-live 'boot=live components noautologin quiet rigos.stateless=1'
+  --iso-volume RIGOS_RECOVERY --bootappend-live 'boot=live components noautologin quiet loglevel=3 systemd.show_status=false rigos.stateless=1'
 lb build
 
 root_payload="$live/binary/live/filesystem.squashfs"
@@ -179,17 +179,17 @@ insmod ext2
 
 menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin console=ttyS0,115200n8 console=tty0
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
-menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} -- safe mode' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} (Safe Mode)' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin nomodeset console=ttyS0,115200n8 console=tty0
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false nomodeset console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
-menuentry 'RIGOS ROOT_B fallback' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} Fallback Slot B' {
     search --no-floppy --label RIGOS_ROOT_B --set=root
-    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin console=ttyS0,115200n8 console=tty0
+    linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
 EOF

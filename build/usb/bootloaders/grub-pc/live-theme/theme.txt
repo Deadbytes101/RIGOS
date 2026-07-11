@@ -1,6 +1,6 @@
 title-color: "#ffffff"
 title-font: "Unifont Regular 16"
-title-text: "RIGOS Recovery 0.0.4-alpha.6 - Stateless Diagnostics"
+title-text: "RIGOS Recovery"
 message-font: "Unifont Regular 16"
 terminal-font: "Unifont Regular 16"
 

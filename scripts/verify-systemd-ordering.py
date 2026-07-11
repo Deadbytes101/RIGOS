@@ -78,6 +78,14 @@ def verify(units):
         recovery.scalar("Service", "TTYVHangup") != "yes",
         "recovery must not hang up tty1",
     )
+    require(
+        recovery.scalar("Service", "StandardError") == "journal",
+        "recovery diagnostics must not write over tty1",
+    )
+    require(
+        recovery.scalar("Service", "TTYVTDisallocate") == "yes",
+        "recovery must clear tty1 before handoff",
+    )
 
     ready = units["rigos-state-ready.service"]
     require(
@@ -184,6 +192,14 @@ def verify(units):
     require(
         firstboot.scalar("Service", "TTYVHangup") != "yes",
         "firstboot must not hang up tty1",
+    )
+    require(
+        firstboot.scalar("Service", "StandardOutput") == "tty",
+        "firstboot UI must write to tty1",
+    )
+    require(
+        firstboot.scalar("Service", "StandardError") == "journal",
+        "firstboot diagnostics must not write over tty1",
     )
 
 

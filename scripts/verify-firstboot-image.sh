@@ -70,7 +70,7 @@ for required in \
     'ExecStart=/usr/local/sbin/rigos-firstboot' \
     'StandardInput=tty-force' \
     'StandardOutput=tty' \
-    'StandardError=tty' \
+    'StandardError=journal' \
     'TTYPath=/dev/tty1' \
     'TTYReset=yes' \
     'TTYVTDisallocate=yes'
@@ -84,6 +84,9 @@ if grep -Fqx 'Requires=rigos-state-ready.service' "$service"; then
 fi
 if grep -Fq 'network-online.target' "$service"; then
     die 'firstboot still depends on network-online'
+fi
+if grep -Fqx 'StandardError=tty' "$service"; then
+    die 'firstboot diagnostics still write over tty1'
 fi
 
 for required in \

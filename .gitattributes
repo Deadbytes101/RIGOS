@@ -1,4 +1,5 @@
 * text=auto
+/.gitattributes text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
 *.rs text eol=lf
@@ -12,6 +13,7 @@
 
 build/usb/version.env text eol=lf
 build/usb/hooks/* text eol=lf
+build/usb/bootloaders/** text eol=lf
 build/usb/package-lists/rigos.list.chroot text eol=lf
 build/usb/includes.chroot/usr/local/bin/* text eol=lf
 build/usb/includes.chroot/usr/local/sbin/rigos-* text eol=lf

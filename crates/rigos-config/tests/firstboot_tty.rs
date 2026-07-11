@@ -79,11 +79,28 @@ fn firstboot_remains_visible_when_state_readiness_fails() {
         unit.lines().any(|line| line == "TTYPath=/dev/tty1"),
         "firstboot must remain bound to tty1"
     );
+    assert!(
+        unit.lines().any(|line| line == "StandardOutput=tty"),
+        "firstboot UI must keep stdout attached to tty1"
+    );
+    assert!(
+        unit.lines().any(|line| line == "StandardError=journal"),
+        "firstboot diagnostics must go to the journal instead of corrupting tty1"
+    );
+    assert!(
+        !unit.lines().any(|line| line == "StandardError=tty"),
+        "firstboot stderr must not write diagnostics over the local UI"
+    );
 }
 
 #[test]
 fn recovery_access_does_not_hang_up_the_following_firstboot_session() {
     let unit = unit("rigos-recovery-access.service");
+    let recovery = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access"),
+    )
+    .expect("read recovery access helper");
     let before = directive_tokens(&unit, "Before=");
 
     for required in ["rigos-state-ready.service", "rigos-firstboot.service"] {
@@ -95,6 +112,70 @@ fn recovery_access_does_not_hang_up_the_following_firstboot_session() {
     assert!(
         !unit.lines().any(|line| line == "TTYVHangup=yes"),
         "recovery access must not hang up tty1 before firstboot starts"
+    );
+    assert!(
+        unit.lines().any(|line| line == "StandardError=journal"),
+        "recovery diagnostics must go to the journal instead of corrupting tty1"
+    );
+    assert!(
+        unit.lines().any(|line| line == "TTYVTDisallocate=yes"),
+        "recovery access must clear the tty before handing off to firstboot"
+    );
+    assert!(
+        recovery.contains("CONSOLE = Path(os.environ.get(\"RIGOS_CONSOLE\", \"/dev/tty1\"))"),
+        "recovery prompts must use an explicit console path"
+    );
+    assert!(
+        recovery.contains("stdin=console")
+            && recovery.contains("stdout=console")
+            && recovery.contains("stderr=console"),
+        "recovery UI children must render on the console even when service stderr is journaled"
+    );
+}
+
+#[test]
+fn bootloader_uses_quiet_productized_console_entries() {
+    let builder = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/build-usb-image.sh"),
+    )
+    .expect("read USB build script");
+    let syslinux = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../build/usb/bootloaders/syslinux_common/live.cfg.in"),
+    )
+    .expect("read recovery bootloader template");
+    let theme = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../build/usb/bootloaders/grub-pc/live-theme/theme.txt"),
+    )
+    .expect("read recovery GRUB theme");
+
+    for required in ["quiet", "loglevel=3", "systemd.show_status=false"] {
+        assert!(
+            builder.contains(required),
+            "USB kernel command line must include {required}"
+        );
+    }
+    assert!(
+        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} (Safe Mode)'"),
+        "safe mode GRUB label must be productized"
+    );
+    assert!(
+        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} Fallback Slot B'"),
+        "fallback GRUB label must be productized"
+    );
+    assert!(
+        !builder.contains("-- safe mode") && !builder.contains("RIGOS ROOT_B fallback"),
+        "USB GRUB labels must not expose developer wording"
+    );
+    assert!(
+        syslinux.contains("menu label ^RIGOS Recovery")
+            && syslinux.contains("menu label RIGOS Recovery (^Safe Mode)"),
+        "recovery boot menu labels must be productized"
+    );
+    assert!(
+        theme.contains("title-text: \"RIGOS Recovery\""),
+        "recovery GRUB theme must use a productized title"
     );
 }
 
