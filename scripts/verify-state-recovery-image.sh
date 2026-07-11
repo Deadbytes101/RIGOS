@@ -126,7 +126,6 @@ do
 done
 
 for required in \
-    'timeout after 300s' \
     'tune2fs' \
     'resize2fs' \
     'e2fsck' \

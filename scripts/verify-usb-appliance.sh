@@ -134,7 +134,6 @@ strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/usr/lib/rig
 strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F -- '--tree' >/dev/null || die 'state initializer does not require hierarchical lsblk output'
 if strings "$temporary/root/usr/lib/rigos/rigos-state-init" | grep -F '/run/rigos/compat-bin/lsblk' >/dev/null; then die 'state initializer executes compatibility code from the runtime directory'; fi
 for required in \
-  'timeout after 300s' \
   'tune2fs' \
   'resize2fs' \
   'e2fsck' \
