@@ -15,7 +15,9 @@ sh -n build/usb/includes.chroot/usr/lib/rigos/rigos-lifecycle-cycles
 python3 -m py_compile \
   build/usb/includes.chroot/usr/local/sbin/rigos-firstboot \
   build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access \
+  build/usb/includes.chroot/usr/local/sbin/rigos-utility \
   build/usb/includes.chroot/usr/local/sbin/rigos-state-orchestrate \
+  build/usb/includes.chroot/usr/lib/rigos/rigos-admin-password \
   build/usb/includes.chroot/usr/lib/rigos/rigos-miner-gate \
   scripts/verify-systemd-ordering.py
 python3 scripts/verify-systemd-ordering.py

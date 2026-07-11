@@ -10,6 +10,7 @@ from pathlib import Path
 RUNTIME = Path("/run/rigos")
 STATE = Path("/var/lib/rigos")
 CONSOLE = Path(os.environ.get("RIGOS_CONSOLE", "/dev/tty1"))
+PASSWORD_HELPER = os.environ.get("RIGOS_ADMIN_PASSWORD_HELPER", "/usr/lib/rigos/rigos-admin-password")
 CREDENTIAL_DIRECTORY = STATE / "recovery"
 CREDENTIAL_FILE = CREDENTIAL_DIRECTORY / "rigosadmin-password.hash"
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
@@ -205,13 +206,15 @@ def prompt_for_password(invalid_stored_hash: bool, persistent: bool) -> None:
             stderr=console,
             check=False,
         )
-        subprocess.run(
-            ["/usr/bin/passwd", "rigosadmin"],
+        result = subprocess.run(
+            [PASSWORD_HELPER],
             stdin=console,
             stdout=console,
             stderr=console,
-            check=True,
+            check=False,
         )
+        if result.returncode != 0:
+            raise RuntimeError("local credential setup was cancelled or failed")
 
 
 def unit_active(name: str) -> bool:

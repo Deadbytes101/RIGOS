@@ -64,6 +64,19 @@ mount -o ro "$p3" "$temporary/b"
 [[ "$(blkid -s LABEL -o value "$p3")" == RIGOS_ROOT_B ]] || die 'ROOT_B filesystem label mismatch'
 [[ "$(blkid -s LABEL -o value "$p4")" == RIGOS_STATE_SEED ]] || die 'state seed filesystem label mismatch'
 [[ -f "$temporary/efi/EFI/BOOT/BOOTX64.EFI" ]] || die 'removable UEFI loader is missing'
+for slot_root in "$temporary/a" "$temporary/b"; do
+  grub_cfg="$slot_root/boot/grub/grub.cfg"
+  theme_dir="$slot_root/boot/grub/themes/rigos"
+  [[ -f "$grub_cfg" ]] || die 'primary GRUB config is missing'
+  [[ -f "$theme_dir/theme.txt" ]] || die 'primary RIGOS GRUB theme is missing'
+  [[ -f "$theme_dir/background.txt" ]] || die 'primary RIGOS GRUB theme background asset is missing'
+  grep -Fq 'set theme=/boot/grub/themes/rigos/theme.txt' "$grub_cfg" || die 'primary GRUB config does not load the RIGOS theme'
+  grep -Fq 'set menu_color_highlight=white/blue' "$grub_cfg" || die 'primary GRUB text fallback is missing'
+  grep -Fq "menuentry 'RIGOS $image_version'" "$grub_cfg" || die 'normal RIGOS boot entry is missing'
+  grep -Fq "menuentry 'RIGOS $image_version  SAFE MODE'" "$grub_cfg" || die 'safe mode RIGOS boot entry is missing'
+  grep -Fq "menuentry 'RIGOS $image_version  FALLBACK SLOT B'" "$grub_cfg" || die 'fallback RIGOS boot entry is missing'
+  grep -Fq 'title-text: "RIGOS"' "$theme_dir/theme.txt" || die 'RIGOS GRUB theme title is missing'
+done
 [[ "$(sha256sum "$p2" | cut -d' ' -f1)" == "$(jq -r .root_a_sha256 "$manifest")" ]] || die 'ROOT_A hash mismatch'
 [[ "$(sha256sum "$p3" | cut -d' ' -f1)" == "$(jq -r .root_b_sha256 "$manifest")" ]] || die 'ROOT_B hash mismatch'
 cmp "$temporary/a/live/filesystem.squashfs" "$temporary/b/live/filesystem.squashfs"
@@ -103,8 +116,9 @@ unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   usr/bin/jq usr/bin/python3 usr/bin/python3.11 usr/bin/findmnt usr/bin/ssh-keygen \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
   usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/rigos-ssh-hostkeys usr/lib/rigos/xmrig \
+  usr/lib/rigos/rigos-admin-password \
   usr/local/bin/rigosd usr/local/bin/rigosctl \
-  usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate \
+  usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate usr/local/sbin/rigos-utility \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
 grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS identity mismatch'
@@ -114,6 +128,8 @@ grep -q 'NAME="RIGOS"' "$temporary/root/etc/os-release" || die 'embedded OS iden
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
+python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-utility"
+python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-admin-password"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-health"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-ssh-hostkeys"
@@ -122,6 +138,8 @@ sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-authority"
 python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
+rigos_utility_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigos-utility)"
+[[ "$rigos_utility_path" == "$temporary/root/usr/local/sbin/rigos-utility" && -x "$rigos_utility_path" ]] || die 'rigos-utility is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state resume orchestrator is not wired'
 grep -Fqx 'd /run/rigos 0755 root root -' "$temporary/root/usr/lib/tmpfiles.d/rigos.conf" || die 'shared runtime directory contract is missing'
@@ -211,6 +229,10 @@ grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporar
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'
 grep -Fq 'CREDENTIAL_DIRECTORY = STATE / "recovery"' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'persistent recovery credential store is missing'
 grep -Fq '["/usr/sbin/chpasswd", "--encrypted"]' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'encrypted credential restore is missing'
+grep -Fq 'PASSWORD_HELPER' "$temporary/root/usr/local/sbin/rigos-recovery-access" || die 'controlled admin password helper is not wired'
+grep -Fq '["/usr/sbin/chpasswd"]' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password helper does not apply via protected stdin'
+grep -Fq 'SHOW PASSWORD' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password reveal toggle is missing'
+grep -Fq 'RIGOS DEADBYTE UTILITY' "$temporary/root/usr/local/sbin/rigos-utility" || die 'RIGOS utility title is missing'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-lifecycle-cycles" ]] || die 'booted lifecycle cycle test is missing'
 if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'

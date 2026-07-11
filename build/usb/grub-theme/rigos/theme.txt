@@ -1,0 +1,67 @@
+desktop-color: "#07111f"
+title-color: "#e8f0f8"
+title-font: "Unifont Regular 16"
+title-text: "RIGOS"
+message-font: "Unifont Regular 16"
+terminal-font: "Unifont Regular 16"
+
++ label {
+        top = 18%
+        left = 12%
+        width = 76%
+        height = 24
+        text = "USB COMPUTE APPLIANCE"
+        color = "#8da2b8"
+        font = "Unifont Regular 16"
+        align = "center"
+}
+
++ label {
+        top = 24%
+        left = 12%
+        width = 76%
+        height = 24
+        text = "0.0.4-alpha.17   alpha channel"
+        color = "#b8c6d1"
+        font = "Unifont Regular 16"
+        align = "center"
+}
+
++ boot_menu {
+        left = 14%
+        width = 72%
+        top = 35%
+        height = 32%
+        item_color = "#b8c6d1"
+        item_font = "Unifont Regular 16"
+        selected_item_color = "#ffffff"
+        selected_item_font = "Unifont Regular 16"
+        item_height = 24
+        item_padding = 2
+        item_spacing = 4
+}
+
++ label {
+        top = 82%
+        left = 10%
+        width = 80%
+        height = 24
+        text = "ENTER BOOT     E EDIT     C CONSOLE"
+        color = "#8da2b8"
+        font = "Unifont Regular 16"
+        align = "center"
+}
+
++ progress_bar {
+        id = "__timeout__"
+        left = 20%
+        top = 88%
+        height = 12
+        width = 60%
+        font = "Unifont Regular 16"
+        text_color = "#07111f"
+        fg_color = "#b8c6d1"
+        bg_color = "#203040"
+        border_color = "#516172"
+        text = "@TIMEOUT_NOTIFICATION_SHORT@"
+}

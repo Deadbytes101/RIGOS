@@ -18,6 +18,11 @@ fn repo_path(path: &str) -> PathBuf {
         .join(path)
 }
 
+fn repo_file(path: &str) -> String {
+    fs::read_to_string(repo_path(path))
+        .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
+}
+
 #[test]
 fn recovery_password_is_persisted_restored_and_redacted() {
     let root = std::env::temp_dir().join(format!("rigos-recovery-access-{}", Uuid::new_v4()));
@@ -167,6 +172,91 @@ assert valid_hash not in json.dumps(status)
         .expect("run recovery access fixture");
     let _ = fs::remove_dir_all(&root);
     assert!(result.success(), "recovery access fixture failed");
+}
+
+#[test]
+fn admin_password_helper_masks_by_default_and_applies_only_over_stdin() {
+    let helper = repo_file("build/usb/includes.chroot/usr/lib/rigos/rigos-admin-password");
+    let recovery = repo_file("build/usb/includes.chroot/usr/local/sbin/rigos-recovery-access");
+
+    for required in [
+        "SHOW PASSWORD",
+        "HIDE PASSWORD",
+        "\"*\" * len(value)",
+        "Password must not be empty.",
+        "Password confirmation does not match.",
+        "[\"/usr/sbin/chpasswd\"]",
+        "input=payload",
+    ] {
+        assert!(
+            helper.contains(required),
+            "admin password helper is missing security contract: {required}"
+        );
+    }
+
+    assert!(
+        !helper.contains("[\"/usr/bin/passwd\", \"rigosadmin\"]"),
+        "admin password helper must not delegate to the raw passwd UI"
+    );
+    assert!(
+        !helper.contains("journal") && !helper.contains("status.json"),
+        "admin password helper must not persist or journal password material"
+    );
+    assert!(
+        recovery.contains("PASSWORD_HELPER")
+            && !recovery.contains("[\"/usr/bin/passwd\", \"rigosadmin\"]"),
+        "recovery access must route administrator setup through the controlled helper"
+    );
+}
+
+#[test]
+fn admin_password_helper_accepts_noninteractive_dry_run_without_argv_secret() {
+    let result = Command::new("python3")
+        .arg(repo_path(
+            "build/usb/includes.chroot/usr/lib/rigos/rigos-admin-password",
+        ))
+        .arg("--dry-run")
+        .env("RIGOS_ADMIN_PASSWORD_TEST_VALUE", "synthetic-password")
+        .status()
+        .expect("run admin password helper dry-run");
+
+    assert!(result.success(), "admin password helper dry-run failed");
+}
+
+#[test]
+fn deadbyte_utility_is_read_only_by_default_and_routes_password_changes() {
+    let utility = repo_file("build/usb/includes.chroot/usr/local/sbin/rigos-utility");
+    let hook = repo_file("build/usb/hooks/010-rigos.chroot");
+
+    for required in [
+        "RIGOS DEADBYTE UTILITY",
+        "LOCAL NODE CONTROL",
+        "SYSTEM STATUS",
+        "HARDWARE AND COMPATIBILITY",
+        "MINER STATUS",
+        "STATE AND STORAGE",
+        "PERFORMANCE AND HUGE PAGES",
+        "CHANGE ADMIN PASSWORD",
+        "PASSWORD_HELPER",
+    ] {
+        assert!(
+            utility.contains(required),
+            "RIGOS utility is missing menu contract: {required}"
+        );
+    }
+
+    for forbidden in ["mkfs", "resize2fs", "tune2fs", "xmrig.json", "policy.json"] {
+        assert!(
+            !utility.contains(forbidden),
+            "RIGOS utility read-only pages must not directly mutate {forbidden}"
+        );
+    }
+
+    assert!(
+        hook.contains("/usr/local/sbin/rigos-utility")
+            && hook.contains("/usr/lib/rigos/rigos-admin-password"),
+        "image hook must install the utility and password helper as executables"
+    );
 }
 
 #[test]

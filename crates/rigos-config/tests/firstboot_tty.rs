@@ -157,11 +157,11 @@ fn bootloader_uses_quiet_productized_console_entries() {
         );
     }
     assert!(
-        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} (Safe Mode)'"),
+        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  SAFE MODE'"),
         "safe mode GRUB label must be productized"
     );
     assert!(
-        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} Fallback Slot B'"),
+        builder.contains("menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  FALLBACK SLOT B'"),
         "fallback GRUB label must be productized"
     );
     assert!(
@@ -177,6 +177,43 @@ fn bootloader_uses_quiet_productized_console_entries() {
         theme.contains("title-text: \"RIGOS Recovery\""),
         "recovery GRUB theme must use a productized title"
     );
+}
+
+#[test]
+fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
+    let builder = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/build-usb-image.sh"),
+    )
+    .expect("read USB build script");
+    let theme = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../build/usb/grub-theme/rigos/theme.txt"),
+    )
+    .expect("read primary GRUB theme");
+
+    for required in [
+        "install -d -m 0755 \"$work/mnt/$slot/boot/grub/themes/rigos\"",
+        "set theme=/boot/grub/themes/rigos/theme.txt",
+        "set menu_color_highlight=white/blue",
+        "terminal_output gfxterm",
+    ] {
+        assert!(
+            builder.contains(required),
+            "primary USB GRUB theme wiring is missing: {required}"
+        );
+    }
+
+    for required in [
+        "title-text: \"RIGOS\"",
+        "USB COMPUTE APPLIANCE",
+        "0.0.4-alpha.17",
+        "ENTER BOOT",
+    ] {
+        assert!(
+            theme.contains(required),
+            "primary USB GRUB theme is missing: {required}"
+        );
+    }
 }
 
 #[test]

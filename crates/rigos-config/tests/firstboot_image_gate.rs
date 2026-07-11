@@ -10,15 +10,15 @@ fn repo_file(path: &str) -> String {
 }
 
 #[test]
-fn alpha16_build_runs_source_and_exact_image_firstboot_gates() {
+fn alpha17_build_runs_source_and_exact_image_firstboot_gates() {
     let version = repo_file("build/usb/version.env");
     let entrypoint = repo_file("scripts/build-usb-image-entrypoint.sh");
     let verifier = repo_file("scripts/verify-firstboot-image.sh");
     let hook = repo_file("build/usb/hooks/010-rigos.chroot");
 
-    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.16"));
-    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.16"));
-    assert!(version.contains("RIGOS_BUILD_ORDINAL=16"));
+    assert!(version.contains("RIGOS_PRODUCT_VERSION=0.0.4-alpha.17"));
+    assert!(version.contains("RIGOS_IMAGE_VERSION=0.0.4-alpha.17"));
+    assert!(version.contains("RIGOS_BUILD_ORDINAL=17"));
 
     assert!(entrypoint.contains("--test firstboot_tty"));
     assert!(entrypoint.contains("--test state_resize_recovery"));
@@ -42,6 +42,26 @@ fn alpha16_build_runs_source_and_exact_image_firstboot_gates() {
         hook.contains("rigos-firstboot.service"),
         "image construction must enable firstboot"
     );
+}
+
+#[test]
+fn alpha17_primary_image_verifier_requires_real_grub_theme_and_utility() {
+    let verifier = repo_file("scripts/verify-usb-appliance.sh");
+
+    for required in [
+        "boot/grub/themes/rigos/theme.txt",
+        "primary GRUB config does not load the RIGOS theme",
+        "primary GRUB text fallback is missing",
+        "SAFE MODE",
+        "rigos-utility is not executable in the appliance PATH",
+        "controlled admin password helper is not wired",
+        "admin password reveal toggle is missing",
+    ] {
+        assert!(
+            verifier.contains(required),
+            "alpha17 exact-image verifier is missing: {required}"
+        );
+    }
 }
 
 #[test]

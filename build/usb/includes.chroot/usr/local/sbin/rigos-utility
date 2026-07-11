@@ -1,0 +1,140 @@
+#!/usr/bin/python3
+import json
+import os
+import subprocess
+from pathlib import Path
+
+WHIPTAIL = os.environ.get("RIGOS_WHIPTAIL", "/usr/bin/whiptail")
+PASSWORD_HELPER = os.environ.get("RIGOS_ADMIN_PASSWORD_HELPER", "/usr/lib/rigos/rigos-admin-password")
+RUNTIME = Path("/run/rigos")
+STATE = Path("/var/lib/rigos")
+RELEASE = Path("/etc/rigos-release")
+
+
+def run(argv, **kwargs):
+    return subprocess.run(argv, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, **kwargs)
+
+
+def read_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+
+
+def release_fields() -> dict:
+    fields = {}
+    try:
+        for line in RELEASE.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                fields[key] = value.strip().strip('"')
+    except OSError:
+        pass
+    return fields
+
+
+def msg(title: str, body: str) -> None:
+    subprocess.run([WHIPTAIL, "--title", title, "--msgbox", body[:4000], "22", "78"], check=False)
+
+
+def menu() -> str | None:
+    items = [
+        ("1", "SYSTEM STATUS"),
+        ("2", "HARDWARE AND COMPATIBILITY"),
+        ("3", "MINER STATUS"),
+        ("4", "POOL AND FLIGHT SHEET"),
+        ("5", "NETWORK AND SSH"),
+        ("6", "STATE AND STORAGE"),
+        ("7", "PERFORMANCE AND HUGE PAGES"),
+        ("8", "LOGS AND DIAGNOSTICS"),
+        ("9", "CHANGE ADMIN PASSWORD"),
+        ("10", "BENCHMARK"),
+        ("11", "REBOOT"),
+        ("12", "POWER OFF"),
+        ("13", "EXIT TO CONSOLE"),
+    ]
+    flat = [value for pair in items for value in pair]
+    result = subprocess.run(
+        [WHIPTAIL, "--title", "RIGOS DEADBYTE UTILITY", "--menu", "LOCAL NODE CONTROL", "22", "78", "13", *flat],
+        text=True,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return result.stderr.strip() if result.returncode == 0 else None
+
+
+def system_status() -> str:
+    release = release_fields()
+    state = read_json(RUNTIME / "state-status.json")
+    perf = read_json(RUNTIME / "performance-status.json")
+    miner = run(["/usr/bin/systemctl", "is-active", "rigos-miner.service"]).stdout.strip() or "unknown"
+    uptime = run(["/usr/bin/uptime", "-p"]).stdout.strip() or "unknown"
+    current = "absent"
+    try:
+        current = os.readlink(STATE / "current")
+    except OSError:
+        pass
+    return "\n".join([
+        f"Version: {release.get('VERSION_ID', 'unknown')}",
+        f"Build commit: {release.get('BUILD_COMMIT', 'unknown')}",
+        f"Uptime: {uptime}",
+        f"Boot ID: {Path('/proc/sys/kernel/random/boot_id').read_text(encoding='ascii').strip()}",
+        f"State: {state.get('outcome', 'unknown')}",
+        f"Configuration revision: {current}",
+        f"Miner service: {miner}",
+        f"Huge pages: {((perf.get('huge_pages') or {}).get('actual_pages', 'unknown'))}",
+    ])
+
+
+def command_view(title: str, argv: list[str]) -> None:
+    result = run(argv)
+    body = result.stdout if result.stdout.strip() else result.stderr
+    msg(title, body or "No data available.")
+
+
+def change_password() -> None:
+    result = subprocess.run([PASSWORD_HELPER], check=False)
+    msg("CHANGE ADMIN PASSWORD", "Password updated." if result.returncode == 0 else "Password change was cancelled or failed.")
+
+
+def confirm(title: str, body: str) -> bool:
+    return subprocess.run([WHIPTAIL, "--title", title, "--yesno", body, "10", "70"], check=False).returncode == 0
+
+
+def main() -> int:
+    while True:
+        selected = menu()
+        if selected in (None, "13"):
+            return 0
+        if selected == "1":
+            msg("SYSTEM STATUS", system_status())
+        elif selected == "2":
+            command_view("HARDWARE AND COMPATIBILITY", ["/usr/local/sbin/rigosctl", "machine", "inspect"])
+        elif selected == "3":
+            command_view("MINER STATUS", ["/usr/local/sbin/rigosctl", "miner", "inspect"])
+        elif selected == "4":
+            command_view("POOL AND FLIGHT SHEET", ["/usr/lib/rigos/rigos-config", "current"])
+        elif selected == "5":
+            command_view("NETWORK AND SSH", ["/bin/sh", "-c", "ip -brief address; printf '\\n'; ip route; printf '\\n'; systemctl is-active ssh.service; jq -r .fingerprint /run/rigos/ssh-hostkeys-status.json 2>/dev/null"])
+        elif selected == "6":
+            command_view("STATE AND STORAGE", ["/bin/sh", "-c", "cat /run/rigos/state-status.json 2>/dev/null; printf '\\n'; findmnt /var/lib/rigos 2>/dev/null; df -h /var/lib/rigos 2>/dev/null"])
+        elif selected == "7":
+            command_view("PERFORMANCE AND HUGE PAGES", ["/bin/sh", "-c", "cat /run/rigos/performance-status.json 2>/dev/null; printf '\\n'; grep -E 'Huge|MemAvailable' /proc/meminfo"])
+        elif selected == "8":
+            command_view("LOGS AND DIAGNOSTICS", ["/usr/bin/journalctl", "-b", "--no-pager", "-n", "120"])
+        elif selected == "9":
+            change_password()
+        elif selected == "10":
+            msg("BENCHMARK", "Benchmark is a manual action reserved for the benchmark workstream. No configuration was changed.")
+        elif selected == "11" and confirm("REBOOT", "Reboot this node now?"):
+            subprocess.run(["/usr/bin/systemctl", "reboot"], check=False)
+            return 0
+        elif selected == "12" and confirm("POWER OFF", "Power off this node now?"):
+            subprocess.run(["/usr/bin/systemctl", "poweroff"], check=False)
+            return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

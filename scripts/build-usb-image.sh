@@ -102,7 +102,7 @@ VERSION_ID="${RIGOS_IMAGE_VERSION}"
 VERSION_CODENAME="usb-appliance-preview"
 EOF
 
-chmod 0755 "$live/config/hooks/live/"* "$live/config/includes.chroot/usr/local/sbin/rigos-firstboot" "$live/config/includes.chroot/usr/local/sbin/rigos-recovery-access"
+chmod 0755 "$live/config/hooks/live/"* "$live/config/includes.chroot/usr/local/sbin/rigos-firstboot" "$live/config/includes.chroot/usr/local/sbin/rigos-recovery-access" "$live/config/includes.chroot/usr/local/sbin/rigos-utility" "$live/config/includes.chroot/usr/lib/rigos/rigos-admin-password"
 find "$live/config/includes.chroot/etc/systemd/system" -type f -exec chmod 0644 {} +
 find "$live/config/includes.chroot" -type f ! -path '*/usr/local/sbin/*' ! -path '*/usr/lib/rigos/rigos*' ! -path '*/usr/lib/rigos/xmrig' -exec chmod go-w {} +
 
@@ -169,25 +169,42 @@ done
 grub-install --target=i386-pc --boot-directory="$work/mnt/a/boot" --no-floppy "$loop"
 grub-install --target=x86_64-efi --efi-directory="$work/mnt/efi" --boot-directory="$work/mnt/a/boot" --removable --no-nvram
 cp -a "$work/mnt/a/boot/grub/." "$work/mnt/b/boot/grub/"
+for slot in a b; do
+  install -d -m 0755 "$work/mnt/$slot/boot/grub/themes/rigos"
+  install -m 0644 build/usb/grub-theme/rigos/* "$work/mnt/$slot/boot/grub/themes/rigos/"
+done
 cat >"$work/grub.cfg" <<EOF
 set timeout=5
 set default=0
+set fallback=0
 insmod all_video
 insmod part_msdos
 insmod fat
 insmod ext2
+if loadfont /boot/grub/fonts/unicode.pf2; then
+    set gfxmode=auto
+    insmod gfxterm
+    terminal_output gfxterm
+fi
+insmod gfxmenu
+if [ -f /boot/grub/themes/rigos/theme.txt ]; then
+    set theme=/boot/grub/themes/rigos/theme.txt
+else
+    set menu_color_normal=light-gray/black
+    set menu_color_highlight=white/blue
+fi
 
 menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
-menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} (Safe Mode)' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  SAFE MODE' {
     search --no-floppy --label RIGOS_ROOT_A --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_A live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false nomodeset console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
 }
-menuentry 'RIGOS ${RIGOS_IMAGE_VERSION} Fallback Slot B' {
+menuentry 'RIGOS ${RIGOS_IMAGE_VERSION}  FALLBACK SLOT B' {
     search --no-floppy --label RIGOS_ROOT_B --set=root
     linux /live/vmlinuz boot=live components live-media=/dev/disk/by-label/RIGOS_ROOT_B live-media-path=/live ro noeject noautologin quiet loglevel=3 systemd.show_status=false console=ttyS0,115200n8 console=tty0
     initrd /live/initrd.img
