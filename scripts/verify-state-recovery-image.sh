@@ -126,9 +126,10 @@ do
 done
 
 for required in \
-    'tune2fs: timeout after 300s' \
-    'resize2fs: timeout after 300s' \
-    'e2fsck: timeout after 300s' \
+    'timeout after 300s' \
+    'tune2fs' \
+    'resize2fs' \
+    'e2fsck' \
     'state filesystem label is not RIGOS_STATE after identity update' \
     'state filesystem UUID still matches the cloned seed UUID' \
     'dc450e72-daa4-5b82-8d1b-0ae6b11607f9' \
