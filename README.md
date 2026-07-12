@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/Deadbytes101/RIGOS/tree/branding/rigos-handmade-logo-pack">
+  <a href="https://github.com/Deadbytes101/RIGOS">
     <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS local-first CPU appliance" width="820">
   </a>
 </p>
