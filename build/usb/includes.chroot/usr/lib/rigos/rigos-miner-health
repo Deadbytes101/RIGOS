@@ -14,6 +14,7 @@ from pathlib import Path
 RUNTIME = Path(os.environ.get("RIGOS_RUNTIME_PATH", "/run/rigos"))
 BOOT_ID = Path(os.environ.get("RIGOS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
 CURRENT = Path(os.environ.get("RIGOS_CURRENT_REVISION_PATH", "/var/lib/rigos/current"))
+STATE_DIR = Path(os.environ.get("RIGOS_MINER_HEALTH_STATE_DIR", "/var/lib/rigos/system/miner-health"))
 PROC = Path(os.environ.get("RIGOS_PROC_ROOT", "/proc"))
 SYSTEMCTL = os.environ.get("RIGOS_SYSTEMCTL", "/usr/bin/systemctl")
 JOURNALCTL = os.environ.get("RIGOS_JOURNALCTL", "/usr/bin/journalctl")
@@ -27,6 +28,10 @@ TEST_MODE = os.environ.get("RIGOS_MINER_HEALTH_TEST_MODE") == "1"
 WINDOW_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_WINDOW_SECONDS", "180"))
 WARMUP_SECONDS = int(os.environ.get("RIGOS_MINER_WARMUP_SECONDS", "240"))
 MAX_JOURNAL_LINES = 500
+FAULT_STREAK_THRESHOLD = int(os.environ.get("RIGOS_MINER_HEALTH_FAULT_STREAK_THRESHOLD", "2"))
+RESTART_COOLDOWN_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_RESTART_COOLDOWN_SECONDS", "600"))
+RESTART_BUDGET_WINDOW_SECONDS = int(os.environ.get("RIGOS_MINER_HEALTH_RESTART_BUDGET_WINDOW_SECONDS", "1800"))
+RESTART_BUDGET_MAX = int(os.environ.get("RIGOS_MINER_HEALTH_RESTART_BUDGET_MAX", "3"))
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 READY_MARKERS = (
@@ -69,6 +74,10 @@ def atomic_json(path: Path, value: dict) -> None:
             pass
 
 
+def now_epoch() -> int:
+    return int(dt.datetime.now(dt.timezone.utc).timestamp())
+
+
 def command(argv: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv,
@@ -78,6 +87,10 @@ def command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         timeout=10,
         check=False,
     )
+
+
+def systemctl_action(*args: str) -> subprocess.CompletedProcess[str]:
+    return command([SYSTEMCTL, *args])
 
 
 def systemd_properties() -> dict[str, str]:
@@ -109,6 +122,36 @@ def current_revision() -> str | None:
         return CURRENT.resolve(strict=True).name
     except OSError:
         return None
+
+
+def read_json_object(path: Path) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def read_supervisor_state() -> dict:
+    value = read_json_object(STATE_DIR / "supervisor-state.json")
+    if not value or value.get("schema") != "rigos.miner-supervisor-state/v1":
+        return {
+            "schema": "rigos.miner-supervisor-state/v1",
+            "fault_key": None,
+            "fault_streak": 0,
+            "last_restart_epoch": None,
+            "restart_epochs": [],
+            "last_accepted_shares": None,
+            "last_rejected_shares": None,
+        }
+    if not isinstance(value.get("restart_epochs"), list):
+        value["restart_epochs"] = []
+    return value
+
+
+def write_supervisor_state(value: dict) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_json(STATE_DIR / "supervisor-state.json", value)
 
 
 def runtime_revision() -> tuple[str | None, str | None]:
@@ -358,6 +401,16 @@ def summary_metrics(summary: dict) -> dict:
     }
 
 
+def rejected_share_growth(metrics: dict | None, supervisor: dict) -> bool:
+    if metrics is None:
+        return False
+    rejected = metrics.get("rejected_shares")
+    if not isinstance(rejected, int):
+        return False
+    previous = supervisor.get("last_rejected_shares")
+    return isinstance(previous, int) and rejected > previous
+
+
 def classify(
     properties: dict[str, str],
     proc_state: str | None,
@@ -369,6 +422,7 @@ def classify(
     api_error: str | None,
     journal: str,
     journal_available: bool,
+    supervisor: dict,
 ) -> tuple[str, str | None]:
     if properties.get("ActiveState") != "active" or properties.get("SubState") != "running":
         return "failed", "miner_unit_not_running"
@@ -384,6 +438,8 @@ def classify(
         return "blocked", "runtime_revision_mismatch"
 
     if api_metrics is not None:
+        if rejected_share_growth(api_metrics, supervisor):
+            return "degraded", "rejected_shares_increased"
         current_hashrate = api_metrics.get("hashrate_10s")
         current_hashrate_positive = (
             isinstance(current_hashrate, (int, float))
@@ -408,6 +464,86 @@ def classify(
     return journal_fallback_state(journal, active_for, api_error)
 
 
+def actionable_fault(state: str, reason: str | None) -> bool:
+    if state == "waiting_external":
+        return False
+    if state == "blocked":
+        return False
+    return reason in {
+        "miner_unit_not_running",
+        "miner_process_unavailable",
+        "current_hashrate_unavailable",
+        "no_current_hashrate_from_api",
+        "rejected_shares_increased",
+        "miner_api_unavailable",
+        "api_unavailable",
+    }
+
+
+def update_fault_streak(supervisor: dict, state: str, reason: str | None) -> tuple[dict, str]:
+    key = f"{state}:{reason or 'none'}"
+    if actionable_fault(state, reason):
+        if supervisor.get("fault_key") == key:
+            supervisor["fault_streak"] = int(supervisor.get("fault_streak") or 0) + 1
+        else:
+            supervisor["fault_key"] = key
+            supervisor["fault_streak"] = 1
+    else:
+        supervisor["fault_key"] = None
+        supervisor["fault_streak"] = 0
+    return supervisor, key
+
+
+def remediation_decision(supervisor: dict, state: str, reason: str | None) -> tuple[str, str | None]:
+    if not actionable_fault(state, reason):
+        return "none", "not_actionable"
+    streak = int(supervisor.get("fault_streak") or 0)
+    if streak < FAULT_STREAK_THRESHOLD:
+        return "observe", "fault_streak_below_threshold"
+    now = now_epoch()
+    last_restart = supervisor.get("last_restart_epoch")
+    if isinstance(last_restart, int) and now - last_restart < RESTART_COOLDOWN_SECONDS:
+        return "cooldown", "restart_cooldown_active"
+    restart_epochs = [
+        value for value in supervisor.get("restart_epochs", [])
+        if isinstance(value, int) and now - value < RESTART_BUDGET_WINDOW_SECONDS
+    ]
+    supervisor["restart_epochs"] = restart_epochs
+    if len(restart_epochs) >= RESTART_BUDGET_MAX:
+        return "degraded_budget_exhausted", "restart_budget_exhausted"
+    return "restart_miner", None
+
+
+def apply_remediation(supervisor: dict, action: str) -> tuple[str, str | None]:
+    if action != "restart_miner":
+        return action, None
+    result = systemctl_action("restart", "rigos-miner.service")
+    if result.returncode != 0:
+        return "restart_failed", "systemctl_restart_failed"
+    now = now_epoch()
+    epochs = [
+        value for value in supervisor.get("restart_epochs", [])
+        if isinstance(value, int) and now - value < RESTART_BUDGET_WINDOW_SECONDS
+    ]
+    epochs.append(now)
+    supervisor["restart_epochs"] = epochs
+    supervisor["last_restart_epoch"] = now
+    supervisor["fault_streak"] = 0
+    supervisor["fault_key"] = None
+    return "restart_miner", None
+
+
+def update_observed_counters(supervisor: dict, metrics: dict | None) -> None:
+    if metrics is None:
+        return
+    accepted = metrics.get("accepted_shares")
+    rejected = metrics.get("rejected_shares")
+    if isinstance(accepted, int):
+        supervisor["last_accepted_shares"] = accepted
+    if isinstance(rejected, int):
+        supervisor["last_rejected_shares"] = rejected
+
+
 def main() -> int:
     try:
         boot_id = BOOT_ID.read_text(encoding="ascii").strip()
@@ -424,6 +560,7 @@ def main() -> int:
         rendered_outcome, rendered_revision = runtime_revision()
         summary, api_error = fetch_api_summary()
         metrics = summary_metrics(summary) if summary is not None else None
+        supervisor = read_supervisor_state()
         journal, journal_available = recent_journal()
         journal_accepted, journal_rejected = last_share_counts(journal)
         state, reason = classify(
@@ -437,7 +574,15 @@ def main() -> int:
             api_error,
             journal,
             journal_available,
+            supervisor,
         )
+        supervisor, fault_key = update_fault_streak(supervisor, state, reason)
+        remediation_action, remediation_reason = remediation_decision(supervisor, state, reason)
+        remediation_action, remediation_apply_error = apply_remediation(supervisor, remediation_action)
+        if remediation_apply_error is not None:
+            remediation_reason = remediation_apply_error
+        update_observed_counters(supervisor, metrics)
+        write_supervisor_state(supervisor)
         lowered_journal = journal.lower()
         accepted = metrics.get("accepted_shares") if metrics is not None else journal_accepted
         rejected = metrics.get("rejected_shares") if metrics is not None else journal_rejected
@@ -481,7 +626,19 @@ def main() -> int:
                 "accepted_shares": accepted,
                 "rejected_shares": rejected,
             },
-            "remediation": "observe_only",
+            "supervisor": {
+                "fault_key": fault_key if actionable_fault(state, reason) else None,
+                "fault_streak": supervisor.get("fault_streak"),
+                "restart_budget_max": RESTART_BUDGET_MAX,
+                "restart_budget_window_seconds": RESTART_BUDGET_WINDOW_SECONDS,
+                "restart_cooldown_seconds": RESTART_COOLDOWN_SECONDS,
+                "restart_epochs": supervisor.get("restart_epochs", []),
+                "last_restart_epoch": supervisor.get("last_restart_epoch"),
+            },
+            "remediation": {
+                "action": remediation_action,
+                "reason": remediation_reason,
+            },
         }
         atomic_json(STATUS, value)
         print(json.dumps({
@@ -489,7 +646,7 @@ def main() -> int:
             "state": state,
             "reason": reason,
             "evidence_source": value["evidence"]["source"],
-            "remediation": "observe_only",
+            "remediation": remediation_action,
         }, sort_keys=True))
         return 0
     except (OSError, UnicodeError, RuntimeError, subprocess.SubprocessError, ValueError) as error:

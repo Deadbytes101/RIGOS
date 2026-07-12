@@ -205,6 +205,7 @@ class MinerHealthApiTests(unittest.TestCase):
                         None,
                         "",
                         True,
+                        {"schema": "rigos.miner-supervisor-state/v1"},
                     )
                     self.assertEqual((state, reason), ("ready", None))
 
@@ -227,6 +228,7 @@ class MinerHealthApiTests(unittest.TestCase):
                         None,
                         "",
                         True,
+                        {"schema": "rigos.miner-supervisor-state/v1"},
                     )
                     self.assertEqual((state, reason), ("waiting_external", "pool_or_network_unavailable"))
 
@@ -241,6 +243,7 @@ class MinerHealthApiTests(unittest.TestCase):
                         "api_unavailable",
                         "cpu accepted (43/0) diff 10000",
                         True,
+                        {"schema": "rigos.miner-supervisor-state/v1"},
                     )
                     self.assertEqual((state, reason), ("ready", None))
 
@@ -255,6 +258,7 @@ class MinerHealthApiTests(unittest.TestCase):
                         "api_unavailable",
                         "",
                         True,
+                        {"schema": "rigos.miner-supervisor-state/v1"},
                     )
                     self.assertEqual((state, reason), ("degraded", "api_unavailable"))
             finally:

@@ -160,6 +160,10 @@ sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-authority"
 python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
+for command in 'health inspect' 'state inspect' 'network inspect'; do
+  "$temporary/root/usr/lib/rigos/rigosctl" $command --help >/dev/null \
+    || die "rigosctl command is missing: $command"
+done
 rigos_utility_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigos-utility)"
 [[ "$rigos_utility_path" == "$temporary/root/usr/local/sbin/rigos-utility" && -x "$rigos_utility_path" ]] || die 'rigos-utility is not executable in the appliance PATH'
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
@@ -249,6 +253,10 @@ grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/l
 grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/local/bin/rigosctl" || die 'rigosctl does not default to the public runtime view'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-miner-health" ]] || die 'miner health observer is missing'
 grep -Fq 'OnUnitActiveSec=1min' "$temporary/root/etc/systemd/system/rigos-miner-health.timer" || die 'miner health timer cadence is missing'
+grep -Fq 'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health' "$temporary/root/etc/systemd/system/rigos-miner-health.service" || die 'miner supervisor persistent state path is missing'
+grep -Fq 'RESTART_BUDGET_MAX' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor restart budget is missing'
+grep -Fq 'RESTART_COOLDOWN_SECONDS' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor cooldown is missing'
+grep -Fq 'systemctl_action("restart", "rigos-miner.service")' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor bounded restart action is missing'
 grep -Fq 'Restart=on-failure' "$temporary/root/etc/systemd/system/rigos-miner.service.d/stability.conf" || die 'bounded miner restart policy is missing'
 grep -Fq 'StartLimitBurst=5' "$temporary/root/etc/systemd/system/rigos-miner.service.d/stability.conf" || die 'miner crash-loop ceiling is missing'
 [[ -f "$temporary/root/etc/systemd/system/rigos-profile-apply.service" ]] || die 'profile apply service is missing'

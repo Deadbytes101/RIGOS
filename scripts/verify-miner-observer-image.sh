@@ -68,6 +68,7 @@ module = importlib.util.module_from_spec(spec)
 loader.exec_module(module)
 
 properties = {"ActiveState": "active", "SubState": "running", "MainPID": "123"}
+supervisor = {"schema": "rigos.miner-supervisor-state/v1"}
 
 def classify(summary):
     metrics = module.summary_metrics(summary)
@@ -82,6 +83,7 @@ def classify(summary):
         None,
         "",
         True,
+        supervisor,
     )
 
 stale_metrics, stale_state = classify({
@@ -192,6 +194,7 @@ authority_error_state = module.classify(
     "api_token_missing",
     "cpu accepted (43/0) diff 10000",
     True,
+    supervisor,
 )
 if authority_error_state != ("degraded", "api_token_missing"):
     raise SystemExit(f"extracted observer hides API authority failure: {authority_error_state}")
@@ -207,6 +210,7 @@ transient_state = module.classify(
     "api_unavailable",
     "cpu accepted (43/0) diff 10000",
     True,
+    supervisor,
 )
 if transient_state != ("ready", None):
     raise SystemExit(f"extracted observer rejects bounded transient fallback: {transient_state}")
@@ -249,6 +253,10 @@ for required in \
     'if pool_connected and current_hashrate_positive:' \
     'return "degraded", "current_hashrate_unavailable"' \
     'return "degraded", "no_current_hashrate_from_api"' \
+    'RESTART_BUDGET_MAX' \
+    'RESTART_COOLDOWN_SECONDS' \
+    '"restart_budget_exhausted"' \
+    'systemctl_action("restart", "rigos-miner.service")' \
     'if api_error not in (None, "api_unavailable"):' \
     'def latest_journal_signal(text: str) -> str | None:' \
     '"latest_journal_signal": latest_journal_signal(journal)' \
@@ -263,7 +271,7 @@ for required in \
     'RestrictAddressFamilies=AF_UNIX AF_INET' \
     'IPAddressDeny=any' \
     'IPAddressAllow=127.0.0.0/8' \
-    'ReadWritePaths=/run/rigos'
+    'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health'
 do
     grep -Fqx "$required" "$service" || die "miner observer sandbox contract is missing: $required"
 done

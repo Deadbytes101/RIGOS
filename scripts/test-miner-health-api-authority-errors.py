@@ -31,6 +31,7 @@ def classify(module, api_error: str | None, journal: str, journal_available: boo
         api_error,
         journal,
         journal_available,
+        {"schema": "rigos.miner-supervisor-state/v1"},
     )
 
 

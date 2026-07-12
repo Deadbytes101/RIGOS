@@ -30,6 +30,7 @@ def classify(module, metrics):
         None,
         "",
         True,
+        {"schema": "rigos.miner-supervisor-state/v1"},
     )
 
 

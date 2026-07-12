@@ -5,7 +5,7 @@
 - `v0.0.3 — Pool Freedom`: templates, arbitrary compatible Stratum, TLS, failover, XMRig config compilation/import.
 - `v0.0.4 — USB Appliance`: hybrid BIOS/UEFI image, immutable A/B roots, persistent state, flash workflow, no internal installation.
 
-Current preview: `0.0.4-alpha.22`. It is not an RC until all mandatory physical
+Current preview: `0.0.4-alpha.23`. It is not an RC until all mandatory physical
 boot, disk-safety, persistence, old-CPU, pool, power-loss and wear gates pass.
 See [Finalization Plan](finalization-plan.md) for the release-hardening
 workstreams and final acceptance checklist.

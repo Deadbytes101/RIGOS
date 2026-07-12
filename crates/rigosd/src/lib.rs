@@ -11,7 +11,14 @@ use rigos_schema::{
 };
 use rigos_xmrig::{MINER_SCHEMA, XmrigBackend};
 use serde::Serialize;
-use std::{collections::BTreeMap, fs, path::PathBuf, process::ExitCode, sync::OnceLock};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+    sync::OnceLock,
+};
 
 #[derive(Parser)]
 #[command(version = version_text(), about = "RIGOS local read-only inspector")]
@@ -33,6 +40,18 @@ enum Command {
     Miner {
         #[command(subcommand)]
         command: MinerCommand,
+    },
+    Health {
+        #[command(subcommand)]
+        command: InspectCommand,
+    },
+    State {
+        #[command(subcommand)]
+        command: InspectCommand,
+    },
+    Network {
+        #[command(subcommand)]
+        command: InspectCommand,
     },
     Doctor(OutputArgs),
     About(OutputArgs),
@@ -134,6 +153,29 @@ fn execute(cli: Cli) -> ExitCode {
             let miner = backend.discover(&ctx);
             let mut data = doctor(&machine.diagnostics, &miner.diagnostics);
             data.checks.push(load_huge_page_check());
+            data.checks.push(load_status_check(
+                "state.ready",
+                state_status_path(),
+                "rigos.state-status/v1",
+                "outcome",
+                &["ready"],
+            ));
+            data.checks.push(load_status_check(
+                "runtime.activation",
+                activation_status_path(),
+                "rigos.activation-status/v1",
+                "outcome",
+                &["ready"],
+            ));
+            data.checks.push(load_status_check(
+                "miner.health",
+                miner_health_status_path(),
+                "rigos.miner-health-status/v1",
+                "state",
+                &["ready", "warming_up", "waiting_external"],
+            ));
+            data.checks.push(network_check());
+            data.checks.push(log_bounds_check());
             data.checks.sort_by(|left, right| left.id.cmp(&right.id));
             let diagnostics: Vec<Diagnostic> = machine
                 .diagnostics
@@ -188,6 +230,30 @@ fn execute(cli: Cli) -> ExitCode {
                 ),
             ),
         },
+        Command::Health {
+            command: InspectCommand::Inspect(output),
+        } => render_json_status(
+            output.json,
+            "health.inspect",
+            "rigos.health-inspect/v1",
+            load_health_report(),
+        ),
+        Command::State {
+            command: InspectCommand::Inspect(output),
+        } => render_json_status(
+            output.json,
+            "state.inspect",
+            "rigos.state-inspect/v1",
+            load_state_report(),
+        ),
+        Command::Network {
+            command: InspectCommand::Inspect(output),
+        } => render_json_status(
+            output.json,
+            "network.inspect",
+            "rigos.network-inspect/v1",
+            load_network_report(),
+        ),
     }
 }
 
@@ -207,6 +273,202 @@ fn current_revision_path() -> PathBuf {
     std::env::var_os("RIGOS_CURRENT_REVISION_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/var/lib/rigos/current"))
+}
+
+fn runtime_path() -> PathBuf {
+    std::env::var_os("RIGOS_RUNTIME_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run/rigos"))
+}
+
+fn state_root_path() -> PathBuf {
+    std::env::var_os("RIGOS_STATE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/var/lib/rigos"))
+}
+
+fn state_status_path() -> PathBuf {
+    runtime_path().join("state-status.json")
+}
+
+fn activation_status_path() -> PathBuf {
+    state_root_path().join("activation-status.json")
+}
+
+fn runtime_config_status_path() -> PathBuf {
+    runtime_path().join("runtime-config-status.json")
+}
+
+fn miner_health_status_path() -> PathBuf {
+    runtime_path().join("miner-health-status.json")
+}
+
+fn proc_net_route_path() -> PathBuf {
+    std::env::var_os("RIGOS_PROC_NET_ROUTE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/proc/net/route"))
+}
+
+fn resolv_conf_path() -> PathBuf {
+    std::env::var_os("RIGOS_RESOLV_CONF")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/etc/resolv.conf"))
+}
+
+fn journald_config_path() -> PathBuf {
+    std::env::var_os("RIGOS_JOURNALD_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/etc/systemd/journald.conf.d/rigos.conf"))
+}
+
+fn read_json(path: &Path) -> Result<Value, String> {
+    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&content).map_err(|error| error.to_string())
+}
+
+fn read_json_or_error(path: &Path) -> Value {
+    match read_json(path) {
+        Ok(value) => value,
+        Err(error) => json!({"error": error}),
+    }
+}
+
+fn json_string<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(Value::as_str)
+}
+
+fn load_status_check(
+    id: &str,
+    path: PathBuf,
+    schema: &str,
+    field: &str,
+    pass_values: &[&str],
+) -> DoctorCheckV1 {
+    let value = match read_json(&path) {
+        Ok(value) => value,
+        Err(error) => {
+            return DoctorCheckV1 {
+                id: id.into(),
+                status: "fail".into(),
+                summary: format!("status unavailable: {error}"),
+            };
+        }
+    };
+    if json_string(&value, "schema") != Some(schema) {
+        return DoctorCheckV1 {
+            id: id.into(),
+            status: "fail".into(),
+            summary: "schema mismatch".into(),
+        };
+    }
+    let observed = json_string(&value, field).unwrap_or("unknown");
+    DoctorCheckV1 {
+        id: id.into(),
+        status: if pass_values.contains(&observed) {
+            "pass"
+        } else {
+            "warning"
+        }
+        .into(),
+        summary: format!("{field}={observed}"),
+    }
+}
+
+fn default_route_present(route: &str) -> bool {
+    route.lines().skip(1).any(|line| {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        fields.get(1) == Some(&"00000000")
+    })
+}
+
+fn dns_configured(resolv: &str) -> bool {
+    resolv
+        .lines()
+        .map(str::trim)
+        .any(|line| line.starts_with("nameserver "))
+}
+
+fn load_network_report() -> Result<Value, String> {
+    let route = fs::read_to_string(proc_net_route_path()).unwrap_or_default();
+    let resolv = fs::read_to_string(resolv_conf_path()).unwrap_or_default();
+    let default_route = default_route_present(&route);
+    let dns = dns_configured(&resolv);
+    Ok(json!({
+        "schema": "rigos.network-inspect/v1",
+        "default_route": default_route,
+        "dns_configured": dns,
+        "state": if default_route && dns { "ready" } else { "degraded" },
+        "reason": if default_route && dns { Value::Null } else { json!("network_or_dns_unavailable") }
+    }))
+}
+
+fn network_check() -> DoctorCheckV1 {
+    match load_network_report() {
+        Ok(value) => {
+            let state = json_string(&value, "state").unwrap_or("unknown");
+            DoctorCheckV1 {
+                id: "network.inspect".into(),
+                status: if state == "ready" { "pass" } else { "warning" }.into(),
+                summary: format!("state={state}"),
+            }
+        }
+        Err(error) => DoctorCheckV1 {
+            id: "network.inspect".into(),
+            status: "warning".into(),
+            summary: error,
+        },
+    }
+}
+
+fn log_bounds_check() -> DoctorCheckV1 {
+    let content = match fs::read_to_string(journald_config_path()) {
+        Ok(value) => value,
+        Err(error) => {
+            return DoctorCheckV1 {
+                id: "logs.bounds".into(),
+                status: "fail".into(),
+                summary: format!("journald bounds unavailable: {error}"),
+            };
+        }
+    };
+    let bounded = content.contains("RuntimeMaxUse=32M") && content.contains("Storage=volatile");
+    DoctorCheckV1 {
+        id: "logs.bounds".into(),
+        status: if bounded { "pass" } else { "fail" }.into(),
+        summary: if bounded {
+            "volatile journald capped at 32M".into()
+        } else {
+            "journald bounds missing".into()
+        },
+    }
+}
+
+fn load_health_report() -> Result<Value, String> {
+    Ok(json!({
+        "schema": "rigos.health-inspect/v1",
+        "miner": read_json_or_error(&miner_health_status_path()),
+        "network": load_network_report().unwrap_or_else(|error| json!({"error": error})),
+        "state": read_json_or_error(&state_status_path()),
+        "runtime": read_json_or_error(&runtime_config_status_path()),
+        "activation": read_json_or_error(&activation_status_path()),
+    }))
+}
+
+fn load_state_report() -> Result<Value, String> {
+    let current = fs::read_link(current_revision_path())
+        .ok()
+        .and_then(|value| {
+            value
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+        });
+    Ok(json!({
+        "schema": "rigos.state-inspect/v1",
+        "current_revision": current,
+        "state_status": read_json_or_error(&state_status_path()),
+        "activation_status": read_json_or_error(&activation_status_path()),
+        "runtime_config_status": read_json_or_error(&runtime_config_status_path()),
+    }))
 }
 
 fn load_huge_page_check() -> DoctorCheckV1 {
@@ -430,6 +692,30 @@ fn render_licenses(json: bool, value: LicensesReportV1) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn render_json_status(
+    json: bool,
+    command: &str,
+    schema: &str,
+    value: Result<Value, String>,
+) -> ExitCode {
+    match value {
+        Ok(value) => render(
+            json,
+            CliEnvelope::new(command, schema, Some(value), vec![], false),
+        ),
+        Err(message) => render::<Value>(
+            json,
+            CliEnvelope::new(
+                command,
+                schema,
+                None,
+                vec![Diagnostic::error("status.unavailable", "status", message)],
+                true,
+            ),
+        ),
+    }
+}
+
 fn render<T: Serialize + std::fmt::Debug>(json: bool, envelope: CliEnvelope<T>) -> ExitCode {
     let status = envelope.status.clone();
     if json {
@@ -462,6 +748,26 @@ mod tests {
     fn canonical_cli_alias_is_supported() {
         assert_eq!(Cli::command().name("rigosctl").get_name(), "rigosctl");
         assert_eq!(Cli::command().name("rigosd").get_name(), "rigosd");
+    }
+
+    #[test]
+    fn alpha23_headless_observability_commands_are_registered() {
+        let help = Cli::command().render_long_help().to_string();
+        for command in ["health", "state", "network", "doctor", "miner", "machine"] {
+            assert!(help.contains(command), "missing CLI command: {command}");
+        }
+    }
+
+    #[test]
+    fn network_inspection_distinguishes_route_and_dns_truth() {
+        assert!(default_route_present(
+            "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\neth0 00000000 0100000A 0003 0 0 100 00000000 0 0 0\n"
+        ));
+        assert!(!default_route_present(
+            "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\neth0 0010A8C0 00000000 0001 0 0 100 00FFFFFF 0 0 0\n"
+        ));
+        assert!(dns_configured("nameserver 1.1.1.1\n"));
+        assert!(!dns_configured("# nameserver intentionally absent\n"));
     }
 
     #[test]

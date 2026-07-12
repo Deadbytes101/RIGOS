@@ -102,6 +102,10 @@ fn run_observer(
             "build/usb/includes.chroot/usr/lib/rigos/rigos-miner-health",
         ))
         .env("RIGOS_RUNTIME_PATH", root.join("run"))
+        .env(
+            "RIGOS_MINER_HEALTH_STATE_DIR",
+            root.join("state/system/miner-health"),
+        )
         .env("RIGOS_BOOT_ID_PATH", root.join("boot-id"))
         .env("RIGOS_CURRENT_REVISION_PATH", root.join("state/current"))
         .env("RIGOS_PROC_ROOT", root.join("proc"))
@@ -245,7 +249,7 @@ fn miner_health_distinguishes_ready_external_wait_degraded_blocked_and_unknown()
     assert_eq!(ready["evidence"]["source"], "xmrig_http_api");
     assert_eq!(ready["evidence"]["accepted_shares"], 7);
     assert_eq!(ready["evidence"]["rejected_shares"], 0);
-    assert_eq!(ready["remediation"], "observe_only");
+    assert_eq!(ready["remediation"]["action"], "none");
 
     fs::write(
         &journal_fixture,
@@ -321,9 +325,10 @@ fn miner_restart_policy_is_bounded_and_observer_never_mutates_service() {
         "build/usb/includes.chroot/usr/lib/rigos/rigos-miner-health",
     ))
     .unwrap();
-    assert!(observer.contains("\"remediation\": \"observe_only\""));
+    assert!(observer.contains("RESTART_BUDGET_MAX"));
+    assert!(observer.contains("RESTART_COOLDOWN_SECONDS"));
+    assert!(observer.contains("\"restart_budget_exhausted\""));
     assert!(observer.contains("MAX_JOURNAL_LINES = 500"));
-    assert!(!observer.contains("systemctl restart"));
     assert!(!observer.contains("systemctl kill"));
 
     let service = fs::read_to_string(repo_path(
@@ -342,4 +347,88 @@ fn miner_restart_policy_is_bounded_and_observer_never_mutates_service() {
 
     let hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot")).unwrap();
     assert!(hook.contains("rigos-miner-health.timer"));
+}
+
+#[test]
+fn miner_supervisor_restarts_only_after_persistent_actionable_fault() {
+    let root = std::env::temp_dir().join(format!("rigos-miner-supervisor-{}", Uuid::new_v4()));
+    fs::create_dir_all(root.join("run")).unwrap();
+    fs::create_dir_all(root.join("state/revisions/r1")).unwrap();
+    fs::create_dir_all(root.join("proc/123")).unwrap();
+    symlink("revisions/r1", root.join("state/current")).unwrap();
+    fs::write(root.join("boot-id"), "boot-test\n").unwrap();
+    fs::write(root.join("proc/uptime"), "1000.0 0.0\n").unwrap();
+    fs::write(root.join("proc/123/stat"), "123 (xmrig) S\n").unwrap();
+    fs::write(root.join("run/xmrig-api-token"), format!("{API_TOKEN}\n")).unwrap();
+    fs::set_permissions(
+        root.join("run/xmrig-api-token"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    write_runtime_status(&root.join("run/runtime-config-status.json"), "r1");
+
+    let systemctl_fixture = root.join("systemctl.txt");
+    fs::write(
+        &systemctl_fixture,
+        concat!(
+            "ActiveState=active\n",
+            "SubState=running\n",
+            "MainPID=123\n",
+            "NRestarts=0\n",
+            "Result=success\n",
+            "ExecMainStatus=0\n",
+            "ActiveEnterTimestampMonotonic=100000000\n"
+        ),
+    )
+    .unwrap();
+    let restart_log = root.join("restart.log");
+    let systemctl = root.join("systemctl");
+    write_executable(
+        &systemctl,
+        &format!(
+            "#!/bin/sh\nif [ \"$1\" = restart ]; then echo restart >> '{}'; exit 0; fi\ncat \"$RIGOS_SYSTEMCTL_FIXTURE\"\n",
+            restart_log.display()
+        ),
+    );
+    let journal_fixture = root.join("journal.txt");
+    fs::write(&journal_fixture, "miner    speed stale\n").unwrap();
+    let journalctl = root.join("journalctl");
+    write_executable(&journalctl, "#!/bin/sh\ncat \"$RIGOS_JOURNAL_FIXTURE\"\n");
+
+    let first = run_observer(
+        &root,
+        &systemctl,
+        &journalctl,
+        &systemctl_fixture,
+        &journal_fixture,
+        Some(missing_current_hashrate_summary()),
+    );
+    assert_eq!(first["state"], "degraded");
+    assert_eq!(first["remediation"]["action"], "observe");
+    assert!(!restart_log.exists());
+
+    let second = run_observer(
+        &root,
+        &systemctl,
+        &journalctl,
+        &systemctl_fixture,
+        &journal_fixture,
+        Some(missing_current_hashrate_summary()),
+    );
+    assert_eq!(second["state"], "degraded");
+    assert_eq!(second["remediation"]["action"], "restart_miner");
+    assert_eq!(fs::read_to_string(&restart_log).unwrap().lines().count(), 1);
+
+    let waiting = run_observer(
+        &root,
+        &systemctl,
+        &journalctl,
+        &systemctl_fixture,
+        &journal_fixture,
+        Some(disconnected_summary()),
+    );
+    assert_eq!(waiting["state"], "waiting_external");
+    assert_eq!(waiting["remediation"]["action"], "none");
+
+    let _ = fs::remove_dir_all(root);
 }
