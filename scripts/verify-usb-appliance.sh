@@ -256,6 +256,8 @@ grep -Fq 'ExecCondition=/usr/lib/rigos/rigos-config needs-activation' "$temporar
 grep -Fqx 'ConditionKernelCommandLine=!rigos.utility=1' "$temporary/root/etc/systemd/system/rigos-firstboot.service" || die 'firstboot is not suppressed during utility boot mode'
 [[ -L "$temporary/root/etc/systemd/system/multi-user.target.wants/rigos-boot-utility.service" ]] || die 'utility console service is not enabled'
 grep -Fqx 'ConditionKernelCommandLine=rigos.utility=1' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console is not bound to utility boot mode'
+if grep -Fqx 'Conflicts=rigos-firstboot.service' "$temporary/root/etc/systemd/system/rigos-boot-utility.service"; then die 'utility console conflicts firstboot out before condition evaluation'; fi
+if grep -Fqx 'Conflicts=rigos-boot-utility.service' "$temporary/root/etc/systemd/system/rigos-firstboot.service"; then die 'firstboot has a reciprocal utility conflict'; fi
 grep -Fqx 'ExecStart=/usr/local/sbin/rigos-utility' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console does not launch rigos-utility'
 grep -Fqx 'StandardInput=tty-force' "$temporary/root/etc/systemd/system/rigos-boot-utility.service" || die 'utility console does not acquire tty1'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-recovery-access' "$temporary/root/etc/systemd/system/rigos-recovery-access.service" || die 'local recovery access phase is missing'

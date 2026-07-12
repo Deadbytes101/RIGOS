@@ -41,6 +41,7 @@ unsquashfs -no-progress -d "$temporary/squash" "$squashfs" \
     usr/local/sbin/rigos-firstboot \
     usr/lib/rigos/rigos-firstboot-whiptail \
     etc/systemd/system/rigos-firstboot.service \
+    etc/systemd/system/rigos-boot-utility.service \
     etc/systemd/system/rigos-firstboot.service.d/2009-console-theme.conf \
     etc/systemd/system/getty@tty1.service.d/rigos-firstboot.conf \
     etc/systemd/system/multi-user.target.wants/rigos-firstboot.service \
@@ -84,6 +85,12 @@ done
 
 if grep -Fq 'rigos-profile-apply.service' "$service"; then
     die 'firstboot still waits on profile apply before initial commit'
+fi
+if grep -Fqx 'Conflicts=rigos-firstboot.service' "$root/etc/systemd/system/rigos-boot-utility.service" 2>/dev/null; then
+    die 'utility service can conflict firstboot out before condition evaluation'
+fi
+if grep -Fqx 'Conflicts=rigos-boot-utility.service' "$service"; then
+    die 'firstboot service has a reciprocal utility conflict'
 fi
 for required in \
     'Wants=rigos-firstboot.service' \

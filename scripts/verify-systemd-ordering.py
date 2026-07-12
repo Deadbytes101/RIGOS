@@ -253,10 +253,13 @@ def verify(units):
         {"rigos-recovery-access.service", "rigos-state-ready.service"},
         "utility console must request recovery and state readiness",
     )
-    includes(
-        utility.words("Unit", "Conflicts"),
-        {"rigos-firstboot.service"},
-        "utility console must not share tty1 with firstboot",
+    require(
+        "rigos-firstboot.service" not in utility.words("Unit", "Conflicts"),
+        "utility console must not conflict firstboot out before conditions are evaluated",
+    )
+    require(
+        "rigos-boot-utility.service" not in firstboot.words("Unit", "Conflicts"),
+        "firstboot must not use a reciprocal conflict against utility mode",
     )
     require(
         utility.scalar("Service", "ExecStart") == "/usr/local/sbin/rigos-utility",
@@ -270,6 +273,22 @@ def verify(units):
         utility.scalar("Service", "TTYPath") == "/dev/tty1",
         "utility console must use tty1",
     )
+
+    reject_enabled_target_conflicts(units, "multi-user.target")
+
+
+def reject_enabled_target_conflicts(units, target):
+    pulled = {
+        name
+        for name, unit in units.items()
+        if target in unit.words("Install", "WantedBy")
+    }
+    for name in sorted(pulled):
+        for conflict in sorted(units[name].words("Unit", "Conflicts")):
+            if conflict in pulled:
+                raise ValueError(
+                    f"{name} conflicts with {conflict} while both are pulled into {target}"
+                )
 
 
 def graph_for(units):

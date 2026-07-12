@@ -3,7 +3,6 @@ Description=RIGOS local boot utility console
 ConditionKernelCommandLine=rigos.utility=1
 After=rigos-recovery-access.service rigos-state-ready.service
 Wants=rigos-recovery-access.service rigos-state-ready.service
-Conflicts=rigos-firstboot.service
 Before=getty@tty1.service
 
 [Service]

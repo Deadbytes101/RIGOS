@@ -25,6 +25,77 @@ fn directive_tokens<'a>(unit: &'a str, prefix: &str) -> BTreeSet<&'a str> {
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum BootMode {
+    Normal,
+    Utility,
+}
+
+#[derive(Clone, Copy)]
+enum Configuration {
+    Missing,
+    Present,
+}
+
+#[derive(Debug)]
+struct Transaction {
+    firstboot_requested: bool,
+    firstboot_condition_passed: bool,
+    firstboot_execcondition_passed: bool,
+    utility_requested: bool,
+    utility_condition_passed: bool,
+    getty_waits_for_firstboot: bool,
+    getty_waits_for_utility: bool,
+}
+
+fn condition_passes(unit: &str, mode: BootMode) -> bool {
+    let conditions = directive_tokens(unit, "ConditionKernelCommandLine=");
+    if conditions.contains("rigos.utility=1") {
+        return matches!(mode, BootMode::Utility);
+    }
+    if conditions.contains("!rigos.utility=1") {
+        return matches!(mode, BootMode::Normal);
+    }
+    true
+}
+
+fn simulate_initial_tty1_transaction(mode: BootMode, configuration: Configuration) -> Transaction {
+    let firstboot = unit("rigos-firstboot.service");
+    let utility = unit("rigos-boot-utility.service");
+    let getty_dropin = system_file("getty@tty1.service.d/rigos-firstboot.conf");
+
+    let firstboot_enabled = true;
+    let utility_enabled = true;
+    let mut firstboot_requested = firstboot_enabled
+        || directive_tokens(&getty_dropin, "Wants=").contains("rigos-firstboot.service");
+    let utility_requested = utility_enabled;
+
+    if firstboot_requested
+        && utility_requested
+        && directive_tokens(&utility, "Conflicts=").contains("rigos-firstboot.service")
+    {
+        firstboot_requested = false;
+    }
+
+    let firstboot_condition_passed = firstboot_requested && condition_passes(&firstboot, mode);
+    let firstboot_execcondition_passed =
+        firstboot_condition_passed && matches!(configuration, Configuration::Missing);
+    let utility_condition_passed = utility_requested && condition_passes(&utility, mode);
+
+    Transaction {
+        firstboot_requested,
+        firstboot_condition_passed,
+        firstboot_execcondition_passed,
+        utility_requested,
+        utility_condition_passed,
+        getty_waits_for_firstboot: directive_tokens(&firstboot, "Before=")
+            .contains("getty@tty1.service")
+            && directive_tokens(&getty_dropin, "After=").contains("rigos-firstboot.service"),
+        getty_waits_for_utility: directive_tokens(&utility, "Before=")
+            .contains("getty@tty1.service"),
+    }
+}
+
 #[test]
 fn firstboot_releases_tty1_to_getty_after_exit() {
     let unit = unit("rigos-firstboot.service");
@@ -248,8 +319,12 @@ fn utility_boot_mode_owns_tty_without_competing_with_firstboot() {
         "utility mode must be selected by an explicit kernel argument"
     );
     assert!(
-        directive_tokens(&utility, "Conflicts=").contains("rigos-firstboot.service"),
-        "utility mode must not share tty1 with firstboot"
+        !directive_tokens(&utility, "Conflicts=").contains("rigos-firstboot.service"),
+        "utility mode must not conflict firstboot out of the initial transaction before conditions run"
+    );
+    assert!(
+        !directive_tokens(&firstboot, "Conflicts=").contains("rigos-boot-utility.service"),
+        "firstboot must not use a reciprocal conflict against utility mode"
     );
     assert!(
         utility
@@ -264,6 +339,39 @@ fn utility_boot_mode_owns_tty_without_competing_with_firstboot() {
             && utility.lines().any(|line| line == "TTYPath=/dev/tty1"),
         "utility mode must own tty1"
     );
+}
+
+#[test]
+fn initial_boot_transaction_keeps_mode_selection_in_conditions_not_conflicts() {
+    let normal_no_config =
+        simulate_initial_tty1_transaction(BootMode::Normal, Configuration::Missing);
+    assert!(
+        normal_no_config.firstboot_requested,
+        "normal unconfigured boot must queue firstboot"
+    );
+    assert!(normal_no_config.firstboot_condition_passed);
+    assert!(normal_no_config.firstboot_execcondition_passed);
+    assert!(normal_no_config.utility_requested);
+    assert!(!normal_no_config.utility_condition_passed);
+    assert!(normal_no_config.getty_waits_for_firstboot);
+
+    let utility_boot = simulate_initial_tty1_transaction(BootMode::Utility, Configuration::Missing);
+    assert!(utility_boot.utility_requested);
+    assert!(utility_boot.utility_condition_passed);
+    assert!(utility_boot.firstboot_requested);
+    assert!(!utility_boot.firstboot_condition_passed);
+    assert!(utility_boot.getty_waits_for_utility);
+
+    let configured_normal =
+        simulate_initial_tty1_transaction(BootMode::Normal, Configuration::Present);
+    assert!(configured_normal.firstboot_requested);
+    assert!(configured_normal.firstboot_condition_passed);
+    assert!(
+        !configured_normal.firstboot_execcondition_passed,
+        "configured normal boot must skip firstboot through ExecCondition, not through transaction loss"
+    );
+    assert!(!configured_normal.utility_condition_passed);
+    assert!(configured_normal.getty_waits_for_firstboot);
 }
 
 #[test]
@@ -303,7 +411,7 @@ fn primary_usb_grub_uses_rigos_theme_with_text_fallback() {
     for required in [
         "title-text: \"RIGOS\"",
         "USB COMPUTE APPLIANCE",
-        "0.0.4-alpha.21",
+        "0.0.4-alpha.22",
         "ENTER BOOT",
         "selected_item_pixmap_style = \"select_*.png\"",
     ] {
