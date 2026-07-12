@@ -1,0 +1,30 @@
+RIGOS BRANDING PACK
+===================
+
+ART DIRECTION
+-------------
+Raw PCB / mining-appliance geometry.
+Hand-built raster geometry; no generative image model output.
+Transparent PNGs. Flat colors only. No gradients. No 3D.
+
+PALETTE
+-------
+INK       #111214
+OFFWHITE  #F0EEE2
+BLUE      #1874FF
+AMBER     #FFA61C
+
+OPTIONS
+-------
+1. socket-core  -- default README wordmark; strongest machine/socket identity.
+2. forge-frame  -- denser industrial chassis treatment.
+3. vga-chaos    -- coarse VGA/pixel brutalism.
+
+FILES
+-----
+rigos-logo-<option>.png
+rigos-icon-<option>-512.png
+rigos-icon-<option>-128.png
+rigos-icon-<option>-32.png
+
+The 32 px files are intended for favicon use. The 512 px files are source icons.
