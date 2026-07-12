@@ -1,0 +1,510 @@
+#!/usr/bin/env python3
+"""RIGOS short operator command.
+
+This command is intentionally a thin operator surface. It delegates runtime
+authority to rigosctl, systemd and journalctl, and constructs operator JSON
+from explicit allowlists only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+
+RIGOSCTL = Path("/usr/local/bin/rigosctl")
+MINER_UNIT = "rigos-miner.service"
+FIRSTBOOT_UNIT = "rigos-firstboot.service"
+CMDLINE = Path("/proc/cmdline")
+RELEASE = Path("/etc/rigos-release")
+FIRSTBOOT_STATUS = Path("/var/lib/rigos/firstboot-ui-status.json")
+
+OPERATOR_STATUS_SCHEMA = "rigos.operator-status/v1"
+OPERATOR_HEALTH_SCHEMA = "rigos.operator-health/v1"
+OPERATOR_CONTRACT = (
+    "rigosctl health inspect --json",
+    "rigosctl state inspect --json",
+)
+
+HEALTH_EXIT = {
+    "healthy": 0,
+    "ready": 0,
+    "starting": 1,
+    "warming_up": 1,
+    "waiting_external": 1,
+    "degraded": 1,
+    "recovering": 1,
+    "failed": 2,
+    "blocked": 2,
+    "not_configured": 3,
+    "unknown": 4,
+    "unavailable": 4,
+}
+
+
+class RigError(RuntimeError):
+    def __init__(self, message: str, code: int = 4) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def run(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def run_passthrough(args: list[str]) -> int:
+    return subprocess.run(args, check=False).returncode
+
+
+def is_root() -> bool:
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def require_root(action: str) -> None:
+    if not is_root():
+        raise RigError(f"{action} requires root privileges; run: sudo rig {action}", 4)
+
+
+def load_release() -> dict[str, str]:
+    fields: dict[str, str] = {}
+    try:
+        for line in RELEASE.read_text(encoding="utf-8").splitlines():
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            fields[key] = value.strip().strip('"')
+    except FileNotFoundError:
+        pass
+    return fields
+
+
+def capture_json(args: list[str]) -> tuple[dict[str, Any] | None, str | None]:
+    completed = run(args)
+    if completed.returncode != 0:
+        return None, completed.stderr.strip() or completed.stdout.strip() or f"{args[0]} exited {completed.returncode}"
+    try:
+        decoded = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        return None, f"invalid JSON from {args[0]}: {error}"
+    return decoded if isinstance(decoded, dict) else {}, None
+
+
+def rigosctl_json(*args: str) -> tuple[dict[str, Any] | None, str | None]:
+    return capture_json([str(RIGOSCTL), *args, "--json"])
+
+
+def envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return {}
+    value = envelope.get("data")
+    return value if isinstance(value, dict) else {}
+
+
+def safe_get(value: Any, *path: str, default: Any = None) -> Any:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return default if current is None else current
+
+
+def load_operator_snapshot() -> dict[str, Any]:
+    release = load_release()
+    health, health_error = rigosctl_json("health", "inspect")
+    state, state_error = rigosctl_json("state", "inspect")
+    network, network_error = rigosctl_json("network", "inspect")
+    health_data = envelope_data(health)
+    state_data = envelope_data(state)
+    network_data = envelope_data(network)
+    miner = safe_get(health_data, "miner", default={})
+    metrics = safe_get(miner, "api", "metrics", default={})
+    runtime = safe_get(health_data, "runtime", default={})
+
+    current_revision = (
+        safe_get(state_data, "current_revision")
+        or safe_get(miner, "config", "current_revision")
+        or safe_get(health_data, "activation", "revision")
+    )
+    miner_health = safe_get(miner, "state", default="unavailable")
+    diagnostics = []
+    for component, error in [
+        ("health", health_error),
+        ("state", state_error),
+        ("network", network_error),
+    ]:
+        if error:
+            diagnostics.append({"component": component, "reason": error})
+
+    return {
+        "schema": OPERATOR_STATUS_SCHEMA,
+        "observed_at": safe_get(health, "observed_at") or safe_get(state, "observed_at") or safe_get(network, "observed_at"),
+        "version": release.get("VERSION_ID") or safe_get(health, "meta", "image_version") or "unknown",
+        "node_name": os.uname().nodename if hasattr(os, "uname") else "unknown",
+        "configuration_state": safe_get(state_data, "activation_status", "outcome", default="unavailable"),
+        "configuration_revision": current_revision,
+        "state_outcome": safe_get(state_data, "state_status", "outcome")
+        or safe_get(health_data, "state", "outcome", default="unavailable"),
+        "network_state": safe_get(network_data, "state") or safe_get(health_data, "network", "state", default="unavailable"),
+        "miner_state": safe_get(miner, "unit", "active_state", default="unavailable"),
+        "algorithm": safe_get(runtime, "algorithm") or safe_get(metrics, "algorithm", default="unknown"),
+        "redacted_pool_endpoint": safe_get(metrics, "pool", default="unknown"),
+        "hashrate_hs": safe_get(metrics, "hashrate_10s"),
+        "accepted_shares": safe_get(metrics, "accepted_shares"),
+        "rejected_shares": safe_get(metrics, "rejected_shares"),
+        "huge_pages": {
+            "used": safe_get(metrics, "hugepages_used"),
+            "total": safe_get(metrics, "hugepages_total"),
+        },
+        "health": miner_health,
+        "last_recovery_action": safe_get(miner, "remediation", "action", default="unknown"),
+        "diagnostics": diagnostics,
+    }
+
+
+def load_operator_health() -> dict[str, Any]:
+    snapshot = load_operator_snapshot()
+    return {
+        "schema": OPERATOR_HEALTH_SCHEMA,
+        "observed_at": snapshot.get("observed_at"),
+        "health": snapshot.get("health", "unavailable"),
+        "configuration_state": snapshot.get("configuration_state", "unavailable"),
+        "network_state": snapshot.get("network_state", "unavailable"),
+        "miner_state": snapshot.get("miner_state", "unavailable"),
+        "hashrate_hs": snapshot.get("hashrate_hs"),
+        "accepted_shares": snapshot.get("accepted_shares"),
+        "rejected_shares": snapshot.get("rejected_shares"),
+        "last_recovery_action": snapshot.get("last_recovery_action", "unknown"),
+        "diagnostics": snapshot.get("diagnostics", []),
+    }
+
+
+def print_status(json_output: bool) -> int:
+    snapshot = load_operator_snapshot()
+    if json_output:
+        print(json.dumps(snapshot, sort_keys=True))
+        return 0
+    print(f"version: {snapshot['version']}")
+    print(f"node: {snapshot['node_name']}")
+    print(f"state: {snapshot['state_outcome']}")
+    print(f"configuration: {snapshot['configuration_state']}")
+    print(f"revision: {snapshot['configuration_revision'] or 'none'}")
+    print(f"network: {snapshot['network_state']}")
+    print(f"miner: {snapshot['miner_state']}")
+    print(f"algorithm: {snapshot['algorithm']}")
+    print(f"pool: {snapshot['redacted_pool_endpoint']}")
+    print(f"hashrate: {snapshot['hashrate_hs'] if snapshot['hashrate_hs'] is not None else 'n/a'} H/s")
+    print(f"shares: accepted={snapshot['accepted_shares'] if snapshot['accepted_shares'] is not None else 'n/a'} rejected={snapshot['rejected_shares'] if snapshot['rejected_shares'] is not None else 'n/a'}")
+    pages = snapshot["huge_pages"]
+    print(f"huge_pages: {pages.get('used') if pages.get('used') is not None else 'n/a'}/{pages.get('total') if pages.get('total') is not None else 'n/a'}")
+    print(f"health: {snapshot['health']}")
+    print(f"last_recovery_action: {snapshot['last_recovery_action']}")
+    for diagnostic in snapshot["diagnostics"]:
+        print(f"diagnostic: {diagnostic['component']}: {diagnostic['reason']}", file=sys.stderr)
+    return 0
+
+
+def health_exit(state: str | None) -> int:
+    return HEALTH_EXIT.get(state or "unavailable", 4)
+
+
+def print_health(json_output: bool) -> int:
+    health = load_operator_health()
+    if json_output:
+        print(json.dumps(health, sort_keys=True))
+    else:
+        print(f"health: {health['health']}")
+        print(f"configuration: {health['configuration_state']}")
+        print(f"network: {health['network_state']}")
+        print(f"miner: {health['miner_state']}")
+        print(f"hashrate: {health['hashrate_hs'] if health['hashrate_hs'] is not None else 'n/a'} H/s")
+        print(f"last_recovery_action: {health['last_recovery_action']}")
+        for diagnostic in health["diagnostics"]:
+            print(f"diagnostic: {diagnostic['component']}: {diagnostic['reason']}", file=sys.stderr)
+    return health_exit(health.get("health"))
+
+
+def print_config(json_output: bool) -> int:
+    envelope, error = rigosctl_json("state", "inspect")
+    state = envelope_data(envelope)
+    summary = {
+        "schema": "rigos.operator-config/v1",
+        "observed_at": safe_get(envelope, "observed_at"),
+        "current_revision": safe_get(state, "current_revision"),
+        "state_outcome": safe_get(state, "state_status", "outcome", default="unavailable"),
+        "activation": safe_get(state, "activation_status", "outcome", default="unavailable"),
+        "runtime": safe_get(state, "runtime_config_status", "outcome", default="unavailable"),
+        "diagnostics": [{"component": "state", "reason": error}] if error else [],
+    }
+    if json_output:
+        print(json.dumps(summary, sort_keys=True))
+    else:
+        print(f"state: {summary['state_outcome']}")
+        print(f"current_revision: {summary['current_revision'] or 'none'}")
+        print(f"activation: {summary['activation']}")
+        print(f"runtime: {summary['runtime']}")
+        for diagnostic in summary["diagnostics"]:
+            print(f"diagnostic: {diagnostic['component']}: {diagnostic['reason']}", file=sys.stderr)
+    return 0 if not error else 4
+
+
+def systemctl_show(unit: str) -> dict[str, str]:
+    completed = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState", "-p", "Result", "-p", "ExecMainStatus"])
+    result: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            result[key] = value
+    if completed.returncode != 0 and completed.stderr:
+        result["Error"] = completed.stderr.strip()
+    return result
+
+
+def miner_active() -> bool:
+    completed = run(["systemctl", "is-active", "--quiet", MINER_UNIT])
+    return completed.returncode == 0
+
+
+def wait_miner_active(timeout_seconds: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if miner_active():
+            return True
+        time.sleep(0.25)
+    return miner_active()
+
+
+def print_gate_reason() -> None:
+    show = systemctl_show(MINER_UNIT)
+    print(
+        "miner postcondition failed: "
+        f"ActiveState={show.get('ActiveState', 'unknown')} "
+        f"SubState={show.get('SubState', 'unknown')} "
+        f"Result={show.get('Result', 'unknown')} "
+        f"ExecMainStatus={show.get('ExecMainStatus', 'unknown')}",
+        file=sys.stderr,
+    )
+
+
+def miner_start(action: str) -> int:
+    require_root(action)
+    completed = run(["systemctl", action, MINER_UNIT])
+    if completed.returncode != 0:
+        if completed.stderr:
+            print(completed.stderr.strip(), file=sys.stderr)
+        print_gate_reason()
+        return completed.returncode
+    if wait_miner_active():
+        print("miner: active")
+        return 0
+    print_gate_reason()
+    return 2
+
+
+def miner_stop() -> int:
+    require_root("stop")
+    if not miner_active():
+        print("miner: already stopped")
+        return 0
+    completed = run(["systemctl", "stop", MINER_UNIT])
+    if completed.returncode != 0:
+        if completed.stderr:
+            print(completed.stderr.strip(), file=sys.stderr)
+        return completed.returncode
+    if miner_active():
+        print("miner stop postcondition failed: still active", file=sys.stderr)
+        return 2
+    print("miner: stopped")
+    return 0
+
+
+def logs(args: argparse.Namespace) -> int:
+    units: list[str]
+    if args.miner:
+        units = [MINER_UNIT]
+    elif args.health:
+        units = ["rigos-miner-health.service"]
+    elif args.network:
+        units = ["NetworkManager.service", "systemd-networkd.service"]
+    elif args.boot:
+        units = [
+            "rigos-state.service",
+            "rigos-state-ready.service",
+            "rigos-recovery-access.service",
+            "rigos-firstboot.service",
+            "rigos-profile-apply.service",
+            "rigos-runtime-render.service",
+            "rigos-hugepages.service",
+        ]
+    else:
+        units = [
+            "rigos-state.service",
+            "rigos-state-ready.service",
+            "rigos-profile-apply.service",
+            "rigos-runtime-render.service",
+            "rigos-hugepages.service",
+            MINER_UNIT,
+            "rigos-miner-health.service",
+        ]
+    command = ["journalctl", "-b", "--no-pager", "-n", str(args.lines)]
+    for unit in units:
+        command.extend(["-u", unit])
+    if args.since:
+        command.extend(["--since", args.since])
+    if args.follow:
+        command.append("--follow")
+    return run_passthrough(command)
+
+
+def version() -> int:
+    if RELEASE.exists():
+        print(RELEASE.read_text(encoding="utf-8").strip())
+        return 0
+    completed = run([str(RIGOSCTL), "about"])
+    print(completed.stdout, end="")
+    if completed.stderr:
+        print(completed.stderr, file=sys.stderr, end="")
+    return completed.returncode
+
+
+def local_tty1() -> bool:
+    if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+        return False
+    try:
+        return os.ttyname(sys.stdin.fileno()) == "/dev/tty1"
+    except OSError:
+        return False
+
+
+def cmdline_has_utility() -> bool:
+    try:
+        return "rigos.utility=1" in CMDLINE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+
+
+def firstboot(args: argparse.Namespace) -> int:
+    if args.firstboot_command != "run":
+        if FIRSTBOOT_STATUS.exists():
+            print(FIRSTBOOT_STATUS.read_text(encoding="utf-8").strip())
+        else:
+            print("firstboot: no status available")
+        print("run with: sudo rig firstboot run")
+        return 0
+    require_root("firstboot run")
+    if cmdline_has_utility():
+        raise RigError("firstboot refused: utility mode is active", 4)
+    if not local_tty1():
+        raise RigError("firstboot refused: run from local tty1, not SSH or a non-local terminal", 4)
+    state, error = rigosctl_json("state", "inspect")
+    state_data = envelope_data(state)
+    if error:
+        raise RigError(f"firstboot refused: state inspect failed: {error}", 4)
+    if safe_get(state_data, "state_status", "outcome") != "ready":
+        raise RigError("firstboot refused: persistent state is not ready", 4)
+    if safe_get(state_data, "current_revision"):
+        raise RigError("firstboot refused: committed configuration already exists", 4)
+    if run(["systemctl", "is-active", "--quiet", FIRSTBOOT_UNIT]).returncode == 0:
+        raise RigError("firstboot refused: another firstboot instance is active", 4)
+    completed = run(["systemctl", "start", FIRSTBOOT_UNIT])
+    if completed.returncode != 0 and completed.stderr:
+        print(completed.stderr.strip(), file=sys.stderr)
+    return completed.returncode
+
+
+def recover(args: argparse.Namespace) -> int:
+    if args.recover_command == "status":
+        return print_config(args.json)
+    if args.recover_command == "rollback":
+        require_root("recover rollback")
+        print("rollback is not available in this alpha image", file=sys.stderr)
+        return 4
+    return print_config(args.json)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rig", description="RIGOS short operator command")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    for name in ["status", "s"]:
+        p = sub.add_parser(name)
+        p.add_argument("--json", action="store_true")
+    for name in ["health", "h"]:
+        p = sub.add_parser(name)
+        p.add_argument("--json", action="store_true")
+    p = sub.add_parser("config")
+    p.add_argument("config_command", nargs="?", choices=["status", "validate", "show"], default="status")
+    p.add_argument("--json", action="store_true")
+
+    for name in ["start", "up"]:
+        sub.add_parser(name)
+    for name in ["stop", "down"]:
+        sub.add_parser(name)
+    for name in ["restart", "r"]:
+        sub.add_parser(name)
+    for name in ["version", "help"]:
+        sub.add_parser(name)
+
+    for name in ["logs", "log"]:
+        p = sub.add_parser(name)
+        p.add_argument("--miner", action="store_true")
+        p.add_argument("--boot", action="store_true")
+        p.add_argument("--network", action="store_true")
+        p.add_argument("--health", action="store_true")
+        p.add_argument("--since")
+        p.add_argument("--follow", action="store_true")
+        p.add_argument("-n", "--lines", type=int, default=120)
+
+    p = sub.add_parser("firstboot")
+    p.add_argument("firstboot_command", nargs="?", choices=["status", "run"], default="status")
+
+    p = sub.add_parser("recover")
+    p.add_argument("recover_command", nargs="?", choices=["status", "rollback"], default="status")
+    p.add_argument("--json", action="store_true")
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    aliases = {"s": "status", "h": "health", "up": "start", "down": "stop", "r": "restart", "log": "logs"}
+    command = aliases.get(args.command, args.command)
+    try:
+        if command == "status":
+            return print_status(args.json)
+        if command == "health":
+            return print_health(args.json)
+        if command == "config":
+            return print_config(args.json)
+        if command == "logs":
+            return logs(args)
+        if command == "start":
+            return miner_start("start")
+        if command == "stop":
+            return miner_stop()
+        if command == "restart":
+            return miner_start("restart")
+        if command == "firstboot":
+            return firstboot(args)
+        if command == "recover":
+            return recover(args)
+        if command == "version":
+            return version()
+        if command == "help":
+            parser.print_help()
+            return 0
+    except RigError as error:
+        print(f"rig: {error}", file=sys.stderr)
+        return error.code
+    print("rig: unknown command", file=sys.stderr)
+    return 4
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

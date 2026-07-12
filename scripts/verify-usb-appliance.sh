@@ -138,7 +138,7 @@ unsquashfs -no-progress -d "$temporary/root" "$squashfs" \
   usr/lib/rigos/rigosd usr/lib/rigos/rigosctl \
   usr/lib/rigos/lsblk-compat usr/lib/rigos/rigos-state-init usr/lib/rigos/rigos-state-ready usr/lib/rigos/rigos-config usr/lib/rigos/rigos-performance usr/lib/rigos/rigos-lifecycle-cycles usr/lib/rigos/rigos-miner-gate usr/lib/rigos/rigos-miner-health usr/lib/rigos/rigos-runtime-render usr/lib/rigos/rigos-runtime-publish usr/lib/rigos/rigos-runtime-authority usr/lib/rigos/rigos-runtime-gate usr/lib/rigos/rigos-ssh-hostkeys usr/lib/rigos/xmrig \
   usr/lib/rigos/rigos-admin-password \
-  usr/local/bin/rigosd usr/local/bin/rigosctl \
+  usr/local/bin/rig usr/local/bin/rigosd usr/local/bin/rigosctl \
   usr/local/sbin/rigosctl usr/local/sbin/rigos-firstboot usr/local/sbin/rigos-recovery-access usr/local/sbin/rigos-state-orchestrate usr/local/sbin/rigos-utility \
   usr/share/rigos >/dev/null
 grep -Fqx "VERSION_ID=\"$image_version\"" "$temporary/root/etc/rigos-release" || die 'embedded release version mismatch'
@@ -151,6 +151,7 @@ python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-firstboot"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-recovery-access"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-state-orchestrate"
 python3 -m py_compile "$temporary/root/usr/local/sbin/rigos-utility"
+python3 -m py_compile "$temporary/root/usr/local/bin/rig"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-admin-password"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-gate"
 python3 -m py_compile "$temporary/root/usr/lib/rigos/rigos-miner-health"
@@ -160,6 +161,30 @@ sh -n "$temporary/root/usr/lib/rigos/rigos-runtime-authority"
 python3 "$script_dir/verify-systemd-ordering.py" "$temporary/root/etc/systemd/system"
 rigosctl_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rigosctl)"
 [[ "$rigosctl_path" == "$temporary/root/usr/local/sbin/rigosctl" && -x "$rigosctl_path" ]] || die 'rigosctl is not executable in the appliance PATH'
+rig_path="$(PATH="$temporary/root/usr/local/bin:$temporary/root/usr/local/sbin:$temporary/root/usr/bin" command -v rig)"
+[[ "$rig_path" == "$temporary/root/usr/local/bin/rig" && -x "$rig_path" ]] || die 'short rig operator command is not executable in the appliance PATH'
+rig_mode="$(stat -c '%a' "$temporary/root/usr/local/bin/rig")"
+[[ "$rig_mode" == 755 ]] || die "short rig operator command has unsafe mode: $rig_mode"
+grep -Fq 'RIGOS short operator command' "$temporary/root/usr/local/bin/rig" || die 'short rig operator command is missing'
+for required in \
+  'OPERATOR_STATUS_SCHEMA = "rigos.operator-status/v1"' \
+  'OPERATOR_HEALTH_SCHEMA = "rigos.operator-health/v1"' \
+  'rigosctl health inspect --json' \
+  'rigosctl state inspect --json' \
+  'journalctl' \
+  'systemctl' \
+  'def load_operator_snapshot()' \
+  'def load_operator_health()' \
+  'def require_root(action: str)' \
+  'def wait_miner_active(' \
+  'def print_gate_reason()' \
+  'firstboot refused: run from local tty1' \
+  'rollback is not available in this alpha image'
+do
+  grep -Fq "$required" "$temporary/root/usr/local/bin/rig" || die "short rig operator contract is missing: $required"
+done
+if grep -Eq 'BEGIN OPENSSH PRIVATE KEY|access-token|xmrig-api-token|token_path|private_sha256|wallet|password=' "$temporary/root/usr/local/bin/rig"; then die 'short rig operator command contains secret material or unsafe raw-field handling'; fi
+if grep -Eq 'shell=True|eval\(|\["sudo"|'\''sudo'\''' "$temporary/root/usr/local/bin/rig"; then die 'short rig operator command contains unsafe execution or hidden sudo'; fi
 for command in 'health inspect' 'state inspect' 'network inspect'; do
   "$temporary/root/usr/lib/rigos/rigosctl" $command --help >/dev/null \
     || die "rigosctl command is missing: $command"

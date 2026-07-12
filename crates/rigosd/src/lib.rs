@@ -751,7 +751,7 @@ mod tests {
     }
 
     #[test]
-    fn alpha24_headless_observability_commands_are_registered() {
+    fn alpha25_headless_observability_commands_are_registered() {
         let help = Cli::command().render_long_help().to_string();
         for command in ["health", "state", "network", "doctor", "miner", "machine"] {
             assert!(help.contains(command), "missing CLI command: {command}");

@@ -283,7 +283,11 @@ fn alpha8_runtime_authority_is_exact_and_fail_closed() {
 fn alpha8_appliance_wiring_is_explicit() {
     let hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot"))
         .expect("read appliance hook");
-    assert!(hook.contains("chmod 0755 /usr/local/bin/rigosd /usr/local/bin/rigosctl"));
+    assert!(
+        hook.contains(
+            "chmod 0755 /usr/local/bin/rig /usr/local/bin/rigosd /usr/local/bin/rigosctl"
+        )
+    );
     assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosd /usr/local/bin/rigosd"));
     assert!(!hook.contains("ln -sfn /usr/lib/rigos/rigosctl /usr/local/bin/rigosctl"));
     assert!(hook.contains("/usr/lib/rigos/rigos-runtime-publish"));

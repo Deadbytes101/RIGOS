@@ -32,7 +32,7 @@ terminal-font: "Unifont Regular 16"
         left = 8%
         width = 84%
         height = 24
-        text = "|  USB COMPUTE APPLIANCE   0.0.4-alpha.24   ALPHA CHANNEL     |"
+        text = "|  USB COMPUTE APPLIANCE   0.0.4-alpha.25   ALPHA CHANNEL     |"
         color = "#ffcc33"
         font = "Unifont Regular 16"
         align = "center"
