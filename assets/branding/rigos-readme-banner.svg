@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="620" viewBox="0 0 1800 620">
+  <rect width="1800" height="620" fill="#111214"/>
+  <rect x="10" y="10" width="1780" height="600" fill="none" stroke="#f0eee2" stroke-width="10"/>
+  <path d="M10 84H54M1746 84H1790M10 536H54M1746 536H1790" stroke="#1874ff" stroke-width="12"/>
+  <path d="M80 10V42M1720 10V42M80 578V610M1720 578V610" stroke="#ffa61c" stroke-width="12"/>
+  <image href="assets/branding/rigos-logo-forge-frame.png" x="25" y="34" width="1750" height="506" preserveAspectRatio="xMidYMid meet"/>
+  <text x="900" y="584" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="30" letter-spacing="5" fill="#f0eee2">
+    LOCAL-FIRST / CPU-ONLY / USB-NATIVE
+  </text>
+</svg>
