@@ -32,3 +32,16 @@ role as the normal USB appliance image.
 
 GitHub source zip and tar.gz files are source snapshots. They are not
 bootable images.
+
+
+PROJECT LICENSE
+---------------
+
+RIGOS project source code is dual-licensed:
+
+```text
+MIT OR GPL-2.0-or-later
+```
+
+See the repository root license files for the exact terms. Third-party
+components keep their own upstream licenses.

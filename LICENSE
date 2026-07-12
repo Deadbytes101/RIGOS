@@ -1,0 +1,21 @@
+RIGOS PROJECT LICENSE
+=====================
+
+RIGOS project source code is dual-licensed under:
+
+    MIT OR GPL-2.0-or-later
+
+You may use, copy, modify and distribute the RIGOS project source code
+under either license, at your option.
+
+License texts:
+
+    LICENSE-MIT
+    LICENSE-GPL-2.0-or-later
+
+Important component note:
+
+RIGOS packages and observes upstream components with their own licenses.
+In particular, the official XMRig component remains governed by its
+upstream GPL-3.0-or-later license and upstream donation behavior. This
+project license file does not relicense upstream third-party components.
