@@ -10,6 +10,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Deadbytes101/RIGOS/releases/tag/v0.0.4-alpha.25"><img src="https://img.shields.io/badge/release-0.0.4--alpha.25-1874ff?style=flat-square&labelColor=111214" alt="RIGOS 0.0.4-alpha.25"></a>
+  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/target-CPU--only-ffa61c?style=flat-square&labelColor=111214" alt="CPU-only"></a>
+  <a href="docs/usb-image-build.md"><img src="https://img.shields.io/badge/boot-BIOS_%2B_UEFI-1874ff?style=flat-square&labelColor=111214" alt="Legacy BIOS and UEFI"></a>
+  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/control-local--first-f0eee2?style=flat-square&labelColor=111214" alt="Local-first"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-ffa61c?style=flat-square&labelColor=111214&logo=rust&logoColor=f0eee2" alt="Rust"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT_OR_GPL--2.0--or--later-f0eee2?style=flat-square&labelColor=111214" alt="MIT OR GPL-2.0-or-later"></a>
+</p>
+
+<p align="center">
   <a href="docs/architecture.md">Architecture</a>
   &nbsp;·&nbsp;
   <a href="docs/usb-image-build.md">USB image</a>
