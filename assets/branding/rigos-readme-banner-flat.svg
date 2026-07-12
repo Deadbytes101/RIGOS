@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="620" viewBox="0 0 1800 620">
+  <rect width="1800" height="620" fill="#706c63"/>
+  <rect x="8" y="8" width="1784" height="604" fill="none" stroke="#111214" stroke-width="10"/>
+  <rect x="22" y="22" width="1756" height="576" fill="none" stroke="#f0eee2" stroke-width="4"/>
+
+  <path d="M55 110L115 60H1685L1745 110L1718 138L1668 96H132L82 138Z" fill="#111214" stroke="#f0eee2" stroke-width="8"/>
+  <path d="M55 470L115 520H1685L1745 470L1718 442L1668 484H132L82 442Z" fill="#111214" stroke="#f0eee2" stroke-width="8"/>
+  <g fill="#1874ff">
+    <rect x="120" y="52" width="18" height="54"/><rect x="390" y="52" width="18" height="54"/>
+    <rect x="955" y="52" width="18" height="54"/><rect x="1512" y="52" width="18" height="54"/>
+    <rect x="120" y="474" width="18" height="54"/><rect x="675" y="474" width="18" height="54"/>
+    <rect x="1240" y="474" width="18" height="54"/><rect x="1692" y="474" width="18" height="54"/>
+  </g>
+  <g fill="#ffa61c">
+    <rect x="680" y="52" width="18" height="54"/><rect x="1245" y="52" width="18" height="54"/>
+    <rect x="390" y="474" width="18" height="54"/><rect x="1518" y="474" width="18" height="54"/>
+  </g>
+
+  <g fill="#111214" stroke="#f0eee2" stroke-width="7">
+    <rect x="70" y="122" width="300" height="330"/>
+    <rect x="390" y="122" width="130" height="330"/>
+    <rect x="540" y="122" width="320" height="330"/>
+    <rect x="880" y="122" width="350" height="330"/>
+    <rect x="1250" y="122" width="360" height="330"/>
+  </g>
+
+  <path fill="#f0eee2" fill-rule="evenodd"
+        d="M100 150H270C318 150 340 172 340 216V260C340 294 322 314 288 320L348 422H266L188 324H168V422H100ZM168 208V272H260C273 272 280 265 280 252V228C280 215 273 208 260 208Z"/>
+  <path d="M95 380H156L192 344H245" fill="none" stroke="#1874ff" stroke-width="10"/>
+  <rect x="86" y="371" width="18" height="18" fill="#1874ff"/>
+  <rect x="236" y="335" width="18" height="18" fill="#1874ff"/>
+
+  <path d="M420 150H490V208H474V366H490V424H420V366H436V208H420Z" fill="#f0eee2"/>
+
+  <path d="M570 150H825V208H632V366H782V322H704V268H842V424H570Z" fill="#f0eee2"/>
+  <rect x="780" y="392" width="18" height="18" fill="#1874ff"/>
+  <rect x="808" y="392" width="18" height="18" fill="#1874ff"/>
+
+  <path fill="#f0eee2" fill-rule="evenodd"
+        d="M930 150H1178L1210 182V392L1178 424H930L900 394V180ZM982 206L956 232V342L982 368H1126L1152 342V232L1126 206Z"/>
+  <circle cx="1054" cy="287" r="72" fill="none" stroke="#1874ff" stroke-width="24" stroke-dasharray="72 42"/>
+  <rect x="1043" y="178" width="22" height="48" fill="#ffa61c"/>
+  <rect x="1043" y="348" width="22" height="48" fill="#ffa61c"/>
+  <rect x="925" y="276" width="48" height="22" fill="#ffa61c"/>
+  <rect x="1135" y="276" width="48" height="22" fill="#ffa61c"/>
+  <rect x="1020" y="253" width="68" height="68" fill="#111214"/>
+
+  <path d="M1280 150H1578V208H1342V255H1578V422H1280V364H1516V311H1280Z" fill="#f0eee2"/>
+  <path d="M1510 190H1564L1600 226H1650" fill="none" stroke="#1874ff" stroke-width="10"/>
+  <rect x="1502" y="181" width="18" height="18" fill="#1874ff"/>
+  <rect x="1641" y="217" width="18" height="18" fill="#1874ff"/>
+
+  <path d="M8 74H48M1752 74H1792M8 540H48M1752 540H1792" stroke="#1874ff" stroke-width="10"/>
+  <path d="M72 8V40M1728 8V40M72 580V612M1728 580V612" stroke="#ffa61c" stroke-width="12"/>
+
+  <rect x="22" y="552" width="1756" height="46" fill="#111214"/>
+  <text x="900" y="583" text-anchor="middle"
+        font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+        font-size="24" letter-spacing="5" fill="#f0eee2">LOCAL-FIRST / CPU-ONLY / USB-NATIVE</text>
+</svg>
