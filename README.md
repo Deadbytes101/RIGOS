@@ -1,70 +1,33 @@
 <p align="center">
   <a href="https://github.com/Deadbytes101/RIGOS/tree/branding/rigos-handmade-logo-pack">
-    <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS local-first CPU appliance" width="100%">
+    <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS local-first CPU appliance" width="820">
   </a>
 </p>
 
 <p align="center">
   <strong>LOCAL-FIRST CPU MINING APPLIANCE</strong><br>
-  <sub>BOOT IT. OWN IT. INSPECT IT. RUN IT.</sub>
+  <sub>NO ACCOUNT · NO ACTIVATION · NO CLOUD OWNER</sub>
+</p>
+
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/release-0.0.4--alpha.5-1874ff?style=flat-square&labelColor=111214" alt="RIGOS 0.0.4-alpha.5"></a>
+  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/target-CPU--only-ffa61c?style=flat-square&labelColor=111214" alt="CPU-only"></a>
+  <a href="docs/usb-image-build.md"><img src="https://img.shields.io/badge/boot-BIOS_%2B_UEFI-1874ff?style=flat-square&labelColor=111214" alt="Legacy BIOS and UEFI"></a>
+  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/control-local--first-f0eee2?style=flat-square&labelColor=111214" alt="Local-first"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-ffa61c?style=flat-square&labelColor=111214&logo=rust&logoColor=f0eee2" alt="Rust"></a>
+</p>
+
+<p align="center">
+  <a href="docs/architecture.md">Architecture</a>
+  &nbsp;·&nbsp;
+  <a href="docs/usb-image-build.md">USB image</a>
+  &nbsp;·&nbsp;
+  <a href="docs/product-contract.md">Product contract</a>
+  &nbsp;·&nbsp;
+  <a href="docs/physical-validation-evidence.md">Validation</a>
 </p>
 
 ---
-
-<p align="center">
-  <a href="README.md">
-    <img src="https://img.shields.io/badge/release-0.0.4--alpha.5-1874ff?style=flat-square&labelColor=111214" alt="RIGOS 0.0.4-alpha.5">
-  </a>
-  <a href="docs/product-contract.md">
-    <img src="https://img.shields.io/badge/target-CPU--only-ffa61c?style=flat-square&labelColor=111214" alt="CPU-only">
-  </a>
-  <a href="docs/usb-image-build.md">
-    <img src="https://img.shields.io/badge/boot-Legacy_BIOS_%2B_UEFI-1874ff?style=flat-square&labelColor=111214" alt="Legacy BIOS and UEFI">
-  </a>
-  <a href="docs/product-contract.md">
-    <img src="https://img.shields.io/badge/control-local--first-f0eee2?style=flat-square&labelColor=111214" alt="Local-first">
-  </a>
-  <a href="Cargo.toml">
-    <img src="https://img.shields.io/badge/core-Rust-ffa61c?style=flat-square&labelColor=111214&logo=rust&logoColor=f0eee2" alt="Rust">
-  </a>
-</p>
-
-<p align="center">
-  <a href="scripts/verify.sh">
-    <img src="https://img.shields.io/badge/verify-local_script-1874ff?style=flat-square&labelColor=111214" alt="Local verification script">
-  </a>
-  <a href="docs/product-contract.md">
-    <img src="https://img.shields.io/badge/account-not_required-f0eee2?style=flat-square&labelColor=111214" alt="No account required">
-  </a>
-  <a href="docs/pool-contract.md">
-    <img src="https://img.shields.io/badge/pool-neutral-ffa61c?style=flat-square&labelColor=111214" alt="Pool neutral">
-  </a>
-  <a href="docs/physical-validation-evidence.md">
-    <img src="https://img.shields.io/badge/evidence-physical_first-1874ff?style=flat-square&labelColor=111214" alt="Physical evidence first">
-  </a>
-</p>
-
-<p align="center">
-  <a href="docs/architecture.md"><b>ARCHITECTURE</b></a>
-  &bull;
-  <a href="docs/usb-image-build.md"><b>USB IMAGE</b></a>
-  &bull;
-  <a href="docs/product-contract.md"><b>PRODUCT CONTRACT</b></a>
-  &bull;
-  <a href="docs/pool-contract.md"><b>POOL CONTRACT</b></a>
-  &bull;
-  <a href="docs/physical-validation-evidence.md"><b>VALIDATION</b></a>
-</p>
-
----
-
-```text
-RIGOS / LOCAL-FIRST CPU APPLIANCE
-=================================
-
-CPU-ONLY. POOL-NEUTRAL. USB-NATIVE.
-NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER.
-```
 
 RIGOS is a local-first Linux mining operating system delivered as a bootable USB image.
 It is built for explicit local ownership: the node boots, inspects, configures and mines
