@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/rigos-readme-banner.svg" alt="RIGOS" width="900">
+  <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS" width="900">
 </p>
 
 <p align="center">
