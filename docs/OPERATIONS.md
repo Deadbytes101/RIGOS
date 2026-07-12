@@ -14,11 +14,15 @@ DAILY COMMANDS
 
 ```bash
 rig status
+rig status --json
 rig health
+rig health --json
 rig logs --miner
 rig logs --since 10m
 rig config
 rig recover
+rig version
+rig help
 ```
 
 Mutating commands require explicit root intent:
@@ -35,13 +39,33 @@ sudo rig start
 STATUS INTERPRETATION
 ---------------------
 
-`rig status` summarizes version, node name, state, configuration
-revision, network state, miner state, algorithm, redacted pool endpoint,
-hashrate, shares, huge pages, health and last recovery action.
+`rig status` summarizes version, node name, persistent state,
+configuration availability, active revision, network state, miner state,
+algorithm, pool endpoint, hashrate, shares, huge pages, health and last
+recovery action.
 
 `rig status --json` uses an explicit public allowlist. It does not print
 wallet identity, API token paths, private hashes, raw runtime config,
 passwords or SSH private material.
+
+Example physical output:
+
+```text
+version: 0.0.4-alpha.25
+node: rig02
+state: ready
+configuration: unavailable
+revision: 042c11c7-c3e8-458b-ac43-d3920557b7bb
+network: ready
+miner: active
+algorithm: rx/0
+pool: 139.99.69.109:10001
+hashrate: 337.4 H/s
+shares: accepted=63 rejected=0
+huge_pages: 1170/1170
+health: ready
+last_recovery_action: none
+```
 
 
 HEALTH EXIT STATES
@@ -71,6 +95,30 @@ rig logs --follow
 ```
 
 Output is bounded by default. Streaming requires `--follow`.
+
+
+CONFIGURATION VIEW
+------------------
+
+```bash
+rig config
+```
+
+Shows the public configuration and activation view. It must not dump
+wallet identity, API token contents, password material, SSH private
+keys or raw private runtime config.
+
+
+VERSION AND HELP
+----------------
+
+```bash
+rig version
+rig help
+```
+
+Use these commands first on an unknown appliance. They are read-only and
+do not alter state, services or miner configuration.
 
 
 CONTROLLED MINER RESTART

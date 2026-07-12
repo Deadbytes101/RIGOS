@@ -4,17 +4,24 @@ RIGOS ALPHA.25 SHORT COMMANDS
 Common commands:
 
     rig status
+    rig status --json
     rig health
+    rig health --json
     rig logs --miner
     rig logs --since 10m
     rig config
+    rig firstboot
     rig recover
+    rig version
+    rig help
 
 Mutating commands:
 
     sudo rig start
     sudo rig stop
     sudo rig restart
+    sudo rig firstboot run
+    sudo rig recover rollback
 
 Aliases:
 
