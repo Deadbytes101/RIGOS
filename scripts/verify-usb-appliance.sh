@@ -253,7 +253,8 @@ grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/l
 grep -Fq -- '--xmrig-config /run/rigos/xmrig-public.json' "$temporary/root/usr/local/bin/rigosctl" || die 'rigosctl does not default to the public runtime view'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-miner-health" ]] || die 'miner health observer is missing'
 grep -Fq 'OnUnitActiveSec=1min' "$temporary/root/etc/systemd/system/rigos-miner-health.timer" || die 'miner health timer cadence is missing'
-grep -Fq 'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health' "$temporary/root/etc/systemd/system/rigos-miner-health.service" || die 'miner supervisor persistent state path is missing'
+grep -Fq 'ReadWritePaths=/run/rigos /var/lib/rigos/system' "$temporary/root/etc/systemd/system/rigos-miner-health.service" || die 'miner supervisor persistent state parent path is missing'
+if grep -Fqx 'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health' "$temporary/root/etc/systemd/system/rigos-miner-health.service"; then die 'miner supervisor uses a missing child ReadWritePaths target that causes 226/NAMESPACE'; fi
 grep -Fq 'RESTART_BUDGET_MAX' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor restart budget is missing'
 grep -Fq 'RESTART_COOLDOWN_SECONDS' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor cooldown is missing'
 grep -Fq 'systemctl_action("restart", "rigos-miner.service")' "$temporary/root/usr/lib/rigos/rigos-miner-health" || die 'miner supervisor bounded restart action is missing'

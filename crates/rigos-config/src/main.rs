@@ -471,7 +471,8 @@ impl RuntimeOps for SystemRuntime {
         run("timedatectl", &["set-timezone", timezone])
     }
     fn set_hostname(&mut self, hostname: &str) -> Result<(), ConfigError> {
-        run("hostnamectl", &["set-hostname", hostname])
+        run("hostnamectl", &["set-hostname", hostname])?;
+        sync_etc_hosts_hostname(hostname)
     }
     fn set_miner_enabled(&mut self, enabled: bool) -> Result<(), ConfigError> {
         run(
@@ -505,6 +506,31 @@ impl RuntimeOps for SystemRuntime {
     fn restart_hugepages(&mut self) -> Result<(), ConfigError> {
         run("systemctl", &["restart", "rigos-hugepages.service"])
     }
+}
+
+fn sync_etc_hosts_hostname(hostname: &str) -> Result<(), ConfigError> {
+    let path = Path::new("/etc/hosts");
+    let original = fs::read_to_string(path).map_err(io_failure)?;
+    let updated = sync_hosts_text(&original, hostname);
+    if updated != original {
+        fs::write(path, updated).map_err(io_failure)?;
+    }
+    Ok(())
+}
+
+fn sync_hosts_text(original: &str, hostname: &str) -> String {
+    let mut lines: Vec<String> = original
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !trimmed.starts_with("127.0.1.1") || trimmed.starts_with('#')
+        })
+        .map(ToOwned::to_owned)
+        .collect();
+    lines.push(format!("127.0.1.1\t{hostname}"));
+    let mut updated = lines.join("\n");
+    updated.push('\n');
+    updated
 }
 
 fn current_revision(state: &Path) -> Result<Option<String>, ConfigError> {
@@ -1089,6 +1115,21 @@ mod tests {
         ] {
             assert!(validate_node_name(invalid).is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn hosts_file_sync_adds_current_hostname_without_touching_localhost() {
+        let original = concat!(
+            "127.0.0.1\tlocalhost debian\n",
+            "::1\tlocalhost ip6-localhost ip6-loopback\n",
+            "127.0.1.1\told-rig\n",
+        );
+        let updated = sync_hosts_text(original, "rig02");
+
+        assert!(updated.contains("127.0.0.1\tlocalhost debian\n"));
+        assert!(updated.contains("::1\tlocalhost ip6-localhost ip6-loopback\n"));
+        assert!(updated.contains("127.0.1.1\trig02\n"));
+        assert!(!updated.contains("old-rig"));
     }
 
     #[test]

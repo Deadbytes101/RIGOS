@@ -337,6 +337,11 @@ fn miner_restart_policy_is_bounded_and_observer_never_mutates_service() {
     .unwrap();
     assert!(!service.contains("Wants=rigos-miner.service"));
     assert!(!service.contains("Requires=rigos-miner.service"));
+    assert!(service.contains("ReadWritePaths=/run/rigos /var/lib/rigos/system"));
+    assert!(
+        !service.contains("ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health"),
+        "systemd mount namespacing fails before ExecStart when ReadWritePaths names a missing child directory"
+    );
 
     let timer = fs::read_to_string(repo_path(
         "build/usb/includes.chroot/etc/systemd/system/rigos-miner-health.timer",

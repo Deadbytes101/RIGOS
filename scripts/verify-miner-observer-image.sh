@@ -271,10 +271,13 @@ for required in \
     'RestrictAddressFamilies=AF_UNIX AF_INET' \
     'IPAddressDeny=any' \
     'IPAddressAllow=127.0.0.0/8' \
-    'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health'
+    'ReadWritePaths=/run/rigos /var/lib/rigos/system'
 do
     grep -Fqx "$required" "$service" || die "miner observer sandbox contract is missing: $required"
 done
+if grep -Fqx 'ReadWritePaths=/run/rigos /var/lib/rigos/system/miner-health' "$service"; then
+    die 'miner observer ReadWritePaths targets a child directory created too late for systemd namespace setup'
+fi
 grep -Fq 'OnUnitActiveSec=1min' "$timer" || die 'miner observer timer cadence is missing'
 grep -Fq 'ExecStart=/usr/lib/rigos/rigos-runtime-authority' "$root/etc/systemd/system/rigos-runtime-render.service" \
     || die 'serialized runtime authority is not wired'
