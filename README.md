@@ -1,3 +1,26 @@
+<p align="center">
+  <a href="https://github.com/Deadbytes101/RIGOS">
+    <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS local-first CPU mining appliance" width="820">
+  </a>
+</p>
+
+<p align="center">
+  <strong>LOCAL-FIRST CPU MINING APPLIANCE</strong><br>
+  <sub>NO ACCOUNT · NO ACTIVATION · NO CLOUD OWNER</sub>
+</p>
+
+<p align="center">
+  <a href="docs/architecture.md">Architecture</a>
+  &nbsp;·&nbsp;
+  <a href="docs/usb-image-build.md">USB image</a>
+  &nbsp;·&nbsp;
+  <a href="docs/SECURITY-MODEL.md">Security model</a>
+  &nbsp;·&nbsp;
+  <a href="docs/PHYSICAL-EVIDENCE-ALPHA25.md">Physical evidence</a>
+</p>
+
+---
+
 RIGOS
 =====
 
