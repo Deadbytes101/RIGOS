@@ -20,11 +20,10 @@ OPTIONS
 2. forge-frame  -- denser industrial chassis treatment.
 3. vga-chaos    -- coarse VGA/pixel brutalism.
 
-FILES
------
+FILES IN REPOSITORY
+-------------------
 rigos-logo-<option>.png
-rigos-icon-<option>-512.png
-rigos-icon-<option>-128.png
 rigos-icon-<option>-32.png
 
-The 32 px files are intended for favicon use. The 512 px files are source icons.
+The 32 px files are compact favicon exports. A separate downloadable source pack
+contains the 512 px and 128 px icon exports for all three options.

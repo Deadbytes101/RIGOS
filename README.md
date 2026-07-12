@@ -122,5 +122,5 @@ DOCUMENTS
 BRANDING
 --------
 
-The default mark is `socket-core`. Alternate `forge-frame` and `vga-chaos` assets,
-plus 512 / 128 / 32 pixel icon exports, live under `assets/branding/`.
+The default mark is `socket-core`. Alternate `forge-frame` and `vga-chaos` wordmarks,
+plus matching compact favicon exports, live under `assets/branding/`.
