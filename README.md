@@ -16,6 +16,7 @@
   <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/control-local--first-f0eee2?style=flat-square&labelColor=111214" alt="Local-first"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-ffa61c?style=flat-square&labelColor=111214&logo=rust&logoColor=f0eee2" alt="Rust"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT_OR_GPL--2.0--or--later-f0eee2?style=flat-square&labelColor=111214" alt="MIT OR GPL-2.0-or-later"></a>
+  <a href="#support-rigos"><img src="https://img.shields.io/badge/support-donate_XMR-ff6600?style=flat-square&labelColor=111214&logo=monero&logoColor=f0eee2" alt="Donate Monero to support RIGOS"></a>
 </p>
 
 <p align="center">
@@ -26,6 +27,15 @@
   <a href="docs/SECURITY-MODEL.md">Security model</a>
   &nbsp;·&nbsp;
   <a href="docs/PHYSICAL-EVIDENCE-ALPHA25.md">Physical evidence</a>
+</p>
+
+SUPPORT RIGOS
+-------------
+
+<p align="center">
+  <strong>MONERO (XMR) — PUBLIC DONATION ADDRESS</strong><br>
+  <code>4ALzuDU7w3DLrKxsK3cpqz8V53ikhUpaoc1FWaC5zRpyikShYBixim85Dfq8zBoGHJXLXVKpU8wm81tQ1ZRbdvjLLkCvcuB</code><br>
+  <sub>Verify every character before sending. Donations do not grant control over the project.</sub>
 </p>
 
 ---
@@ -236,7 +246,8 @@ SECURITY BOUNDARIES
 RIGOS keeps private material out of public operator output:
 
 ```text
-no wallet identity in README evidence
+no private mining identity in README evidence
+public XMR donation address intentionally published
 no password material
 no API token contents
 no SSH private keys
