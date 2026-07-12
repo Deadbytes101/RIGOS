@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/branding/rigos-readme-banner.svg" alt="RIGOS" width="900">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/release-0.0.4--alpha.5-1874ff?style=flat-square&labelColor=111214" alt="RIGOS 0.0.4-alpha.5">
   <img src="https://img.shields.io/badge/target-CPU--only-ffa61c?style=flat-square&labelColor=111214" alt="CPU-only">
   <img src="https://img.shields.io/badge/boot-Legacy_BIOS_%2B_UEFI-1874ff?style=flat-square&labelColor=111214" alt="Legacy BIOS and UEFI">
