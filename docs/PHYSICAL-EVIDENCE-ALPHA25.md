@@ -6,8 +6,8 @@ identity, API token contents, password material, SSH private material,
 complete private runtime config and persistent-state dumps.
 
 
-VERIFIED NODE
--------------
+VERIFIED NODE BASELINE
+----------------------
 
 ```text
 node_name=rig02
@@ -27,8 +27,51 @@ restart_count=0
 ```
 
 
-RECORDED PHYSICAL SAMPLE
-------------------------
+LATEST OPERATOR STATUS SNAPSHOTS
+--------------------------------
+
+These snapshots were recorded from the short operator command on real
+hardware after firstboot, pool application and configured mining.
+
+```text
+rigosadmin@rig01:~$ rig status
+version: 0.0.4-alpha.25
+node: rig01
+state: ready
+configuration: unavailable
+revision: ba31f51f-0983-488a-aa6b-c110dddfe6c6
+network: ready
+miner: active
+algorithm: rx/0
+pool: 139.99.69.109:10001
+hashrate: 797.66 H/s
+shares: accepted=40 rejected=0
+huge_pages: 1172/1172
+health: ready
+last_recovery_action: none
+```
+
+```text
+rigosadmin@rig02:~$ rig status
+version: 0.0.4-alpha.25
+node: rig02
+state: ready
+configuration: unavailable
+revision: 042c11c7-c3e8-458b-ac43-d3920557b7bb
+network: ready
+miner: active
+algorithm: rx/0
+pool: 139.99.69.109:10001
+hashrate: 337.4 H/s
+shares: accepted=63 rejected=0
+huge_pages: 1170/1170
+health: ready
+last_recovery_action: none
+```
+
+
+EARLIER RECORDED RIG02 SAMPLE
+-----------------------------
 
 ```text
 hashrate_10s approximately 338 H/s
@@ -38,8 +81,8 @@ accepted_shares=14
 rejected_shares=0
 ```
 
-These figures are one recorded physical sample. They are not a
-guaranteed benchmark for other hardware.
+These figures are recorded physical samples. They are not guaranteed
+benchmarks for other hardware.
 
 
 DOCTOR CHECKS OBSERVED PASSING

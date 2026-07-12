@@ -221,26 +221,43 @@ More detail: [Security Model](docs/SECURITY-MODEL.md).
 PHYSICAL ALPHA.25 EVIDENCE
 --------------------------
 
-Recorded physical node:
+Latest recorded operator snapshots:
 
 ```text
-node_name=rig02
+node=rig01
 version=0.0.4-alpha.25
-build_commit=ba02eb7429683550512b703cd4646d4d9ee6a888
 state=ready
-persistent_device=/dev/sdb4
-runtime=ready
+configuration=unavailable
+revision=ba31f51f-0983-488a-aa6b-c110dddfe6c6
 network=ready
 miner=active
 algorithm=rx/0
-exact_threads=2
-pool_connected=true
-huge_pages=100%
+pool=139.99.69.109:10001
+hashrate=797.66 H/s
+shares=accepted=40 rejected=0
+huge_pages=1172/1172
 health=ready
-restart_count=0
+last_recovery_action=none
 ```
 
-Recorded sample:
+```text
+node=rig02
+version=0.0.4-alpha.25
+state=ready
+configuration=unavailable
+revision=042c11c7-c3e8-458b-ac43-d3920557b7bb
+network=ready
+miner=active
+algorithm=rx/0
+pool=139.99.69.109:10001
+hashrate=337.4 H/s
+shares=accepted=63 rejected=0
+huge_pages=1170/1170
+health=ready
+last_recovery_action=none
+```
+
+Earlier recorded rig02 sample:
 
 ```text
 hashrate_10s approximately 338 H/s
@@ -250,7 +267,7 @@ accepted_shares=14
 rejected_shares=0
 ```
 
-This is one physical sample, not a benchmark guarantee for other
+These are physical samples, not benchmark guarantees for other
 hardware. Details: [Physical Alpha.25 Evidence](docs/PHYSICAL-EVIDENCE-ALPHA25.md).
 
 
