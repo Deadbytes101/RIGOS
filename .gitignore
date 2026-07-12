@@ -1,6 +1,8 @@
 /target/
 /dist/
 /.build-usb/
+__pycache__/
+*.py[cod]
 *.sha256
 /config/private-archive-recipients.local.txt
 /validation/raw/

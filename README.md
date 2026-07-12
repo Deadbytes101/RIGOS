@@ -1,129 +1,335 @@
-<p align="center">
-  <a href="https://github.com/Deadbytes101/RIGOS">
-    <img src="assets/branding/rigos-readme-banner-flat.svg" alt="RIGOS" width="760">
-  </a>
-</p>
+RIGOS
+=====
 
-<p align="center">
-  <a href="#status"><img src="https://img.shields.io/badge/release-0.0.4--alpha.5-1874ff?style=flat-square&labelColor=111214" alt="RIGOS 0.0.4-alpha.5"></a>
-  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/platform-CPU--only-ffa61c?style=flat-square&labelColor=111214" alt="CPU-only"></a>
-  <a href="docs/usb-image-build.md"><img src="https://img.shields.io/badge/boot-BIOS_%2B_UEFI-1874ff?style=flat-square&labelColor=111214" alt="Legacy BIOS and UEFI"></a>
-  <a href="docs/product-contract.md"><img src="https://img.shields.io/badge/control-local--first-f0eee2?style=flat-square&labelColor=111214" alt="Local-first"></a>
-</p>
+A Debian-based x86_64 USB compute appliance for automatic,
+persistent and observable CPU mining.
 
-<p align="center">
-  <a href="docs/architecture.md">Architecture</a>
-  &nbsp;·&nbsp;
-  <a href="docs/usb-image-build.md">USB image</a>
-  &nbsp;·&nbsp;
-  <a href="docs/product-contract.md">Product contract</a>
-  &nbsp;·&nbsp;
-  <a href="docs/physical-validation-evidence.md">Validation</a>
-</p>
-
----
-
-RIGOS is a local-first Linux mining operating system delivered as a bootable USB image.
-The machine remains the authority: no RIGOS account, activation service, cloud owner or
-remote kill-switch is required.
-
-<a id="status"></a>
-STATUS
-------
-
-```text
-BUILD       RIGOS 0.0.4-alpha.5
-TARGET      CPU-only mining appliance
-BOOT        raw MBR disk image
-FIRMWARE    Legacy BIOS + removable-media UEFI
-RECOVERY    stateless ISO
-STATE       local persistent partition
-```
-
-SYSTEM CONTRACT
+CURRENT RELEASE
 ---------------
 
+Version: 0.0.4-alpha.25
+Status: Functional physical Alpha preview
+Tag: v0.0.4-alpha.25
+Source: ba02eb7429683550512b703cd4646d4d9ee6a888
+
+Physically booted and verified on real hardware.
+Not stable.
+Not production-ready.
+
+
+WHAT RIGOS IS
+-------------
+
+RIGOS is a local-first Linux USB appliance for CPU mining experiments.
+It boots on x86_64 hardware, keeps the appliance root immutable, stores
+operator state separately, and makes the local machine the authority.
+
+RIGOS Alpha.25 provides:
+
 ```text
-OS LICENSE COST   0          WORKER LIMIT   NONE
-MONTHLY FEE       0          ACCOUNT        NOT REQUIRED
-CLOUD FEE         0          ACTIVATION     NONE
-RIGOS DEV FEE     0          FORCED POOL    NONE
+Debian 12 base
+x86_64 USB appliance image
+BIOS and UEFI boot paths where verified
+persistent local state
+atomic configuration revisions
+physical firstboot for unconfigured nodes
+automatic configured boot
+hostname and machine profile application
+persistent SSH host identity
+RandomX/XMRig runtime generation
+exact CPU thread control
+huge-page preparation
+network readiness inspection
+systemd-owned miner lifecycle
+restricted loopback XMRig observer
+bounded miner health supervision
+short operator command: rig
+detailed authority command: rigosctl
+stateless recovery ISO
 ```
 
-Electricity, Internet access, hardware, pool fees and third-party miner fees remain
-external costs. The codebase contains no billing, entitlement, trial, balance or
-payment-dependent miner control.
 
-DISK IMAGE
-----------
+WHAT RIGOS IS NOT
+-----------------
+
+RIGOS is not a Hive OS clone, cloud account system, hosted dashboard,
+subscription service, remote shell product, billing platform, worker
+limit system, forced-pool miner or production-ready distribution.
+
+RIGOS does not remove the official XMRig upstream donation behavior.
+It does not claim stable unattended operation until power-cycle,
+network-failure, pool-failure and soak evidence exists.
+
+
+BOOT AND AUTOMATION FLOW
+------------------------
+
+Configured boot:
 
 ```text
-+---+----------------------+----------------------------+
-| 1 | EFI_SYSTEM           | FAT32 / active             |
-| 2 | RIGOS_ROOT_A         | primary appliance root     |
-| 3 | RIGOS_ROOT_B         | alternate appliance root   |
-| 4 | RIGOS_STATE_SEED     | local persistent state     |
-+---+----------------------+----------------------------+
+boot
+  -> persistent state ready
+  -> SSH identity ready
+  -> committed configuration detected
+  -> profile applied
+  -> runtime configuration activated
+  -> huge pages prepared
+  -> network ready
+  -> miner started
+  -> pool work received
+  -> hashrate observed
+  -> health ready
 ```
 
-The recovery ISO is stateless and does not grow the state partition.
+Unconfigured boot:
 
-BOOT / CONTROL PATH
--------------------
-
-```mermaid
-flowchart LR
-    USB[Bootable USB<br/>raw MBR image] --> FW{Legacy BIOS<br/>or UEFI}
-    FW --> GRUB[GRUB]
-    GRUB --> A[RIGOS_ROOT_A]
-    GRUB --> B[RIGOS_ROOT_B]
-    A --> SYSTEMD[systemd appliance]
-    B --> SYSTEMD
-    SYSTEMD --> CLI[rigosd CLI]
-    CLI --> MACHINE[rigos-machine<br/>typed snapshots]
-    CLI --> MINER[MinerBackend]
-    MINER --> XMRIG[XmrigBackend]
-    XMRIG --> PROC[read-only /proc]
-    XMRIG --> CONFIG[read-only JSON config]
-    XMRIG --> API[restricted loopback API]
-    XMRIG --> PROBE[isolated version probe]
-    CLI --> STATE[RIGOS_STATE_SEED<br/>local state]
+```text
+boot
+  -> persistent state ready
+  -> no committed configuration
+  -> firstboot appears on tty1
+  -> miner remains stopped
+  -> configuration committed
+  -> normal activation continues
 ```
 
-VERIFY / INSPECT
-----------------
+Utility and recovery modes are separate from normal mining mode.
+
+
+OPERATOR COMMANDS
+-----------------
+
+Alpha.25 adds the short local operator command:
 
 ```bash
-./scripts/verify.sh
-
-cargo run -p rigosd -- machine inspect
-cargo run -p rigosd -- machine inspect --json
-cargo run -p rigosd -- miner inspect --json
-cargo run -p rigosd -- doctor --json
+rig status
+rig health
+rig start
+rig stop
+rig restart
+rig logs
+rig config
+rig firstboot
+rig recover
+rig version
+rig help
 ```
 
-<details>
-<summary><b>ALPHA HISTORY</b></summary>
+Aliases:
+
+```bash
+rig s
+rig h
+rig up
+rig down
+rig r
+rig log
+```
+
+Examples:
+
+```bash
+rig status
+rig health
+rig logs --miner
+rig logs --since 10m
+sudo rig restart
+rig config
+rig recover
+```
+
+The `rig` command delegates to systemd, journalctl and rigosctl. It
+does not hide sudo. Mutating commands require explicit root intent.
+Start and restart do not bypass state, config or runtime gates.
+Operator JSON uses explicit public allowlists and does not print raw
+private runtime configuration.
+
+
+SYSTEM ARCHITECTURE
+-------------------
 
 ```text
-0.0.4-alpha.1  GPT image failed Dell Legacy BIOS before GRUB
-0.0.4-alpha.2  MBR image reached GRUB ROOT_A systemd and password setup
-0.0.4-alpha.3  fixed console order but kept the first boot screen hidden
-0.0.4-alpha.4  keeps the first boot screen on tty and captures answers separately
-0.0.4-alpha.5  adds local rig profiles and portable XMRig Flight Sheets
+USB image
+  partition 1  EFI_SYSTEM
+  partition 2  RIGOS_ROOT_A
+  partition 3  RIGOS_ROOT_B
+  partition 4  RIGOS_STATE_SEED
+
+immutable root
+  systemd units
+  RIGOS authorities
+  official XMRig binary
+
+persistent state
+  configuration revisions
+  active current pointer
+  SSH host identity
+  recovery credential record
+  miner health budget
+
+runtime
+  /run/rigos status files
+  private xmrig.json
+  public redacted views
+  loopback XMRig API token
 ```
 
-Alpha five is isolated on its development branch. Alpha four physical-state
-validation remains separate.
+More detail: [Architecture](docs/architecture.md).
 
-</details>
 
-DOCUMENTS
----------
+PERSISTENT STATE
+----------------
 
-[Architecture](docs/architecture.md) ·
-[USB image build](docs/usb-image-build.md) ·
-[Product contract](docs/product-contract.md) ·
-[Pool contract](docs/pool-contract.md) ·
-[Release claims](docs/release-claims.md) ·
-[Physical evidence policy](docs/physical-validation-evidence.md)
+Persistent state is stored separately from the immutable appliance
+root. Configuration is committed as a revision and then activated.
+The current revision pointer is switched atomically. Runtime files are
+generated from the committed state and validated before the miner starts.
+
+
+HEALTH AND SELF-RECOVERY
+------------------------
+
+RIGOS observes the miner through systemd, public runtime status, network
+truth, bounded journal evidence and the restricted XMRig loopback API.
+Health states include ready, warming up, waiting on external network or
+pool conditions, degraded, blocked and unknown.
+
+The supervisor uses bounded restart policy. It avoids uncontrolled
+restart loops and preserves diagnostic access.
+
+
+SECURITY BOUNDARIES
+-------------------
+
+RIGOS keeps private material out of public operator output:
+
+```text
+no wallet identity in README evidence
+no password material
+no API token contents
+no SSH private keys
+no private runtime config dumps
+no persistent-state image dumps
+no hidden sudo in rig
+explicit recovery mutation
+release hash verification required
+```
+
+More detail: [Security Model](docs/SECURITY-MODEL.md).
+
+
+PHYSICAL ALPHA.25 EVIDENCE
+--------------------------
+
+Recorded physical node:
+
+```text
+node_name=rig02
+version=0.0.4-alpha.25
+build_commit=ba02eb7429683550512b703cd4646d4d9ee6a888
+state=ready
+persistent_device=/dev/sdb4
+runtime=ready
+network=ready
+miner=active
+algorithm=rx/0
+exact_threads=2
+pool_connected=true
+huge_pages=100%
+health=ready
+restart_count=0
+```
+
+Recorded sample:
+
+```text
+hashrate_10s approximately 338 H/s
+hashrate_60s approximately 340 H/s
+highest approximately 341.81 H/s
+accepted_shares=14
+rejected_shares=0
+```
+
+This is one physical sample, not a benchmark guarantee for other
+hardware. Details: [Physical Alpha.25 Evidence](docs/PHYSICAL-EVIDENCE-ALPHA25.md).
+
+
+DOWNLOAD AND VERIFICATION
+-------------------------
+
+Current release page:
+
+```text
+https://github.com/Deadbytes101/RIGOS/releases/tag/v0.0.4-alpha.25
+```
+
+Documented release assets:
+
+```text
+rigos-recovery-amd64-0.0.4-alpha.25.iso
+rigos-recovery-amd64-0.0.4-alpha.25.iso.sha256
+```
+
+Verify SHA256 before use. The recovery ISO is diagnostics and repair
+media; it is not the same role as the normal USB appliance image.
+GitHub source zip and tar.gz files are source snapshots, not bootable
+images.
+
+
+PROJECT HISTORY
+---------------
+
+Alpha.22
+  Repaired the physical firstboot/systemd transaction defect and
+  published the first functional physical preview.
+
+Alpha.23 and Alpha.24
+  Hardened miner health, state identity and hostname/runtime behavior
+  after physical defects were found.
+
+Alpha.25
+  Added the short rig operator interface, explicit operator JSON
+  allowlists, automatic configured operation and physical health
+  verification.
+
+Current status
+  Alpha.25 is the frozen functional milestone.
+  Development is paused.
+  The project is usable as an experimental appliance but is not declared
+  stable or production-ready.
+
+Detailed history: [Project History](docs/PROJECT-HISTORY.md).
+
+
+CURRENT LIMITS
+--------------
+
+Still incomplete:
+
+```text
+broad hardware compatibility matrix
+repeated power-cycle campaign
+network outage recovery campaign
+pool outage recovery campaign
+long unattended soak
+complete SBOM
+formal production support policy
+stable release guarantee
+```
+
+Details: [Known Limits](docs/KNOWN-LIMITS.md).
+
+
+REPOSITORY STATUS
+-----------------
+
+```text
+Current milestone: 0.0.4-alpha.25
+Release tag:       v0.0.4-alpha.25
+Runtime source:    ba02eb7429683550512b703cd4646d4d9ee6a888
+Development:       paused
+Release class:     Alpha preview
+Production-ready:  no
+```
+
+Documentation index: [docs/README.md](docs/README.md).

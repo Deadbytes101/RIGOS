@@ -5,7 +5,7 @@
 - `v0.0.3 — Pool Freedom`: templates, arbitrary compatible Stratum, TLS, failover, XMRig config compilation/import.
 - `v0.0.4 — USB Appliance`: hybrid BIOS/UEFI image, immutable A/B roots, persistent state, flash workflow, no internal installation.
 
-Current preview: `0.0.4-alpha.1`. It is not an RC until all mandatory physical
+Current preview: `0.0.4-alpha.25`. It is not an RC until all mandatory physical
 boot, disk-safety, persistence, old-CPU, pool, power-loss and wear gates pass.
 - `v0.0.5 — CPU Intelligence`: benchmark matrix, thread scaling, affinity, huge-page tuning and stability scoring.
 - `v0.0.6 — Local Fleet`: LAN discovery, optional local coordinator/dashboard, unlimited nodes and no cloud.
