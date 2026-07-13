@@ -1,0 +1,23 @@
+/* Overview branding plate. Static local SVG only. */
+
+.branding-plate {
+  margin: 1.4rem 0 0;
+}
+
+.branding-plate img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 560px) {
+  .branding-plate {
+    margin-top: 1.1rem;
+  }
+}
+
+@media print {
+  .branding-plate {
+    display: none;
+  }
+}
