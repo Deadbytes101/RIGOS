@@ -393,4 +393,4 @@ See [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT) and
 [LICENSE-GPL-2.0-or-later](LICENSE-GPL-2.0-or-later).
 
 Third-party components keep their own upstream licenses. XMRig remains
-an upstream GPL-3.0-or-later component with upstream donation behavior.
+an upstream GPL-2.0-or-later component with upstream donation behavior.
