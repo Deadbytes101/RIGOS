@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sanitized real-hardware evidence recorded for RIGOS Alpha.25.">
+  <meta name="theme-color" content="#111214">
+  <meta name="generator" content="handwritten static HTML">
+  <title>RIGOS Physical Evidence</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<header class="site-header">
+  <div class="shell">
+    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
+    <div class="site-id">
+      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
+      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
+    </div>
+    <nav class="nav" aria-label="Archive navigation">
+      <a href="index.html">ROOT</a>
+      <a href="history.html">HISTORY</a>
+      <a href="architecture.html">ARCHITECTURE</a>
+      <a href="evidence.html" aria-current="page">EVIDENCE</a>
+      <a href="limits.html">LIMITS</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    </nav>
+  </div>
+</header>
+<main id="content" class="shell">
+<p class="kicker">SANITIZED HARDWARE RECORD / ALPHA.25</p>
+<h1>EVIDENCE IS A BOUNDARY, NOT A VIBE.</h1>
+<p class="lead">The following records came from configured physical nodes. Secrets and complete private runtime data are intentionally excluded. The samples prove observed operation only; they are not universal benchmark claims.</p>
+
+<section>
+  <h2>VERIFIED BASELINE</h2>
+<pre>node_name       = rig02
+version         = 0.0.4-alpha.25
+build_commit    = ba02eb7429683550512b703cd4646d4d9ee6a888
+state           = ready
+persistent_dev  = /dev/sdb4
+runtime         = ready
+network         = ready
+miner           = active
+algorithm       = rx/0
+exact_threads   = 2
+pool_connected  = true
+huge_pages      = 100%
+health          = ready
+restart_count   = 0</pre>
+</section>
+
+<section>
+  <h2>RECORDED NODE SNAPSHOTS</h2>
+  <table>
+    <thead>
+      <tr><th>Field</th><th>rig01</th><th>rig02</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>version</td><td>0.0.4-alpha.25</td><td>0.0.4-alpha.25</td></tr>
+      <tr><td>state</td><td>ready</td><td>ready</td></tr>
+      <tr><td>network</td><td>ready</td><td>ready</td></tr>
+      <tr><td>miner</td><td>active</td><td>active</td></tr>
+      <tr><td>algorithm</td><td>rx/0</td><td>rx/0</td></tr>
+      <tr><td>hashrate sample</td><td>797.66 H/s</td><td>337.4 H/s</td></tr>
+      <tr><td>shares</td><td>40 accepted / 0 rejected</td><td>63 accepted / 0 rejected</td></tr>
+      <tr><td>huge pages</td><td>1172 / 1172</td><td>1170 / 1170</td></tr>
+      <tr><td>health</td><td>ready</td><td>ready</td></tr>
+      <tr><td>last recovery action</td><td>none</td><td>none</td></tr>
+    </tbody>
+  </table>
+  <p>An earlier rig02 sample recorded roughly 338 H/s at 10 seconds, 340 H/s at 60 seconds, a highest value near 341.81 H/s, 14 accepted shares and zero rejected shares.</p>
+</section>
+
+<section>
+  <h2>DOCTOR CHECKS OBSERVED PASSING</h2>
+<pre>[PASS] bounded volatile logs
+[PASS] machine inspection
+[PASS] miner health
+[PASS] miner inspection
+[PASS] mutation boundary
+[PASS] network readiness
+[PASS] huge-page readiness
+[PASS] runtime activation
+[PASS] persistent state readiness</pre>
+</section>
+
+<section>
+  <h2>WHAT THIS PROVES</h2>
+  <ul>
+    <li>The Alpha.25 source was able to boot and reach ready state on recorded real hardware.</li>
+    <li>Persistent state, runtime activation, network readiness, exact thread configuration, huge pages and miner ownership aligned on the sampled nodes.</li>
+    <li>Configured mining produced accepted shares with no rejected shares in the captured status snapshots.</li>
+    <li>The short operator command could report a sanitized status view without dumping private runtime configuration.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>WHAT THIS DOES NOT PROVE</h2>
+  <ul>
+    <li>Compatibility with arbitrary x86_64 machines.</li>
+    <li>Repeated cold-boot and power-loss reliability.</li>
+    <li>Correct recovery through sustained network or pool failure.</li>
+    <li>Long unattended soak behavior.</li>
+    <li>A guaranteed hashrate on different CPUs, memory, firmware or thermal conditions.</li>
+  </ul>
+  <div class="callout"><strong>RULE:</strong> A physical sample is evidence for that node under those conditions. It is not permission to manufacture a broader claim.</div>
+</section>
+
+<section>
+  <h2>RELEASE AUTHORITY</h2>
+<pre>tag     v0.0.4-alpha.25
+source  ba02eb7429683550512b703cd4646d4d9ee6a888
+class   functional physical Alpha preview</pre>
+  <p><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PHYSICAL-EVIDENCE-ALPHA25.md">Read the canonical sanitized evidence document.</a></p>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="shell">
+    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
+    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
+    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+  </div>
+</footer>
+</body>
+</html>
