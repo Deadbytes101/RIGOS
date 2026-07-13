@@ -10,96 +10,68 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<a class="skip-link" href="#content">Skip to content</a>
 <header class="site-header">
   <div class="shell">
-    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
-    <div class="site-id">
-      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
-      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
-    </div>
-    <nav class="nav" aria-label="Archive navigation">
-      <a href="index.html">ROOT</a>
-      <a href="history.html">HISTORY</a>
-      <a href="architecture.html" aria-current="page">ARCHITECTURE</a>
-      <a href="evidence.html">EVIDENCE</a>
-      <a href="limits.html">LIMITS</a>
-      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    <a class="brand" href="index.html">RIGOS</a>
+    <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="history.html">History</a>
+      <a href="architecture.html" aria-current="page">Architecture</a>
+      <a href="evidence.html">Evidence</a>
+      <a href="limits.html">Limits</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">Source code</a>
     </nav>
   </div>
 </header>
 <main id="content" class="shell">
-<p class="kicker">SYSTEM MAP / RELEASE 0.0.4-ALPHA.25</p>
-<h1>AUTHORITY FLOWS DOWNWARD. STATE DOES NOT LEAK UPWARD.</h1>
-<p class="lead">The normal root is immutable. Durable operator state lives elsewhere. A committed revision is validated, activated and rendered into volatile runtime files before the miner may start.</p>
+  <h1>Architecture</h1>
+  <p class="lead">The normal root is immutable. Durable operator state lives on a separate partition. A committed revision is validated, activated and rendered into volatile runtime files before the miner may start.</p>
 
-<section>
-  <h2>FULL OPERATING PATH</h2>
-<pre>+------------------+
-|   BIOS / UEFI    |
-+---------+--------+
-          |
-          v
-+------------------+        +----------------------+
-| immutable root   |-------&gt;| utility / recovery   |
-| Debian 12 x86_64 |        | explicit side paths  |
-+---------+--------+        +----------------------+
-          |
-          v
-+--------------------------+
-| verified persistent state|
-| revisions / identity /   |
-| health budget / recovery |
-+------------+-------------+
-             |
-             v
-+--------------------------+
-| atomic current revision  |
-+------------+-------------+
-             |
-             v
-+--------------------------+
-| profile + runtime render |
-| private /run/rigos files |
-| public redacted status   |
-+------------+-------------+
-             |
-       +-----+------+
-       |            |
-       v            v
-+-------------+  +----------------+
-| huge pages  |  | network truth  |
-+------+------+  +-------+--------+
-       |                 |
-       +--------+--------+
-                |
-                v
-       +-----------------+
-       | systemd XMRig   |
-       +--------+--------+
-                |
-                v
-       +-----------------+
-       | health observer |
-       | rig / rigosctl  |
-       +-----------------+</pre>
-</section>
+  <section>
+    <h2>Operating path</h2>
+<pre>BIOS and UEFI
+      |
+      v
+immutable Debian 12 root
+      |
+      +----&gt; utility and recovery side paths
+      |
+      v
+verified persistent state
+      |
+      v
+atomic current revision
+      |
+      v
+profile application and runtime render
+      |
+      +----&gt; huge-page authority
+      +----&gt; network readiness
+      |
+      v
+systemd-owned XMRig
+      |
+      v
+health observer and operator commands</pre>
+  </section>
 
-<section>
-  <h2>BOOT MODES</h2>
-  <table>
-    <thead><tr><th>Mode</th><th>Authority</th><th>Mining behavior</th></tr></thead>
-    <tbody>
-      <tr><td>normal / configured</td><td>Committed persistent revision</td><td>Automatic activation and gated startup</td></tr>
-      <tr><td>normal / unconfigured</td><td>Firstboot on tty1</td><td>Miner remains stopped until configuration commits</td></tr>
-      <tr><td>utility</td><td>Kernel command-line mode condition</td><td>Normal mining is not started by utility mode itself</td></tr>
-      <tr><td>recovery ISO</td><td>Stateless diagnostic and repair environment</td><td>Separate role; not the normal appliance image</td></tr>
-    </tbody>
-  </table>
-</section>
+  <section>
+    <h2>Boot modes</h2>
+    <table>
+      <thead><tr><th>Mode</th><th>Authority</th><th>Mining behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Normal, configured</td><td>Committed persistent revision</td><td>Automatic activation and gated startup</td></tr>
+        <tr><td>Normal, unconfigured</td><td>Firstboot on tty1</td><td>Miner remains stopped until configuration commits</td></tr>
+        <tr><td>Utility</td><td>Kernel command-line mode condition</td><td>Normal mining is not started by utility mode itself</td></tr>
+        <tr><td>Recovery ISO</td><td>Stateless diagnostic and repair environment</td><td>Separate role, not the normal appliance image</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-<section>
-  <h2>SYSTEMD ORDERING</h2>
+  <section>
+    <h2>Systemd ordering</h2>
 <pre>rigos-state.service
   -&gt; rigos-state-ready.service
   -&gt; rigos-ssh-hostkeys.service
@@ -108,52 +80,51 @@
   -&gt; rigos-hugepages.service
   -&gt; rigos-miner.service
   -&gt; rigos-miner-health.timer</pre>
-  <p>The miner is not the center of the graph. It is the last privileged consumer of state, configuration, runtime and kernel preparation that must already be true.</p>
-</section>
+    <p>The miner is the last privileged consumer in the graph. Persistent state, runtime configuration, huge pages and network readiness must already be true.</p>
+  </section>
 
-<section>
-  <h2>CONFIGURATION REVISION MODEL</h2>
+  <section>
+    <h2>Configuration revisions</h2>
 <pre>operator input
-    -&gt; validate complete candidate
-    -&gt; create immutable revision
-    -&gt; commit revision
-    -&gt; atomically switch current pointer
-    -&gt; apply machine profile
-    -&gt; render private runtime config
-    -&gt; publish public redacted status
-    -&gt; permit service activation</pre>
-  <p>Direct edits to live miner configuration are not the durable authority. The current committed revision is. This makes rollback and evidence collection possible without treating a half-written runtime file as truth.</p>
-</section>
+  -&gt; validate complete candidate
+  -&gt; create immutable revision
+  -&gt; commit revision
+  -&gt; atomically switch the current pointer
+  -&gt; apply machine profile
+  -&gt; render private runtime configuration
+  -&gt; publish redacted status
+  -&gt; permit service activation</pre>
+    <p>Direct edits to live miner configuration are not durable authority. The current committed revision is. Runtime files under <code>/run/rigos</code> are generated output.</p>
+  </section>
 
-<section>
-  <h2>OPERATOR SURFACES</h2>
-  <table>
-    <thead><tr><th>Surface</th><th>Role</th><th>Boundary</th></tr></thead>
-    <tbody>
-      <tr><td><code>rig</code></td><td>Short local operator command</td><td>No hidden sudo; delegates to systemd, journalctl and rigosctl</td></tr>
-      <tr><td><code>rigosctl</code></td><td>Detailed authority command</td><td>Controls validated state and runtime operations</td></tr>
-      <tr><td>XMRig loopback API</td><td>Restricted health observation</td><td>Local only; token contents excluded from public output</td></tr>
-      <tr><td><code>/run/rigos</code></td><td>Volatile generated runtime and status</td><td>Private material separated from redacted public views</td></tr>
-    </tbody>
-  </table>
-</section>
+  <section>
+    <h2>Operator surfaces</h2>
+    <table>
+      <thead><tr><th>Surface</th><th>Role</th><th>Boundary</th></tr></thead>
+      <tbody>
+        <tr><td><code>rig</code></td><td>Short local operator command</td><td>No hidden sudo; delegates to systemd, journalctl and rigosctl</td></tr>
+        <tr><td><code>rigosctl</code></td><td>Detailed authority command</td><td>Controls validated state and runtime operations</td></tr>
+        <tr><td>XMRig loopback API</td><td>Restricted health observation</td><td>Local only; token contents excluded from public output</td></tr>
+        <tr><td><code>/run/rigos</code></td><td>Generated runtime and status</td><td>Private material separated from redacted public views</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-<section>
-  <h2>SECURITY BOUNDARIES</h2>
-  <ul>
-    <li>Persistent state is verified before mounting and is separate from the immutable root.</li>
-    <li>Raw private runtime configuration, wallet identity, passwords, API token contents and SSH private keys are not public operator output.</li>
-    <li>Recovery defaults to observation. Mutation requires an explicit command.</li>
-    <li>Release artifacts require SHA256 verification. GitHub source archives are not bootable images.</li>
-    <li>The model is practical Alpha security engineering, not a formal certification.</li>
-  </ul>
-</section>
+  <section>
+    <h2>Security boundaries</h2>
+    <ul>
+      <li>Persistent state is verified before mounting and is separate from the immutable root.</li>
+      <li>Raw runtime configuration, wallet identity, passwords, API token contents and SSH private keys are not public operator output.</li>
+      <li>Recovery defaults to observation. Mutation requires an explicit command.</li>
+      <li>Release artifacts require SHA256 verification. GitHub source archives are not bootable images.</li>
+      <li>The model is practical Alpha security engineering, not a formal certification.</li>
+    </ul>
+  </section>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
-    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
-    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
 </body>
