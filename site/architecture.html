@@ -19,6 +19,7 @@
   <meta name="twitter:title" content="Architecture | RIGOS">
   <meta name="twitter:description" content="The operating path and trust boundaries of the RIGOS Alpha.25 USB appliance.">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="diagrams.css">
 </head>
 <body>
 <a class="skip-link" href="#content">Skip to content</a>
@@ -39,33 +40,15 @@
 <main id="content" class="shell">
   <h1>Architecture</h1>
   <p class="lead">The normal root is immutable. Durable operator state lives on a separate partition. A committed revision is validated, activated and rendered into volatile runtime files before the miner may start.</p>
+  <p class="note">The diagrams are maintained as Mermaid source in the repository and published here as static SVG. The browser executes no JavaScript and loads no Mermaid runtime.</p>
 
   <section>
     <h2>Operating path</h2>
-<pre>BIOS and UEFI
-      |
-      v
-immutable Debian 12 root
-      |
-      +----&gt; utility and recovery side paths
-      |
-      v
-verified persistent state
-      |
-      v
-atomic current revision
-      |
-      v
-profile application and runtime render
-      |
-      +----&gt; huge-page authority
-      +----&gt; network readiness
-      |
-      v
-systemd-owned XMRig
-      |
-      v
-health observer and operator commands</pre>
+    <figure class="diagram">
+      <img src="diagrams/operating-path.svg" width="1000" height="1040" alt="RIGOS operating path from BIOS or UEFI through immutable root, persistent state, configuration revision, runtime gates, XMRig and operator commands.">
+      <figcaption>Boot and runtime authority. <a href="https://github.com/Deadbytes101/RIGOS/blob/main/site/DIAGRAMS.md#operating-path">Mermaid source</a>.</figcaption>
+    </figure>
+    <p>Utility and recovery are explicit side paths. They do not become hidden shortcuts around persistent state, configuration activation, huge pages or network readiness.</p>
   </section>
 
   <section>
@@ -83,28 +66,19 @@ health observer and operator commands</pre>
 
   <section>
     <h2>Systemd ordering</h2>
-<pre>rigos-state.service
-  -&gt; rigos-state-ready.service
-  -&gt; rigos-ssh-hostkeys.service
-  -&gt; rigos-profile-apply.service
-  -&gt; rigos-runtime-render.service
-  -&gt; rigos-hugepages.service
-  -&gt; rigos-miner.service
-  -&gt; rigos-miner-health.timer</pre>
-    <p>The miner is the last privileged consumer in the graph. Persistent state, runtime configuration, huge pages and network readiness must already be true.</p>
+    <figure class="diagram">
+      <img src="diagrams/systemd-ordering.svg" width="720" height="720" loading="lazy" decoding="async" alt="Ordered RIGOS systemd units from persistent state through miner health observation.">
+      <figcaption>Startup dependency chain. <a href="https://github.com/Deadbytes101/RIGOS/blob/main/site/DIAGRAMS.md#systemd-ordering">Mermaid source</a>.</figcaption>
+    </figure>
+    <p>The miner is the last privileged consumer in the graph. Persistent state, runtime configuration and huge-page preparation must already be true before <code>rigos-miner.service</code> starts.</p>
   </section>
 
   <section>
     <h2>Configuration revisions</h2>
-<pre>operator input
-  -&gt; validate complete candidate
-  -&gt; create immutable revision
-  -&gt; commit revision
-  -&gt; atomically switch the current pointer
-  -&gt; apply machine profile
-  -&gt; render private runtime configuration
-  -&gt; publish redacted status
-  -&gt; permit service activation</pre>
+    <figure class="diagram">
+      <img src="diagrams/config-revision.svg" width="920" height="940" loading="lazy" decoding="async" alt="RIGOS configuration transaction validating operator input, rejecting invalid candidates before mutation, committing an immutable revision and activating generated runtime configuration.">
+      <figcaption>Mutation and activation boundary. <a href="https://github.com/Deadbytes101/RIGOS/blob/main/site/DIAGRAMS.md#configuration-revision-transaction">Mermaid source</a>.</figcaption>
+    </figure>
     <p>Direct edits to live miner configuration are not durable authority. The current committed revision is. Runtime files under <code>/run/rigos</code> are generated output.</p>
   </section>
 
@@ -134,7 +108,7 @@ health observer and operator commands</pre>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p>RIGOS Alpha.25. Static HTML, CSS and SVG.</p>
     <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
