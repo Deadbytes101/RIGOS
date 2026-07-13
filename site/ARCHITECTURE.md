@@ -10,18 +10,16 @@ PUBLISHING PIPELINE
 
 ```mermaid
 flowchart LR
-    DOCS["Canonical RIGOS documents\nproject history / architecture / contract\nsecurity / evidence / limits"]
-    HTML["Handwritten static site\nHTML + CSS + local SVG"]
-    CHECK["Pull-request validator\nparse HTML / resolve local links\nreject script tags"]
-    ARTIFACT["GitHub Pages artifact\nsite/ directory only"]
-    DEPLOY["GitHub Pages deployment"]
+    DOCS["Canonical RIGOS documents\nproject history, architecture, contract\nsecurity, evidence and limits"]
+    SITE["Handwritten static site\nHTML and CSS"]
+    GIT["GitHub main branch"]
+    PAGES["Cloudflare Pages\noutput directory: site"]
     READER["Browser\nno JavaScript required"]
 
-    DOCS --> HTML
-    HTML --> CHECK
-    CHECK --> ARTIFACT
-    ARTIFACT --> DEPLOY
-    DEPLOY --> READER
+    DOCS --> SITE
+    SITE --> GIT
+    GIT --> PAGES
+    PAGES --> READER
     DOCS -. "remains source authority" .-> READER
 ```
 
@@ -33,8 +31,8 @@ RUNTIME BOUNDARY
 RIGOS appliance runtime   unchanged
 RIGOS release source      unchanged
 RIGOS canonical docs      unchanged
-site/                     added read-only publication surface
-Pages workflow            validates and publishes site/ only
+site                      read-only publication surface
+Cloudflare Pages          publishes site after a main-branch push
 ```
 
 The website contains no package manager, framework, static-site generator,
