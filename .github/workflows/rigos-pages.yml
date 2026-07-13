@@ -1,4 +1,4 @@
-name: Deploy RIGOS archive
+name: RIGOS archive site
 
 on:
   push:
@@ -6,22 +6,17 @@ on:
     paths:
       - "site/**"
       - ".github/workflows/rigos-pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/rigos-pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  validate:
     runs-on: ubuntu-latest
 
     steps:
@@ -73,6 +68,25 @@ jobs:
               raise SystemExit("\n".join(failures))
           print(f"validated {len(pages)} HTML pages; no scripts; local links resolved")
           PY
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
