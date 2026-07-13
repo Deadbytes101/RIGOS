@@ -76,14 +76,60 @@ a:focus-visible {
 }
 
 .brand {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.62rem;
   color: var(--fg);
   font-size: 1.55rem;
   font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.055em;
   text-decoration: none;
 }
 
+.brand::before {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  background: url("assets/rigos-mark.svg") center / contain no-repeat;
+}
+
+.brand::after {
+  content: "";
+  display: block;
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-left: 0.05rem;
+  background: var(--link);
+  box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--rule);
+}
+
+.brand:hover,
+.brand:focus-visible {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.brand:hover::before,
+.brand:focus-visible::before {
+  transform: translate(-1px, -1px);
+}
+
+.brand:hover::after,
+.brand:focus-visible::after {
+  background: var(--fg);
+  box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--link), 5px 0 0 var(--link);
+}
+
+.brand:active::before {
+  transform: translate(1px, 1px);
+}
+
 .subtitle {
-  margin: 0.2rem 0 0;
+  margin: 0.45rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -318,6 +364,16 @@ thead th {
     width: min(calc(100% - 1rem), var(--measure));
   }
 
+  .brand {
+    font-size: 1.4rem;
+  }
+
+  .brand::before {
+    width: 1.8rem;
+    height: 1.8rem;
+    flex-basis: 1.8rem;
+  }
+
   .status {
     grid-template-columns: 1fr;
   }
@@ -349,6 +405,14 @@ thead th {
 
   .nav,
   .skip-link {
+    display: none;
+  }
+
+  .brand::before {
+    filter: invert(1) grayscale(1);
+  }
+
+  .brand::after {
     display: none;
   }
 
