@@ -62,14 +62,15 @@ Not production-ready.
 ARCHITECTURE AT A GLANCE
 ------------------------
 
-```text
-BIOS / UEFI
-  -> immutable Debian root (A/B)
-  -> persistent state + config revisions
-  -> validated runtime
-  -> huge pages + network gate
-  -> systemd-owned XMRig
-  -> rig / rigosctl / local health observer
+```mermaid
+flowchart LR
+    BOOT["BIOS / UEFI"] --> ROOT["Immutable Debian root<br/>A / B"]
+    ROOT --> STATE["Persistent state<br/>config revisions"]
+    STATE --> RUNTIME["Validated runtime"]
+    RUNTIME --> GATES["Huge pages<br/>network gate"]
+    GATES --> MINER["systemd-owned XMRig"]
+    MINER --> OPS["rig / rigosctl<br/>local health observer"]
+    BOOT -. "utility / recovery boot" .-> RECOVERY["Diagnostics / repair"]
 ```
 
 Utility and recovery boot stay outside the normal mining path.
