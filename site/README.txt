@@ -9,12 +9,28 @@ Static engineering history and architecture site for RIGOS.
 No framework.
 No package manager.
 No build tool.
-No JavaScript.
+No browser JavaScript.
 No analytics.
 No external font.
 No remote asset.
 
-The site is plain HTML and plain CSS.
+The site is plain HTML, plain CSS and checked-in SVG.
+
+
+DIAGRAMS
+--------
+
+Editable architecture diagrams live in:
+
+    site/DIAGRAMS.md
+
+GitHub renders the Mermaid blocks natively. The website uses matching static
+SVG files under:
+
+    site/diagrams/
+
+The browser does not download or execute Mermaid. Diagram rendering is not a
+client-side dependency.
 
 
 LOCAL PREVIEW
