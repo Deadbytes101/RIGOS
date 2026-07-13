@@ -33,7 +33,7 @@ SUPPORT RIGOS
 -------------
 
 <p align="center">
-  <strong>MONERO (XMR) — PUBLIC DONATION ADDRESS</strong><br>
+  <strong>☕MONERO (XMR) — PUBLIC DONATION ADDRESS</strong><br>
   <code>4ALzuDU7w3DLrKxsK3cpqz8V53ikhUpaoc1FWaC5zRpyikShYBixim85Dfq8zBoGHJXLXVKpU8wm81tQ1ZRbdvjLLkCvcuB</code><br>
   <sub>Verify every character before sending. Donations do not grant control over the project.</sub>
 </p>
