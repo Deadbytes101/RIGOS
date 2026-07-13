@@ -59,6 +59,23 @@ Not stable.
 Not production-ready.
 
 
+ARCHITECTURE AT A GLANCE
+------------------------
+
+```text
+BIOS / UEFI
+  -> immutable Debian root (A/B)
+  -> persistent state + config revisions
+  -> validated runtime
+  -> huge pages + network gate
+  -> systemd-owned XMRig
+  -> rig / rigosctl / local health observer
+```
+
+Utility and recovery boot stay outside the normal mining path.
+Full map: [Architecture](docs/architecture.md).
+
+
 WHAT RIGOS IS
 -------------
 
@@ -185,38 +202,6 @@ does not hide sudo. Mutating commands require explicit root intent.
 Start and restart do not bypass state, config or runtime gates.
 Operator JSON uses explicit public allowlists and does not print raw
 private runtime configuration.
-
-
-SYSTEM ARCHITECTURE
--------------------
-
-```text
-USB image
-  partition 1  EFI_SYSTEM
-  partition 2  RIGOS_ROOT_A
-  partition 3  RIGOS_ROOT_B
-  partition 4  RIGOS_STATE_SEED
-
-immutable root
-  systemd units
-  RIGOS authorities
-  official XMRig binary
-
-persistent state
-  configuration revisions
-  active current pointer
-  SSH host identity
-  recovery credential record
-  miner health budget
-
-runtime
-  /run/rigos status files
-  private xmrig.json
-  public redacted views
-  loopback XMRig API token
-```
-
-More detail: [Architecture](docs/architecture.md).
 
 
 PERSISTENT STATE
