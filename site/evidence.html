@@ -3,38 +3,45 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Sanitized real-hardware evidence recorded for RIGOS Alpha.25.">
+  <title>Physical Evidence | RIGOS</title>
+  <meta name="description" content="Inspect sanitized real-hardware evidence for RIGOS Alpha.25, including ready-state nodes, huge pages, accepted shares and the limits of those samples.">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#111214">
   <meta name="generator" content="handwritten static HTML">
-  <title>RIGOS Physical Evidence</title>
+  <link rel="canonical" href="https://rigos.site/evidence.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="RIGOS">
+  <meta property="og:title" content="Physical Evidence | RIGOS">
+  <meta property="og:description" content="Sanitized real-node evidence and explicit evidence boundaries for RIGOS Alpha.25.">
+  <meta property="og:url" content="https://rigos.site/evidence.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Physical Evidence | RIGOS">
+  <meta name="twitter:description" content="Recorded Alpha.25 node status, hashrate samples, huge pages and evidence limits.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<a class="skip-link" href="#content">Skip to content</a>
 <header class="site-header">
   <div class="shell">
-    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
-    <div class="site-id">
-      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
-      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
-    </div>
-    <nav class="nav" aria-label="Archive navigation">
-      <a href="index.html">ROOT</a>
-      <a href="history.html">HISTORY</a>
-      <a href="architecture.html">ARCHITECTURE</a>
-      <a href="evidence.html" aria-current="page">EVIDENCE</a>
-      <a href="limits.html">LIMITS</a>
-      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    <a class="brand" href="index.html">RIGOS</a>
+    <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="history.html">History</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="evidence.html" aria-current="page">Evidence</a>
+      <a href="limits.html">Limits</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">Source code</a>
     </nav>
   </div>
 </header>
 <main id="content" class="shell">
-<p class="kicker">SANITIZED HARDWARE RECORD / ALPHA.25</p>
-<h1>EVIDENCE IS A BOUNDARY, NOT A VIBE.</h1>
-<p class="lead">The following records came from configured physical nodes. Secrets and complete private runtime data are intentionally excluded. The samples prove observed operation only; they are not universal benchmark claims.</p>
+  <h1>Physical evidence</h1>
+  <p class="lead">These records came from configured physical nodes. Secrets and complete private runtime data are excluded. The samples prove observed operation only and are not universal benchmark claims.</p>
 
-<section>
-  <h2>VERIFIED BASELINE</h2>
+  <section>
+    <h2>Verified baseline</h2>
 <pre>node_name       = rig02
 version         = 0.0.4-alpha.25
 build_commit    = ba02eb7429683550512b703cd4646d4d9ee6a888
@@ -49,32 +56,30 @@ pool_connected  = true
 huge_pages      = 100%
 health          = ready
 restart_count   = 0</pre>
-</section>
+  </section>
 
-<section>
-  <h2>RECORDED NODE SNAPSHOTS</h2>
-  <table>
-    <thead>
-      <tr><th>Field</th><th>rig01</th><th>rig02</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>version</td><td>0.0.4-alpha.25</td><td>0.0.4-alpha.25</td></tr>
-      <tr><td>state</td><td>ready</td><td>ready</td></tr>
-      <tr><td>network</td><td>ready</td><td>ready</td></tr>
-      <tr><td>miner</td><td>active</td><td>active</td></tr>
-      <tr><td>algorithm</td><td>rx/0</td><td>rx/0</td></tr>
-      <tr><td>hashrate sample</td><td>797.66 H/s</td><td>337.4 H/s</td></tr>
-      <tr><td>shares</td><td>40 accepted / 0 rejected</td><td>63 accepted / 0 rejected</td></tr>
-      <tr><td>huge pages</td><td>1172 / 1172</td><td>1170 / 1170</td></tr>
-      <tr><td>health</td><td>ready</td><td>ready</td></tr>
-      <tr><td>last recovery action</td><td>none</td><td>none</td></tr>
-    </tbody>
-  </table>
-  <p>An earlier rig02 sample recorded roughly 338 H/s at 10 seconds, 340 H/s at 60 seconds, a highest value near 341.81 H/s, 14 accepted shares and zero rejected shares.</p>
-</section>
+  <section>
+    <h2>Recorded node snapshots</h2>
+    <table>
+      <thead><tr><th>Field</th><th>rig01</th><th>rig02</th></tr></thead>
+      <tbody>
+        <tr><td>Version</td><td>0.0.4-alpha.25</td><td>0.0.4-alpha.25</td></tr>
+        <tr><td>State</td><td>ready</td><td>ready</td></tr>
+        <tr><td>Network</td><td>ready</td><td>ready</td></tr>
+        <tr><td>Miner</td><td>active</td><td>active</td></tr>
+        <tr><td>Algorithm</td><td>rx/0</td><td>rx/0</td></tr>
+        <tr><td>Hashrate sample</td><td>797.66 H/s</td><td>337.4 H/s</td></tr>
+        <tr><td>Shares</td><td>40 accepted, 0 rejected</td><td>63 accepted, 0 rejected</td></tr>
+        <tr><td>Huge pages</td><td>1172 of 1172</td><td>1170 of 1170</td></tr>
+        <tr><td>Health</td><td>ready</td><td>ready</td></tr>
+        <tr><td>Last recovery action</td><td>none</td><td>none</td></tr>
+      </tbody>
+    </table>
+    <p>An earlier rig02 sample recorded approximately 338 H/s at 10 seconds, 340 H/s at 60 seconds, a highest value near 341.81 H/s, 14 accepted shares and zero rejected shares.</p>
+  </section>
 
-<section>
-  <h2>DOCTOR CHECKS OBSERVED PASSING</h2>
+  <section>
+    <h2>Doctor checks observed passing</h2>
 <pre>[PASS] bounded volatile logs
 [PASS] machine inspection
 [PASS] miner health
@@ -84,43 +89,42 @@ restart_count   = 0</pre>
 [PASS] huge-page readiness
 [PASS] runtime activation
 [PASS] persistent state readiness</pre>
-</section>
+  </section>
 
-<section>
-  <h2>WHAT THIS PROVES</h2>
-  <ul>
-    <li>The Alpha.25 source was able to boot and reach ready state on recorded real hardware.</li>
-    <li>Persistent state, runtime activation, network readiness, exact thread configuration, huge pages and miner ownership aligned on the sampled nodes.</li>
-    <li>Configured mining produced accepted shares with no rejected shares in the captured status snapshots.</li>
-    <li>The short operator command could report a sanitized status view without dumping private runtime configuration.</li>
-  </ul>
-</section>
+  <section>
+    <h2>What this proves</h2>
+    <ul>
+      <li>The Alpha.25 source booted and reached ready state on recorded real hardware.</li>
+      <li>Persistent state, runtime activation, network readiness, exact thread configuration, huge pages and miner ownership aligned on the sampled nodes.</li>
+      <li>Configured mining produced accepted shares with no rejected shares in the captured snapshots.</li>
+      <li>The short operator command reported sanitized status without dumping private runtime configuration.</li>
+    </ul>
+  </section>
 
-<section>
-  <h2>WHAT THIS DOES NOT PROVE</h2>
-  <ul>
-    <li>Compatibility with arbitrary x86_64 machines.</li>
-    <li>Repeated cold-boot and power-loss reliability.</li>
-    <li>Correct recovery through sustained network or pool failure.</li>
-    <li>Long unattended soak behavior.</li>
-    <li>A guaranteed hashrate on different CPUs, memory, firmware or thermal conditions.</li>
-  </ul>
-  <div class="callout"><strong>RULE:</strong> A physical sample is evidence for that node under those conditions. It is not permission to manufacture a broader claim.</div>
-</section>
+  <section>
+    <h2>What this does not prove</h2>
+    <ul>
+      <li>Compatibility with arbitrary x86_64 machines.</li>
+      <li>Repeated cold-boot and power-loss reliability.</li>
+      <li>Correct recovery through sustained network or pool failure.</li>
+      <li>Long unattended soak behavior.</li>
+      <li>Guaranteed hashrate on different CPUs, memory, firmware or thermal conditions.</li>
+    </ul>
+    <div class="callout">A physical sample is evidence for that node under those conditions. It does not justify a broader claim.</div>
+  </section>
 
-<section>
-  <h2>RELEASE AUTHORITY</h2>
+  <section>
+    <h2>Release authority</h2>
 <pre>tag     v0.0.4-alpha.25
 source  ba02eb7429683550512b703cd4646d4d9ee6a888
 class   functional physical Alpha preview</pre>
-  <p><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PHYSICAL-EVIDENCE-ALPHA25.md">Read the canonical sanitized evidence document.</a></p>
-</section>
+    <p><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PHYSICAL-EVIDENCE-ALPHA25.md">Read the canonical sanitized evidence document.</a></p>
+  </section>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
-    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
-    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
 </body>

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="940" viewBox="0 0 920 940" role="img" aria-labelledby="title desc">
+<title id="title">RIGOS configuration revision transaction</title>
+<desc id="desc">Validation, immutable revision creation, atomic pointer switch, runtime rendering and activation, with rejection before mutation.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#aaa89f"/>
+  </marker>
+  <style>
+    .node { fill:#17181a; stroke:#777a80; stroke-width:1.5; }
+    .decision { fill:#17181a; stroke:#77a7ff; stroke-width:1.5; }
+    .edge { fill:none; stroke:#aaa89f; stroke-width:1.5; marker-end:url(#arrow); }
+    .label { fill:#eceae0; font: 15px Consolas, Liberation Mono, Courier New, monospace; text-anchor:middle; dominant-baseline:middle; }
+    .small { fill:#aaa89f; font: 12px Consolas, Liberation Mono, Courier New, monospace; text-anchor:middle; }
+  </style>
+</defs>
+
+<rect class="node" x="290" y="24" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="50">Operator input</text>
+<polygon class="decision" points="460,100 630,150 460,200 290,150"/>
+<text class="label" x="460" y="141">Complete candidate</text>
+<text class="label" x="460" y="159">valid?</text>
+<rect class="node" x="670" y="250" width="225" height="52" rx="2"/>
+<text class="label" x="782.5" y="276">Reject without mutation</text>
+<rect class="node" x="290" y="250" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="276">Create immutable revision</text>
+<rect class="node" x="290" y="350" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="376">Commit revision</text>
+<rect class="node" x="290" y="450" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="476">Atomically switch current pointer</text>
+<rect class="node" x="290" y="550" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="576">Apply machine profile</text>
+<rect class="node" x="290" y="650" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="666.5">Render private runtime</text>
+<text class="label" x="460" y="685.5">configuration</text>
+<rect class="node" x="290" y="750" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="776">Publish redacted status</text>
+<rect class="node" x="290" y="850" width="340" height="52" rx="2"/>
+<text class="label" x="460" y="876">Permit service activation</text>
+<path class="edge" d="M 460 76 L 460 100"/>
+<path class="edge" d="M 460 200 L 460 250"/>
+<text class="small" x="480" y="228">yes</text>
+<path class="edge" d="M 630 150 L 782 150 L 782 250"/>
+<text class="small" x="750" y="140">no</text>
+<path class="edge" d="M 460 302 L 460 350"/>
+<path class="edge" d="M 460 402 L 460 450"/>
+<path class="edge" d="M 460 502 L 460 550"/>
+<path class="edge" d="M 460 602 L 460 650"/>
+<path class="edge" d="M 460 702 L 460 750"/>
+<path class="edge" d="M 460 802 L 460 850"/>
+</svg>

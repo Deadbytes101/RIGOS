@@ -1,19 +1,37 @@
-RIGOS FIELD ARCHIVE
-===================
+RIGOS SITE
+==========
 
 PURPOSE
 -------
 
-Static history and architecture site for RIGOS.
+Static engineering history and architecture site for RIGOS.
 
 No framework.
 No package manager.
 No build tool.
-No JavaScript.
+No browser JavaScript.
 No analytics.
 No external font.
+No remote asset.
 
-The site is plain HTML, plain CSS and one local SVG asset.
+The site is plain HTML, plain CSS and checked-in SVG.
+
+
+DIAGRAMS
+--------
+
+Editable architecture diagrams live in:
+
+    site/DIAGRAMS.md
+
+GitHub renders the Mermaid blocks natively. The website uses matching static
+SVG files under:
+
+    site/diagrams/
+
+The browser does not download or execute Mermaid. Diagram rendering is not a
+client-side dependency.
+
 
 LOCAL PREVIEW
 -------------
@@ -26,11 +44,20 @@ Then open:
 
     http://127.0.0.1:8080/
 
+
 PUBLISHING
 ----------
 
-.github/workflows/rigos-pages.yml uploads the site directory directly to
-GitHub Pages. The repository Pages source must be set to GitHub Actions.
+Cloudflare Pages publishes the site directory directly.
+
+    production branch:      main
+    framework preset:       None
+    build command:          empty
+    build output directory: site
+    root directory:         repository root
+
+Every push to main creates a new production deployment.
+
 
 SOURCE AUTHORITY
 ----------------

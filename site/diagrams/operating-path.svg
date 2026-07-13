@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1040" viewBox="0 0 1000 1040" role="img" aria-labelledby="title desc">
+<title id="title">RIGOS operating path</title>
+<desc id="desc">Boot authority, persistent state, runtime gates, miner ownership and operator observation.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#aaa89f"/>
+  </marker>
+  <style>
+    .node { fill:#17181a; stroke:#777a80; stroke-width:1.5; }
+    .decision { fill:#17181a; stroke:#77a7ff; stroke-width:1.5; }
+    .edge { fill:none; stroke:#aaa89f; stroke-width:1.5; marker-end:url(#arrow); }
+    .edge-dashed { fill:none; stroke:#aaa89f; stroke-width:1.5; stroke-dasharray:6 5; marker-end:url(#arrow); }
+    .label { fill:#eceae0; font: 15px Consolas, Liberation Mono, Courier New, monospace; text-anchor:middle; dominant-baseline:middle; }
+    .small { fill:#aaa89f; font: 12px Consolas, Liberation Mono, Courier New, monospace; text-anchor:middle; }
+  </style>
+</defs>
+
+<rect class="node" x="350" y="30" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="57">BIOS or UEFI</text>
+<rect class="node" x="350" y="130" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="157">Immutable Debian 12 root</text>
+<rect class="node" x="350" y="260" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="287">Verified persistent state</text>
+<rect class="node" x="350" y="360" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="387">Committed configuration revision</text>
+<rect class="node" x="350" y="460" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="487">Machine profile applied</text>
+<rect class="node" x="350" y="560" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="577.5">Private runtime rendered</text>
+<text class="label" x="500" y="596.5">under /run/rigos</text>
+<rect class="node" x="350" y="720" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="747">systemd-owned XMRig</text>
+<rect class="node" x="350" y="820" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="847">Bounded health observer</text>
+<rect class="node" x="350" y="920" width="300" height="54" rx="2"/>
+<text class="label" x="500" y="947">rig and rigosctl</text>
+<rect class="node" x="25" y="205" width="250" height="54" rx="2"/>
+<text class="label" x="150" y="232">Local utility console</text>
+<rect class="node" x="725" y="205" width="250" height="54" rx="2"/>
+<text class="label" x="850" y="232">Stateless recovery ISO</text>
+<rect class="node" x="245" y="635" width="220" height="54" rx="2"/>
+<text class="label" x="355" y="662">Huge pages ready</text>
+<rect class="node" x="535" y="635" width="220" height="54" rx="2"/>
+<text class="label" x="645" y="662">Network ready</text>
+<path class="edge" d="M 500 84 L 500 130"/>
+<path class="edge" d="M 500 184 L 500 260"/>
+<path class="edge" d="M 500 314 L 500 360"/>
+<path class="edge" d="M 500 414 L 500 460"/>
+<path class="edge" d="M 500 514 L 500 560"/>
+<path class="edge" d="M 500 614 L 500 620 L 355 620 L 355 635"/>
+<path class="edge" d="M 500 614 L 500 620 L 645 620 L 645 635"/>
+<path class="edge" d="M 355 689 L 355 700 L 500 700 L 500 720"/>
+<path class="edge" d="M 645 689 L 645 700 L 500 700 L 500 720"/>
+<path class="edge" d="M 500 774 L 500 820"/>
+<path class="edge" d="M 500 874 L 500 920"/>
+<path class="edge-dashed" d="M 350 157 L 150 157 L 150 205"/>
+<text class="small" x="235" y="146">utility mode</text>
+<path class="edge-dashed" d="M 650 157 L 850 157 L 850 205"/>
+<text class="small" x="765" y="146">recovery boot</text>
+</svg>

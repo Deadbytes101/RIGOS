@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="RIGOS">
+  <rect width="64" height="64" fill="#111214"/>
+  <rect x="5" y="5" width="54" height="54" fill="none" stroke="#777a80" stroke-width="2"/>
+  <path d="M18 16h18c8 0 12 4 12 11v5c0 6-3 10-9 11l10 5v7l-15-9h-8v9h-8V16zm8 8v14h9c4 0 5-2 5-6v-2c0-4-1-6-5-6h-9z" fill="#eceae0"/>
+  <rect x="48" y="9" width="7" height="7" fill="#77a7ff"/>
+</svg>

@@ -3,38 +3,45 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="The incomplete validation work and explicit non-claims for RIGOS Alpha.25.">
+  <title>Known Limits | RIGOS</title>
+  <meta name="description" content="Review the explicit non-claims and incomplete validation work for RIGOS Alpha.25, including hardware compatibility, outage recovery and long-soak testing.">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#111214">
   <meta name="generator" content="handwritten static HTML">
-  <title>RIGOS Known Limits</title>
+  <link rel="canonical" href="https://rigos.site/limits.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="RIGOS">
+  <meta property="og:title" content="Known Limits | RIGOS">
+  <meta property="og:description" content="The incomplete validation campaigns and explicit non-claims for RIGOS Alpha.25.">
+  <meta property="og:url" content="https://rigos.site/limits.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Known Limits | RIGOS">
+  <meta name="twitter:description" content="What Alpha.25 does not prove and what must happen before a stable claim.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<a class="skip-link" href="#content">Skip to content</a>
 <header class="site-header">
   <div class="shell">
-    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
-    <div class="site-id">
-      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
-      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
-    </div>
-    <nav class="nav" aria-label="Archive navigation">
-      <a href="index.html">ROOT</a>
-      <a href="history.html">HISTORY</a>
-      <a href="architecture.html">ARCHITECTURE</a>
-      <a href="evidence.html">EVIDENCE</a>
-      <a href="limits.html" aria-current="page">LIMITS</a>
-      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    <a class="brand" href="index.html">RIGOS</a>
+    <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="history.html">History</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="evidence.html">Evidence</a>
+      <a href="limits.html" aria-current="page">Limits</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">Source code</a>
     </nav>
   </div>
 </header>
 <main id="content" class="shell">
-<p class="kicker">NON-CLAIMS / RELEASE HONESTY</p>
-<h1>ALPHA.25 WORKS. THAT DOES NOT MAKE IT STABLE.</h1>
-<p class="lead">A functional physical preview and a production-ready operating system are different engineering states. RIGOS freezes Alpha.25 without pretending the missing validation campaigns have already happened.</p>
+  <h1>Known limits</h1>
+  <p class="lead">Alpha.25 is a functional physical preview. It is not stable and it is not production-ready. The missing validation work is listed here rather than hidden behind a broader claim.</p>
 
-<section>
-  <h2>INCOMPLETE WORK</h2>
+  <section>
+    <h2>Incomplete work</h2>
 <pre>[ ] broad hardware compatibility matrix
 [ ] repeated power-cycle campaign
 [ ] network outage recovery campaign
@@ -43,51 +50,50 @@
 [ ] complete SBOM
 [ ] formal production support policy
 [ ] stable release guarantee</pre>
-</section>
+  </section>
 
-<section>
-  <h2>CLAIM MATRIX</h2>
-  <table>
-    <thead><tr><th>Claim</th><th>Status</th><th>Reason</th></tr></thead>
-    <tbody>
-      <tr><td>Bootable experimental appliance exists</td><td class="truth-yes">SUPPORTED</td><td>Physical Alpha.25 nodes reached ready and mined.</td></tr>
-      <tr><td>Local-first contract exists in code and docs</td><td class="truth-yes">SUPPORTED</td><td>No billing, entitlement, activation, forced-pool or kill-switch runtime is part of the product contract.</td></tr>
-      <tr><td>All x86_64 hardware is supported</td><td class="truth-no">UNSUPPORTED</td><td>No broad compatibility matrix exists.</td></tr>
-      <tr><td>Outage recovery is production-safe</td><td class="truth-no">UNSUPPORTED</td><td>Network and pool outage campaigns remain incomplete.</td></tr>
-      <tr><td>Unattended long-term stability is proven</td><td class="truth-no">UNSUPPORTED</td><td>No long soak or repeated power-cycle campaign has closed the evidence gap.</td></tr>
-      <tr><td>Published hashrates predict other machines</td><td class="truth-no">UNSUPPORTED</td><td>Recorded figures are node samples, not benchmark guarantees.</td></tr>
-    </tbody>
-  </table>
-</section>
+  <section>
+    <h2>Claim matrix</h2>
+    <table>
+      <thead><tr><th>Claim</th><th>Status</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>A bootable experimental appliance exists</td><td class="truth-yes">Supported</td><td>Physical Alpha.25 nodes reached ready state and mined.</td></tr>
+        <tr><td>The local-first contract exists in code and documentation</td><td class="truth-yes">Supported</td><td>No billing, entitlement, activation, forced-pool or kill-switch runtime is part of the product contract.</td></tr>
+        <tr><td>All x86_64 hardware is supported</td><td class="truth-no">Unsupported</td><td>No broad compatibility matrix exists.</td></tr>
+        <tr><td>Outage recovery is production-safe</td><td class="truth-no">Unsupported</td><td>Network and pool outage campaigns remain incomplete.</td></tr>
+        <tr><td>Unattended long-term stability is proven</td><td class="truth-no">Unsupported</td><td>No long soak or repeated power-cycle campaign has closed the evidence gap.</td></tr>
+        <tr><td>Published hashrates predict other machines</td><td class="truth-no">Unsupported</td><td>Recorded figures are node samples, not benchmark guarantees.</td></tr>
+      </tbody>
+    </table>
+  </section>
 
-<section>
-  <h2>WHY THE PROJECT IS FROZEN HERE</h2>
-  <p>Alpha.25 is a coherent milestone: the product contract, boot paths, state authority, configuration revisions, firstboot, runtime rendering, huge-page preparation, systemd miner ownership, operator command and health evidence exist together.</p>
-  <p>Freezing the milestone protects that record. It prevents later work from silently rewriting what was actually proven at Alpha.25. Future development can move forward, but it should do so from a named, inspectable baseline.</p>
-</section>
+  <section>
+    <h2>Why Alpha.25 is frozen</h2>
+    <p>Alpha.25 is a coherent milestone. The product contract, boot paths, state authority, configuration revisions, firstboot, runtime rendering, huge-page preparation, systemd miner ownership, operator command and physical evidence exist together.</p>
+    <p>Freezing the milestone protects that record. Later development should move forward from a named and inspectable baseline rather than silently rewriting what Alpha.25 actually proved.</p>
+  </section>
 
-<section>
-  <h2>NO MARKETING ESCAPE HATCH</h2>
-  <ul>
-    <li>RIGOS does not claim superiority over other products without comparative physical evidence.</li>
-    <li>It does not call acceptance targets “benchmarks” merely because numbers exist.</li>
-    <li>It does not treat source archives as bootable release images.</li>
-    <li>It does not erase upstream XMRig donation behavior.</li>
-    <li>It does not convert “worked once” into “safe unattended forever.”</li>
-  </ul>
-</section>
+  <section>
+    <h2>Explicit non-claims</h2>
+    <ul>
+      <li>RIGOS does not claim superiority over other products without comparative physical evidence.</li>
+      <li>Acceptance targets are not presented as universal benchmarks.</li>
+      <li>GitHub source archives are not presented as bootable release images.</li>
+      <li>Upstream XMRig donation behavior is not removed or hidden.</li>
+      <li>A successful sample is not treated as proof of indefinite unattended safety.</li>
+    </ul>
+  </section>
 
-<section>
-  <h2>THE NEXT HONEST GATES</h2>
-  <p>The repository already names the missing work. A future stable claim must be grounded in those completed campaigns and in published evidence that can be inspected independently.</p>
-  <p><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/KNOWN-LIMITS.md">Read the canonical known-limits document.</a></p>
-</section>
+  <section>
+    <h2>Next validation gates</h2>
+    <p>A future stable claim requires the incomplete campaigns above and published evidence that can be inspected independently.</p>
+    <p><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/KNOWN-LIMITS.md">Read the canonical known-limits document.</a></p>
+  </section>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
-    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
-    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
 </body>

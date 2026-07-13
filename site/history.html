@@ -3,126 +3,102 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A deep engineering chronology of the RIGOS USB appliance through Alpha.25.">
+  <title>Project History | RIGOS</title>
+  <meta name="description" content="Read the engineering history of RIGOS from the first bootable USB image through persistent state, physical firstboot defects and the Alpha.25 milestone.">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#111214">
   <meta name="generator" content="handwritten static HTML">
-  <title>RIGOS Project History</title>
+  <link rel="canonical" href="https://rigos.site/history.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="RIGOS">
+  <meta property="og:title" content="Project History | RIGOS">
+  <meta property="og:description" content="Engineering chronology of the RIGOS USB appliance through the frozen Alpha.25 milestone.">
+  <meta property="og:url" content="https://rigos.site/history.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Project History | RIGOS">
+  <meta name="twitter:description" content="Physical failures, repairs and engineering milestones in RIGOS Alpha.25.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<a class="skip-link" href="#content">Skip to content</a>
 <header class="site-header">
   <div class="shell">
-    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
-    <div class="site-id">
-      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
-      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
-    </div>
-    <nav class="nav" aria-label="Archive navigation">
-      <a href="index.html">ROOT</a>
-      <a href="history.html" aria-current="page">HISTORY</a>
-      <a href="architecture.html">ARCHITECTURE</a>
-      <a href="evidence.html">EVIDENCE</a>
-      <a href="limits.html">LIMITS</a>
-      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    <a class="brand" href="index.html">RIGOS</a>
+    <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="history.html" aria-current="page">History</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="evidence.html">Evidence</a>
+      <a href="limits.html">Limits</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">Source code</a>
     </nav>
   </div>
 </header>
 <main id="content" class="shell">
-<p class="kicker">ENGINEERING CHRONOLOGY / NOT MARKETING</p>
-<h1>THE DEFECTS ARE PART OF THE HISTORY.</h1>
-<p class="lead">RIGOS did not advance by hiding failed assumptions. Physical boot tests exposed authority mistakes that simulation and file inspection could not. Each milestone below records a change in what the machine could actually prove.</p>
+  <h1>Project history</h1>
+  <p class="lead">RIGOS advanced through physical testing. Real boot attempts exposed authority mistakes that simulation and file inspection did not. The milestones below record changes in what the machine could actually prove.</p>
 
-<section>
-  <h2>CHRONOLOGY</h2>
-  <ol class="timeline">
-    <li>
-      <div class="stamp">ORIGIN</div>
-      <div><h3>Observation was not enough</h3><p>The early direction moved from inspecting mining machines toward building a complete bootable appliance. The target became a USB-native system that could own startup, state, runtime generation, mining and recovery locally.</p></div>
-    </li>
-    <li>
-      <div class="stamp">2026-07-04</div>
-      <div><h3>Product contract fixed first</h3><p>The project adopted a strict contract: CPU-only, pool-neutral, local-first, no account, no activation, no RIGOS fee, no forced pool and no remote kill switch. Architecture had to preserve that contract rather than patch it in later.</p></div>
-    </li>
-    <li>
-      <div class="stamp">USB PIPELINE</div>
-      <div><h3>First bootable image path</h3><p>BIOS and UEFI boot paths, immutable appliance roots and a separate persistent-state partition turned the project into an operating image rather than a collection of host scripts.</p></div>
-    </li>
-    <li>
-      <div class="stamp">STATE</div>
-      <div><h3>Durable authority separated from root</h3><p>Configuration revisions, the current revision pointer, SSH host identity, recovery credential records and health budget moved into persistent state. Runtime files became generated output, not the source of truth.</p></div>
-    </li>
-    <li>
-      <div class="stamp">FIRSTBOOT</div>
-      <div><h3>Configuration moved to the physical tty</h3><p>The firstboot interface was placed on tty1. Whiptail drawing and answer capture had to use separate streams so the console UI could remain visible while configuration input was committed correctly.</p></div>
-    </li>
-    <li>
-      <div class="stamp">PHYSICAL FAIL</div>
-      <div><h3>systemd transaction authority was wrong</h3><p>Real hardware showed that a utility-mode conflict could remove firstboot from the initial boot transaction before service conditions were evaluated. The service file looked conditional; the transaction graph had already decided otherwise.</p></div>
-    </li>
-    <li>
-      <div class="stamp">ALPHA.22</div>
-      <div><h3>Kernel command line became mode authority</h3><p>The fix moved boot-mode authority to kernel command-line conditions and repaired the physical firstboot/systemd transaction defect. Alpha.22 became the first functional physical preview.</p></div>
-    </li>
-    <li>
-      <div class="stamp">ALPHA.23–24</div>
-      <div><h3>Hardening after real defects</h3><p>Miner health observation, bounded supervision, network inspection, hostname synchronization and a namespace correction for persistent miner-health state were added after physical behavior exposed weak edges.</p></div>
-    </li>
-    <li>
-      <div class="stamp">ALPHA.25</div>
-      <div><h3>Operator surface and recorded truth</h3><p>The short <code>rig</code> command, public JSON allowlists, automation-friendly status, preserved startup gates and sanitized physical health evidence completed the frozen functional milestone.</p></div>
-    </li>
-    <li>
-      <div class="stamp">CURRENT</div>
-      <div><h3>Development paused</h3><p>Alpha.25 is frozen as an experimental appliance milestone. It is physically functional, but the project does not claim stable unattended operation or production readiness.</p></div>
-    </li>
-  </ol>
-</section>
+  <section>
+    <h2>Chronology</h2>
+    <ol class="timeline">
+      <li><span class="stamp">Origin</span><h3>Observation was not enough</h3><p>The project moved from inspecting mining machines toward building a complete bootable appliance that could own startup, state, runtime generation, mining and recovery locally.</p></li>
+      <li><span class="stamp">2026-07-04</span><h3>Product contract fixed first</h3><p>The project adopted a strict contract: CPU-only, pool-neutral, local-first, no account, no activation, no RIGOS fee, no forced pool and no remote kill switch.</p></li>
+      <li><span class="stamp">USB pipeline</span><h3>First bootable image path</h3><p>BIOS and UEFI boot paths, immutable appliance roots and a separate persistent-state partition turned the project into an operating image rather than a collection of host scripts.</p></li>
+      <li><span class="stamp">Persistent state</span><h3>Durable authority separated from root</h3><p>Configuration revisions, the current revision pointer, SSH host identity, recovery credential records and health budget moved into persistent state. Runtime files became generated output rather than the source of truth.</p></li>
+      <li><span class="stamp">Firstboot</span><h3>Configuration moved to the physical console</h3><p>The firstboot interface was placed on tty1. Whiptail drawing and answer capture used separate streams so the interface remained visible while configuration input was committed correctly.</p></li>
+      <li><span class="stamp">Physical failure</span><h3>The systemd transaction authority was wrong</h3><p>Real hardware showed that a utility-mode conflict could remove firstboot from the initial boot transaction before service conditions were evaluated. The service file looked conditional, but the transaction graph had already decided otherwise.</p></li>
+      <li><span class="stamp">Alpha.22</span><h3>Kernel command line became mode authority</h3><p>The fix moved boot-mode authority to kernel command-line conditions and repaired the physical firstboot transaction defect. Alpha.22 became the first functional physical preview.</p></li>
+      <li><span class="stamp">Alpha.23 and Alpha.24</span><h3>Hardening after real defects</h3><p>Miner health observation, bounded supervision, network inspection, hostname synchronization and a namespace correction for persistent miner-health state were added after physical behavior exposed weak edges.</p></li>
+      <li><span class="stamp">Alpha.25</span><h3>Operator surface and recorded evidence</h3><p>The short <code>rig</code> command, public JSON allowlists, automation-friendly status, preserved startup gates and sanitized physical health evidence completed the frozen functional milestone.</p></li>
+      <li><span class="stamp">Current</span><h3>Development paused</h3><p>Alpha.25 is frozen as an experimental appliance milestone. It is physically functional, but the project does not claim stable unattended operation or production readiness.</p></li>
+    </ol>
+  </section>
 
-<section>
-  <h2>THE IMPORTANT FAILURE</h2>
-  <p>The firstboot defect matters because it demonstrates a low-level systems rule: a service condition does not help when the service has already been removed from the transaction that would evaluate it.</p>
-<pre>incorrect mental model:
+  <section>
+    <h2>The firstboot defect</h2>
+    <p>The defect demonstrates a low-level systems rule: a service condition does not help when the service has already been removed from the transaction that would evaluate it.</p>
+<pre>incorrect model:
   service enters transaction
-      -&gt; ConditionKernelCommandLine evaluated
-      -&gt; service skipped or started
+      -&gt; kernel command-line condition is evaluated
+      -&gt; service is skipped or started
 
-physical reality found:
+physical result:
   conflict removes service from transaction
-      -&gt; condition never gets authority
+      -&gt; condition never gains authority
       -&gt; firstboot never appears
 
 repair:
-  kernel command line defines mode authority
+  kernel command line defines the boot mode
       -&gt; transaction is built correctly
-      -&gt; firstboot remains present only in the intended mode</pre>
-</section>
+      -&gt; firstboot exists only in the intended mode</pre>
+  </section>
 
-<section>
-  <h2>ENGINEERING LESSONS</h2>
-  <ul>
-    <li>A boot graph is executable architecture. Unit files cannot be reviewed as isolated text.</li>
-    <li>Persistent configuration should be committed and activated, not edited in-place as live runtime state.</li>
-    <li>Recovery must remain observable and explicit; automatic destructive repair destroys evidence.</li>
-    <li>Operator convenience must not bypass the gates that establish state, runtime, huge pages and network truth.</li>
-    <li>Physical samples prove only the machine and conditions actually observed.</li>
-  </ul>
-</section>
+  <section>
+    <h2>Engineering lessons</h2>
+    <ul>
+      <li>A boot graph is executable architecture. Unit files cannot be reviewed as isolated text.</li>
+      <li>Persistent configuration should be committed and activated rather than edited in place as live runtime state.</li>
+      <li>Recovery should remain observable and explicit. Automatic destructive repair destroys evidence.</li>
+      <li>Operator convenience must not bypass state, runtime, huge-page and network gates.</li>
+      <li>Physical samples prove only the machine and conditions that were observed.</li>
+    </ul>
+  </section>
 
-<section>
-  <h2>COMMIT LANDMARKS</h2>
-  <ul>
-    <li><a href="https://github.com/Deadbytes101/RIGOS/commit/eae4b501eadd293e26e42439688eae344c43fc1a">Adopt RIGOS product contract</a></li>
-    <li><a href="https://github.com/Deadbytes101/RIGOS/commit/1cc65905cbf1c5de6b6ade97cd31e300f7a603a4">Add first bootable RIGOS image pipeline</a></li>
-    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PROJECT-HISTORY.md">Canonical project-history document</a></li>
-  </ul>
-</section>
+  <section>
+    <h2>Commit landmarks</h2>
+    <ul>
+      <li><a href="https://github.com/Deadbytes101/RIGOS/commit/eae4b501eadd293e26e42439688eae344c43fc1a">Adopt the RIGOS product contract</a></li>
+      <li><a href="https://github.com/Deadbytes101/RIGOS/commit/1cc65905cbf1c5de6b6ade97cd31e300f7a603a4">Add the first bootable RIGOS image pipeline</a></li>
+      <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PROJECT-HISTORY.md">Canonical project-history document</a></li>
+    </ul>
+  </section>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
-    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
-    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
 </body>

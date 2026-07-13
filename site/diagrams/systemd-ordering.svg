@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720" role="img" aria-labelledby="title desc">
+<title id="title">RIGOS systemd ordering</title>
+<desc id="desc">The ordered systemd units from persistent state discovery through miner health observation.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#aaa89f"/>
+  </marker>
+  <style>
+    .node { fill:#17181a; stroke:#777a80; stroke-width:1.5; }
+    .edge { fill:none; stroke:#aaa89f; stroke-width:1.5; marker-end:url(#arrow); }
+    .label { fill:#eceae0; font: 15px Consolas, Liberation Mono, Courier New, monospace; text-anchor:middle; dominant-baseline:middle; }
+  </style>
+</defs>
+
+<rect class="node" x="165" y="22" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="46">rigos-state.service</text>
+<rect class="node" x="165" y="108" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="132">rigos-state-ready.service</text>
+<rect class="node" x="165" y="194" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="218">rigos-ssh-hostkeys.service</text>
+<rect class="node" x="165" y="280" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="304">rigos-profile-apply.service</text>
+<rect class="node" x="165" y="366" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="390">rigos-runtime-render.service</text>
+<rect class="node" x="165" y="452" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="476">rigos-hugepages.service</text>
+<rect class="node" x="165" y="538" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="562">rigos-miner.service</text>
+<rect class="node" x="165" y="624" width="390" height="48" rx="2"/>
+<text class="label" x="360" y="648">rigos-miner-health.timer</text>
+<path class="edge" d="M 360 70 L 360 108"/>
+<path class="edge" d="M 360 156 L 360 194"/>
+<path class="edge" d="M 360 242 L 360 280"/>
+<path class="edge" d="M 360 328 L 360 366"/>
+<path class="edge" d="M 360 414 L 360 452"/>
+<path class="edge" d="M 360 500 L 360 538"/>
+<path class="edge" d="M 360 586 L 360 624"/>
+</svg>
