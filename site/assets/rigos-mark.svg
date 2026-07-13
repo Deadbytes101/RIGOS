@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
+  <title id="title">RIGOS mark</title>
+  <desc id="desc">A compact circuit-like R symbol for the RIGOS project.</desc>
+  <rect x="1" y="1" width="46" height="46" fill="#111214" stroke="#777a80" stroke-width="2"/>
+  <path d="M11 9h16c7 0 11 4 11 10v3c0 5-2 8-7 10l8 5v6l-13-8h-7v8h-8V9zm8 7v12h8c3 0 4-2 4-5v-2c0-3-1-5-4-5h-8z" fill="#eceae0"/>
+  <path d="M5 14h6M37 14h6M5 34h6M37 34h6" stroke="#77a7ff" stroke-width="2"/>
+  <rect x="37" y="5" width="6" height="6" fill="#77a7ff"/>
+  <rect x="5" y="37" width="4" height="4" fill="#eceae0"/>
+</svg>
