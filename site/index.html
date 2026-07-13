@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="The engineering history, architecture, physical evidence and known limits of the RIGOS local-first CPU mining appliance.">
+  <meta name="theme-color" content="#111214">
+  <meta name="generator" content="handwritten static HTML">
+  <title>RIGOS Field Archive</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#content">SKIP TO RECORD</a>
+<header class="site-header">
+  <div class="shell">
+    <p class="bootline"><strong>RIGOS</strong> / DOCUMENT AUTHORITY / ALPHA.25</p>
+    <div class="site-id">
+      <a class="name" href="index.html">RIGOS://ARCHIVE</a>
+      <span class="mode">LOCAL-FIRST CPU APPLIANCE RECORD</span>
+    </div>
+    <nav class="nav" aria-label="Archive navigation">
+      <a href="index.html" aria-current="page">ROOT</a>
+      <a href="history.html">HISTORY</a>
+      <a href="architecture.html">ARCHITECTURE</a>
+      <a href="evidence.html">EVIDENCE</a>
+      <a href="limits.html">LIMITS</a>
+      <a href="https://github.com/Deadbytes101/RIGOS">SOURCE</a>
+    </nav>
+  </div>
+</header>
+<main id="content" class="shell">
+<img class="banner" src="assets/rigos-banner.svg" alt="RIGOS local-first CPU-only USB-native">
+<p class="kicker">FIELD RECORD / FROZEN FUNCTIONAL MILESTONE</p>
+<h1>THE MACHINE OWNS ITS OWN STATE.</h1>
+<p class="lead">RIGOS is a Debian-based x86_64 USB compute appliance built for automatic, persistent and observable CPU mining. This archive records how it was designed, where physical testing broke it, what Alpha.25 proves, and what remains unproven.</p>
+
+<div class="status-strip" aria-label="Current RIGOS status">
+  <div class="status-cell"><span>release</span><strong>0.0.4-alpha.25</strong></div>
+  <div class="status-cell"><span>class</span><strong>physical alpha</strong></div>
+  <div class="status-cell"><span>development</span><strong>paused / frozen</strong></div>
+  <div class="status-cell"><span>production</span><strong>not ready</strong></div>
+</div>
+
+<section>
+  <h2>WHY RIGOS EXISTS</h2>
+  <p>RIGOS started from a simple refusal: the local machine should not require a vendor account, activation server, subscription, worker limit or remote owner before it can perform its job.</p>
+  <p>The project moved beyond observation-only tooling into a bootable USB appliance. The result is not a cloud dashboard with a miner attached. It is a local operating path: immutable root, separate durable state, explicit configuration revisions, direct systemd ownership and a small operator interface.</p>
+  <div class="callout">
+    <strong>PRODUCT CONTRACT:</strong> CPU-only. Pool-neutral. USB-native. Local-first. No RIGOS fee. No account. No activation. No forced pool. No remote kill switch.
+  </div>
+</section>
+
+<section>
+  <h2>THE AUTHORITY CHAIN</h2>
+<pre>BIOS / UEFI
+    |
+    v
+immutable Debian root (A / B)
+    |
+    v
+verified persistent state
+    |
+    v
+committed config revision
+    |
+    v
+validated runtime under /run/rigos
+    |
+    +--&gt; huge-page authority
+    +--&gt; network readiness gate
+    |
+    v
+systemd-owned XMRig
+    |
+    v
+rig / rigosctl / bounded health observer</pre>
+  <p>Utility and recovery boot remain outside the normal mining path. Recovery mutation is explicit. The short <code>rig</code> command does not hide <code>sudo</code> and does not bypass state, configuration or runtime gates.</p>
+</section>
+
+<section>
+  <h2>ARCHIVE INDEX</h2>
+  <div class="archive-index">
+    <div class="archive-row">
+      <a href="history.html">01 / HISTORY</a>
+      <p>From the first USB appliance work through the tty1 firstboot defect, Alpha.22 repair, hardening passes and the frozen Alpha.25 milestone.</p>
+    </div>
+    <div class="archive-row">
+      <a href="architecture.html">02 / ARCHITECTURE</a>
+      <p>Boot modes, systemd ordering, persistent-state trust boundary, revision activation, runtime generation and operator surfaces.</p>
+    </div>
+    <div class="archive-row">
+      <a href="evidence.html">03 / PHYSICAL EVIDENCE</a>
+      <p>Sanitized real-hardware status snapshots, observed doctor checks, huge-page readiness, accepted shares and the exact limits of that evidence.</p>
+    </div>
+    <div class="archive-row">
+      <a href="limits.html">04 / KNOWN LIMITS</a>
+      <p>The missing power-cycle, outage, compatibility and soak campaigns that prevent an honest stable or production-ready claim.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>CURRENT TRUTH</h2>
+  <table>
+    <tbody>
+      <tr><th scope="row">Physically booted</th><td class="truth-yes">YES</td></tr>
+      <tr><th scope="row">Configured mining observed</th><td class="truth-yes">YES</td></tr>
+      <tr><th scope="row">Persistent state and exact huge pages observed</th><td class="truth-yes">YES</td></tr>
+      <tr><th scope="row">Broad hardware compatibility proven</th><td class="truth-no">NO</td></tr>
+      <tr><th scope="row">Long unattended production reliability proven</th><td class="truth-no">NO</td></tr>
+      <tr><th scope="row">Stable release declared</th><td class="truth-no">NO</td></tr>
+    </tbody>
+  </table>
+  <p>RIGOS Alpha.25 is usable as an experimental appliance. That is a narrower claim than “production ready,” and the archive keeps the distinction visible.</p>
+</section>
+
+<section>
+  <h2>PRIMARY DOCUMENTS</h2>
+  <ul class="doclinks">
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PROJECT-HISTORY.md">Project history</a></li>
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/architecture.md">Architecture</a></li>
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/product-contract.md">Product contract</a></li>
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/SECURITY-MODEL.md">Security model</a></li>
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PHYSICAL-EVIDENCE-ALPHA25.md">Physical evidence</a></li>
+    <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/KNOWN-LIMITS.md">Known limits</a></li>
+  </ul>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="shell">
+    <p><strong>RIGOS FIELD ARCHIVE</strong> — handwritten HTML and CSS.</p>
+    <p>NO ACCOUNT. NO ACTIVATION. NO CLOUD OWNER. NO JAVASCRIPT.</p>
+    <p>Source authority: <a href="https://github.com/Deadbytes101/RIGOS">github.com/Deadbytes101/RIGOS</a></p>
+  </div>
+</footer>
+</body>
+</html>
