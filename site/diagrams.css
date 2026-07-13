@@ -1,0 +1,25 @@
+/* Static SVG projections of Mermaid source. No client runtime. */
+
+.diagram {
+  margin: 1rem 0 2rem;
+}
+
+.diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  background: transparent;
+}
+
+.diagram figcaption {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media print {
+  .diagram img {
+    filter: invert(1) grayscale(1);
+  }
+}
