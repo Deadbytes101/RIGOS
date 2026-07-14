@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the RIGOS signed status observer every 30 seconds
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+RandomizedDelaySec=3s
+Persistent=false
+Unit=rigos-status-agent.service
+
+[Install]
+WantedBy=timers.target
