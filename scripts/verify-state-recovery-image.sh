@@ -63,8 +63,8 @@ release="$root/etc/rigos-release"
 [[ -f "$release" ]] || die 'release metadata is missing'
 
 python3 -m py_compile "$orchestrator" "$recovery" "$gate"
-grep -Fqx 'VERSION_ID="0.0.4-alpha.25"' "$release" \
-    || die 'embedded alpha.20 version is missing'
+grep -Fqx 'VERSION_ID="0.0.4-alpha.26"' "$release" \
+    || die 'embedded alpha.26 version is missing'
 grep -Fqx 'TimeoutStartSec=20min' "$state_service" \
     || die 'state service full repair window is missing'
 
