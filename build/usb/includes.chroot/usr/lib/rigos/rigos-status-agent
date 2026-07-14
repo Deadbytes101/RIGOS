@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""RIGOS truth-only signed status observer."""
+from __future__ import annotations
+
+import argparse, hashlib, hmac, json, os, re, secrets, subprocess, sys, time
+from pathlib import Path
+from typing import Any
+from urllib import error, parse, request
+
+AGENT_VERSION = "2.0.0"
+OBSERVATION_SCHEMA = "rigos.status-observation/v1"
+STATE_ROOT = Path("/var/lib/rigos")
+DEFAULT_SOURCE_ID_FILE = STATE_ROOT / "status-agent/source-id"
+DEFAULT_STATUS_FILE = STATE_ROOT / "status-agent/last-send.json"
+DEFAULT_SECRET_FILE = STATE_ROOT / "status-agent/ingest.secret"
+MAX_JSON_BYTES = 65536
+STATUS_SEVERITY = {"operational":0,"unknown":1,"degraded":2,"partial_outage":3,"major_outage":4}
+COMPONENT_IDS = (
+    "boot-device-verification","persistent-state","state-readiness","recovery-access",
+    "ssh-host-identity","configuration-activation","profile-apply","runtime-render",
+    "huge-page-authority","randomx-msr","network-readiness","root-filesystem-integrity",
+    "failed-unit-set","operator-health","kernel-integrity","state-capacity",
+    "time-synchronization","ssh-service","remote-access-observer",
+)
+
+
+def utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def clean_text(value: Any, maximum: int = 240) -> str:
+    return (re.sub(r"\s+", " ", str(value)).strip()[:maximum] or "No usable evidence")
+
+
+def run_command(argv: list[str], timeout: float = 5.0) -> tuple[int | None,str,str]:
+    try:
+        p = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=timeout,
+            env={"PATH":"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","LC_ALL":"C"})
+        return p.returncode, p.stdout, p.stderr
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, "", clean_text(exc)
+
+
+def read_text(path: Path, maximum: int = MAX_JSON_BYTES) -> str | None:
+    try:
+        if path.stat().st_size > maximum: return None
+        return path.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError): return None
+
+
+def read_json(path: Path) -> dict[str,Any] | None:
+    raw = read_text(path)
+    if raw is None: return None
+    try: value = json.loads(raw)
+    except json.JSONDecodeError: return None
+    return value if isinstance(value, dict) else None
+
+
+def parse_release_file(path: Path) -> dict[str,str]:
+    raw = read_text(path, 32768) or ""; out: dict[str,str] = {}
+    for line in raw.splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line: continue
+        key, value = line.split("=",1); value = value.strip()
+        if len(value)>1 and value[0]==value[-1] and value[0] in "\"'": value=value[1:-1]
+        out[key.strip()] = value
+    return out
+
+
+def release_identity() -> dict[str,Any]:
+    values = parse_release_file(Path("/etc/os-release")); values.update(parse_release_file(Path("/etc/rigos-release")))
+    if values.get("ID","").lower() != "rigos" and values.get("NAME","").upper() != "RIGOS":
+        raise RuntimeError("This agent refuses to publish from a non-RIGOS system")
+    version = values.get("VERSION_ID") or values.get("IMAGE_VERSION")
+    if not version: raise RuntimeError("RIGOS release identity is incomplete")
+    def opt(key: str) -> str | None: return clean_text(values[key],256) if values.get(key) else None
+    return {"product":"RIGOS","version":clean_text(version,128),"imageId":opt("IMAGE_ID"),
+        "imageVersion":opt("IMAGE_VERSION"),"channel":opt("IMAGE_CHANNEL"),"buildId":opt("BUILD_ID"),
+        "buildCommit":opt("BUILD_COMMIT"),"architecture":opt("ARCHITECTURE")}
+
+
+def require_persistent_state(path: Path) -> None:
+    try: root=STATE_ROOT.resolve(strict=True); resolved=path.resolve(strict=False); resolved.relative_to(root)
+    except (OSError, ValueError) as exc: raise RuntimeError("Status-agent state must be under persistent /var/lib/rigos") from exc
+    if not os.path.ismount(root): raise RuntimeError("RIGOS persistent state is not mounted")
+
+
+def ensure_source_id(path: Path) -> str:
+    require_persistent_state(path)
+    try:
+        current=path.read_text(encoding="ascii").strip()
+        if re.fullmatch(r"[a-f0-9]{64}",current): return current
+    except OSError: pass
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700); os.chmod(path.parent,0o700)
+    value=secrets.token_hex(32)
+    try: fd=os.open(path, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
+    except FileExistsError:
+        current=path.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[a-f0-9]{64}",current): raise RuntimeError("Invalid persistent source ID")
+        return current
+    with os.fdopen(fd,"w",encoding="ascii") as f: f.write(value+"\n"); f.flush(); os.fsync(f.fileno())
+    return value
+
+
+def boot_id_hash() -> str:
+    raw=read_text(Path("/proc/sys/kernel/random/boot_id"),256) or "unavailable"
+    return hashlib.sha256(raw.strip().encode("ascii",errors="ignore")).hexdigest()
+
+
+def evidence(summary: str, **fields: Any) -> dict[str,Any]:
+    out={"authority":"rigos-status-agent","summary":clean_text(summary)}
+    names={"unit":"unit","active_state":"activeState","sub_state":"subState","result":"result","schema":"schema","outcome":"outcome"}
+    for source,target in names.items():
+        value=fields.get(source)
+        if value: out[target]=clean_text(value,160 if target in ("unit","schema") else 128)
+    if fields.get("facts") is not None: out["facts"]=fields["facts"]
+    return out
+
+
+def component(cid: str, status: str, observed: str, ev: dict[str,Any]) -> dict[str,Any]:
+    if cid not in COMPONENT_IDS or status not in STATUS_SEVERITY: raise RuntimeError("Invalid component observation")
+    return {"id":cid,"status":status,"observedAt":observed,"evidence":ev}
+
+
+def outcome_status(outcome: str | None, ready=("ready","ok","applied","active","verified","complete","completed")) -> str:
+    if not outcome: return "unknown"
+    value=outcome.lower()
+    if value in ready: return "operational"
+    if value in ("not_configured","not_provisioned","skipped","not_applicable"): return "unknown"
+    if value in ("degraded","limited_capacity","partial"): return "degraded"
+    if "fail" in value or value in ("blocked","unreadable","invalid"): return "major_outage"
+    return "unknown"
+
+
+def json_authority(path: str, fact_key: str, label: str) -> tuple[str,dict[str,Any]]:
+    value=read_json(Path(path))
+    if value is None: return "unknown", evidence(f"{label} evidence is unavailable")
+    outcome=value.get("outcome") or value.get("status") or value.get("state")
+    status=outcome_status(str(outcome) if outcome is not None else None)
+    facts={fact_key: clean_text(outcome,128) if outcome is not None else None}
+    return status,evidence(f"{label}: {outcome or 'unknown'}",schema=value.get("schema"),outcome=str(outcome) if outcome else None,facts=facts)
+
+
+def systemd_show(unit: str) -> dict[str,str] | None:
+    argv=["systemctl","show",unit,"--no-pager"]
+    for prop in ("LoadState","ActiveState","SubState","Result","UnitFileState","ConditionResult"): argv += ["--property",prop]
+    code,out,_=run_command(argv)
+    if code is None: return None
+    values=dict(line.split("=",1) for line in out.splitlines() if "=" in line)
+    return values or None
+
+
+def unit_authority(unit: str, critical: bool=True, inactive_ok: bool=False) -> tuple[str,dict[str,Any]]:
+    v=systemd_show(unit)
+    if v is None: return "unknown",evidence("systemd evidence unavailable",unit=unit)
+    active=v.get("ActiveState","unknown"); sub=v.get("SubState","unknown"); result=v.get("Result","unknown")
+    facts={"unitFileState":v.get("UnitFileState","unknown")[:128],"conditionResult":v.get("ConditionResult","unknown")[:128]}
+    args={"unit":unit,"active_state":active,"sub_state":sub,"result":result,"facts":facts}
+    if v.get("LoadState")=="not-found": return "unknown",evidence("unit not installed",**args)
+    if active=="active" or (inactive_ok and active=="inactive" and result in ("success","done","unknown")):
+        return "operational",evidence(f"{unit} is {active}/{sub}",**args)
+    if active in ("activating","deactivating","reloading"): return "degraded",evidence("unit is transitioning",**args)
+    if active=="failed" or result=="failed": return ("major_outage" if critical else "partial_outage"),evidence("unit failed",**args)
+    if v.get("ConditionResult")=="no": return "unknown",evidence("unit condition not applicable",**args)
+    return "unknown",evidence(f"unit is {active}/{sub}",**args)
+
+
+def unexpected_failed_units(output: str) -> tuple[list[str],int]:
+    units=[]; ignored=0
+    for line in output.splitlines():
+        match=re.search(r"(^|\s)([A-Za-z0-9_.@-]+\.(?:service|mount|socket|target|timer))\s+",line)
+        if not match: continue
+        unit=match.group(2)
+        if unit=="rigos-status-agent.service": ignored+=1
+        elif unit not in units: units.append(unit)
+    return sorted(units),ignored
+
+
+def collect_components(observed: str) -> tuple[dict[str,Any],list[dict[str,Any]]]:
+    items=[]
+    def add(cid: str, pair: tuple[str,dict[str,Any]]) -> None: items.append(component(cid,pair[0],observed,pair[1]))
+    add("boot-device-verification",json_authority("/run/rigos/boot-device.json","verificationOutcome","Boot-device verification"))
+    add("persistent-state",json_authority("/run/rigos/state-status.json","stateOutcome","Persistent state"))
+    add("state-readiness",unit_authority("rigos-state-ready.service",True,True))
+    recovery=json_authority("/run/rigos/recovery-access-status.json","stateOutcome","Recovery access")
+    if recovery[0]=="unknown": recovery=unit_authority("rigos-recovery-access.service",True,True)
+    add("recovery-access",recovery)
+    add("ssh-host-identity",unit_authority("rigos-ssh-hostkeys.service",False,True))
+    add("configuration-activation",json_authority("/var/lib/rigos/activation-status.json","configurationState","Configuration activation"))
+    add("profile-apply",unit_authority("rigos-profile-apply.service",True,True))
+    add("runtime-render",unit_authority("rigos-runtime-render.service",True,True))
+    perf=read_json(Path("/run/rigos/performance-status.json"))
+    if perf:
+        hp=perf.get("huge_pages") if isinstance(perf.get("huge_pages"),dict) else {}
+        outcome=hp.get("status") or perf.get("outcome"); status=outcome_status(str(outcome) if outcome else None)
+        facts={"allocationPercent":hp.get("allocation_percent_of_target"),"targetPages":hp.get("target_pages"),"actualPages":hp.get("actual_pages")}
+        add("huge-page-authority",(status,evidence(f"Huge-page authority: {outcome or 'unknown'}",schema=perf.get("schema"),outcome=str(outcome) if outcome else None,facts=facts)))
+    else: add("huge-page-authority",("unknown",evidence("Huge-page evidence is unavailable")))
+    msr=json_authority("/run/rigos/randomx-msr-status.json","verificationOutcome","RandomX MSR")
+    if msr[0]=="unknown": msr=unit_authority("rigos-randomx-msr.service",False,True)
+    add("randomx-msr",msr)
+    nm=unit_authority("NetworkManager.service",True); online=unit_authority("network-online.target",True)
+    add("network-readiness",(nm if STATUS_SEVERITY[nm[0]]>=STATUS_SEVERITY[online[0]] else online))
+    code,out,_=run_command(["findmnt","-n","-o","FSTYPE,OPTIONS","/"])
+    if code==0 and out.strip():
+        parts=out.strip().split(None,1); fstype=parts[0]; opts=parts[1] if len(parts)>1 else ""
+        ro="ro" in opts.split(","); add("root-filesystem-integrity",("operational" if ro else "major_outage",evidence("Root filesystem is read-only" if ro else "Root filesystem is writable",facts={"rootReadOnly":ro,"rootFileSystem":fstype[:128]})))
+    else: add("root-filesystem-integrity",("unknown",evidence("Root filesystem mount evidence unavailable")))
+    _,failed_out,_=run_command(["systemctl","--failed","--no-legend","--plain"])
+    failed,ignored=unexpected_failed_units(failed_out); add("failed-unit-set",("operational" if not failed else "major_outage",evidence("No unexpected failed units" if not failed else "Unexpected failed units exist",facts={"failedUnits":len(failed)})))
+    health_code,health_out,health_err=run_command(["rig","health","--json"],8.0)
+    hs="ok" if health_code==0 else "degraded" if health_code==1 else "failed" if health_code==2 else "unavailable"
+    health={"status":hs,"exitCode":health_code,"summary":clean_text(health_out or health_err or "rig health unavailable")}
+    add("operator-health",("operational" if health_code==0 else "degraded" if health_code==1 else "major_outage" if health_code==2 else "unknown",evidence("rig health exit contract",facts={"commandExitCode":health_code})))
+    _,journal,_=run_command(["journalctl","-k","-b","--no-pager","-o","cat"],8.0)
+    severe=sum(len(re.findall(p,journal,re.I)) for p in (r"machine check",r"hardware error",r"soft lockup",r"kernel panic",r"I/O error",r"EXT4-fs error"))
+    warning=sum(len(re.findall(p,journal,re.I)) for p in (r"thermal",r"throttl",r"watchdog",r"rcu.*stall"))
+    ks="major_outage" if severe else "degraded" if warning else "operational"
+    add("kernel-integrity",(ks,evidence("Kernel fault scan completed",facts={"severeEvents":severe,"warningEvents":warning})))
+    try:
+        st=os.statvfs(STATE_ROOT); total=st.f_blocks*st.f_frsize; free=st.f_bavail*st.f_frsize; pct=(free/total*100) if total else 0
+        cs="operational" if pct>=10 else "degraded" if pct>=5 else "major_outage"; add("state-capacity",(cs,evidence("Persistent-state capacity inspected",facts={"freePercent":round(pct,3)})))
+    except OSError: add("state-capacity",("unknown",evidence("Persistent-state capacity unavailable")))
+    tc,to,_=run_command(["timedatectl","show","--property=NTPSynchronized","--value"],4.0); sync=to.strip().lower()=="yes" if tc==0 else None
+    add("time-synchronization",("operational" if sync is True else "degraded" if sync is False else "unknown",evidence("Time synchronization inspected",facts={"ntpSynchronized":sync})))
+    add("ssh-service",unit_authority("ssh.service",False))
+    add("remote-access-observer",unit_authority("rigos-remote-access-observe.service",False,True))
+    if len(items)!=len(COMPONENT_IDS) or {i["id"] for i in items}!=set(COMPONENT_IDS): raise RuntimeError("Collector registry mismatch")
+    return health,items
+
+
+def build_observation(source_id_file: Path) -> dict[str,Any]:
+    observed=utc_now(); health,components=collect_components(observed)
+    return {"schema":OBSERVATION_SCHEMA,"observedAt":observed,"sourceId":ensure_source_id(source_id_file),
+        "bootIdHash":boot_id_hash(),"release":release_identity(),"health":health,"components":components}
+
+
+def read_secret(path: Path) -> str:
+    secret=(read_text(path,4096) or "").strip()
+    if not re.fullmatch(r"[A-Fa-f0-9]{64}",secret): raise RuntimeError("Ingest secret must be exactly 64 hexadecimal characters")
+    return secret.lower()
+
+
+def endpoint_url(server: str) -> str:
+    p=parse.urlparse(server)
+    if p.scheme not in ("http","https") or not p.netloc: raise RuntimeError("RIGOS status URL must be absolute HTTP or HTTPS")
+    if p.username or p.password or p.query or p.fragment: raise RuntimeError("RIGOS status URL contains forbidden credentials/query/fragment")
+    return server if p.path.rstrip("/").endswith("/api/v1/observations") else server.rstrip("/")+"/api/v1/observations"
+
+
+def signed_headers(secret: str, body: bytes, now: int | None=None) -> dict[str,str]:
+    timestamp=str(int(time.time()) if now is None else now); nonce=secrets.token_hex(16)
+    digest=hmac.new(secret.encode(),timestamp.encode()+b"."+nonce.encode()+b"."+body,hashlib.sha256).hexdigest()
+    return {"Content-Type":"application/json","User-Agent":f"rigos-status-agent/{AGENT_VERSION}","X-RigOS-Timestamp":timestamp,"X-RigOS-Nonce":nonce,"X-RigOS-Signature":"sha256="+digest}
+
+
+class TransportError(RuntimeError): pass
+class ProtocolError(RuntimeError): pass
+
+
+def write_status(path: Path, outcome: str, detail: str, observed_at: str | None=None) -> None:
+    require_persistent_state(path); path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+    payload={"schema":"rigos.status-agent-send/v1","updatedAt":utc_now(),"observedAt":observed_at,"outcome":outcome,"detail":clean_text(detail,200)}
+    tmp=path.with_name("."+path.name+".tmp"); fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    try:
+        with os.fdopen(fd,"w",encoding="utf-8") as f: json.dump(payload,f,sort_keys=True,separators=(",",":")); f.write("\n"); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp,path)
+    finally:
+        try: tmp.unlink()
+        except FileNotFoundError: pass
+
+
+def send_observation(server: str, secret: str, observation: dict[str,Any], timeout: float) -> None:
+    body=json.dumps(observation,separators=(",",":"),sort_keys=True).encode(); req=request.Request(endpoint_url(server),data=body,method="POST",headers=signed_headers(secret,body))
+    try:
+        with request.urlopen(req,timeout=timeout) as response:
+            payload=response.read(4096).decode(errors="replace")
+            if response.status!=202: raise ProtocolError(f"HTTP {response.status}: {clean_text(payload)}")
+    except error.HTTPError as exc: raise ProtocolError(f"HTTP {exc.code}: {clean_text(exc.read(4096).decode(errors='replace'))}") from exc
+    except error.URLError as exc: raise TransportError(f"Cannot reach status server: {clean_text(exc.reason)}") from exc
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    p=argparse.ArgumentParser(description="Collect and send truth-only RIGOS evidence")
+    p.add_argument("--server",default=os.environ.get("RIGOS_STATUS_URL","")); p.add_argument("--secret-file",type=Path,default=Path(os.environ.get("RIGOS_STATUS_SECRET_FILE",DEFAULT_SECRET_FILE)))
+    p.add_argument("--source-id-file",type=Path,default=Path(os.environ.get("RIGOS_STATUS_SOURCE_ID_FILE",DEFAULT_SOURCE_ID_FILE))); p.add_argument("--status-file",type=Path,default=Path(os.environ.get("RIGOS_STATUS_STATUS_FILE",DEFAULT_STATUS_FILE)))
+    p.add_argument("--timeout",type=float,default=float(os.environ.get("RIGOS_STATUS_TIMEOUT","10"))); p.add_argument("--print",action="store_true",dest="print_observation"); p.add_argument("--print-source-id",action="store_true")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None=None) -> int:
+    args=parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        if args.print_source_id: print(ensure_source_id(args.source_id_file)); return 0
+        observation=build_observation(args.source_id_file)
+        if args.print_observation: print(json.dumps(observation,indent=2,sort_keys=True)); return 0
+        if not args.server: raise RuntimeError("RIGOS_STATUS_URL or --server is required")
+        send_observation(args.server,read_secret(args.secret_file),observation,args.timeout); write_status(args.status_file,"accepted","Signed observation accepted",observation["observedAt"]); print(f"accepted observed_at={observation['observedAt']}"); return 0
+    except TransportError as exc:
+        try: write_status(args.status_file,"transport_error",str(exc))
+        except Exception: pass
+        print(f"rigos-status-agent: {clean_text(exc)}",file=sys.stderr); return 75
+    except ProtocolError as exc:
+        try: write_status(args.status_file,"rejected",str(exc))
+        except Exception: pass
+        print(f"rigos-status-agent: {clean_text(exc)}",file=sys.stderr); return 76
+    except Exception as exc:
+        try: write_status(args.status_file,"agent_error",str(exc))
+        except Exception: pass
+        print(f"rigos-status-agent: {clean_text(exc)}",file=sys.stderr); return 1
+
+
+if __name__=="__main__": raise SystemExit(main())
