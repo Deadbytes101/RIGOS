@@ -1,0 +1,32 @@
+[Unit]
+Description=Publish sanitized signed RIGOS status evidence
+Documentation=file:/usr/share/doc/rigos/status-agent.txt
+After=network-online.target rigos-state-ready.service
+Wants=network-online.target
+ConditionPathExists=/var/lib/rigos/status-agent/config.env
+ConditionPathExists=/var/lib/rigos/status-agent/ingest.secret
+
+[Service]
+Type=oneshot
+EnvironmentFile=/var/lib/rigos/status-agent/config.env
+ExecStart=/usr/lib/rigos/rigos-status-agent
+User=root
+Group=root
+UMask=0077
+SuccessExitStatus=75 76
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=no
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc /run /var/lib/rigos /proc /sys
+ReadWritePaths=/var/lib/rigos/status-agent
+TimeoutStartSec=30s
