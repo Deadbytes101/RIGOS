@@ -15,7 +15,8 @@ fn alpha26_status_agent_is_built_in_but_opt_in() {
     let root = repository_root();
     let agent = root.join("build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent");
     let operator = root.join("build/usb/includes.chroot/usr/local/bin/rig-status-agent");
-    let service = root.join("build/usb/includes.chroot/etc/systemd/system/rigos-status-agent.service");
+    let service =
+        root.join("build/usb/includes.chroot/etc/systemd/system/rigos-status-agent.service");
     let timer = root.join("build/usb/includes.chroot/etc/systemd/system/rigos-status-agent.timer");
     for path in [&agent, &operator, &service, &timer] {
         assert!(path.is_file(), "missing {}", path.display());
@@ -43,10 +44,9 @@ fn alpha26_status_agent_is_built_in_but_opt_in() {
 #[test]
 fn status_agent_has_no_baked_secret_or_private_mining_fields() {
     let root = repository_root();
-    let agent = fs::read_to_string(
-        root.join("build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent"),
-    )
-    .unwrap();
+    let agent =
+        fs::read_to_string(root.join("build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent"))
+            .unwrap();
     assert!(agent.contains("COMPONENT_IDS"));
     assert!(agent.contains("rigos.status-observation/v1"));
     assert!(agent.contains("unexpected_failed_units"));
@@ -58,7 +58,10 @@ fn status_agent_has_no_baked_secret_or_private_mining_fields() {
         "build/usb/includes.chroot/var/lib/rigos/status-agent/source-id",
         "build/usb/includes.chroot/var/lib/rigos/status-agent/last-send.json",
     ] {
-        assert!(!root.join(forbidden_path).exists(), "baked runtime state: {forbidden_path}");
+        assert!(
+            !root.join(forbidden_path).exists(),
+            "baked runtime state: {forbidden_path}"
+        );
     }
 }
 
