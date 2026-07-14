@@ -120,7 +120,7 @@ def envelope(command, data):
         "status": "ok",
         "observed_at": "2026-07-12T00:00:00Z",
         "data": data,
-        "meta": {"image_version": "0.0.4-alpha.25"},
+        "meta": {"image_version": "0.0.4-alpha.26"},
     }
 
 def fake_run(argv, **_kwargs):
