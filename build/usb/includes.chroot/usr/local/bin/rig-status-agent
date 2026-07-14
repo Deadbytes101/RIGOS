@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Configure and inspect the built-in RIGOS status agent.
+
+Mutating commands require root. Secrets are accepted only through files and are
+never printed or placed in argv.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+from urllib import parse
+
+AGENT = Path("/usr/lib/rigos/rigos-status-agent")
+STATE_DIR = Path("/var/lib/rigos/status-agent")
+ENV_FILE = STATE_DIR / "config.env"
+SECRET_FILE = STATE_DIR / "ingest.secret"
+SOURCE_ID_FILE = STATE_DIR / "source-id"
+STATUS_FILE = STATE_DIR / "last-send.json"
+SERVICE = "rigos-status-agent.service"
+TIMER = "rigos-status-agent.timer"
+
+
+class CommandError(RuntimeError):
+    pass
+
+
+def run(argv: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, check=check, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def require_root(action: str) -> None:
+    if os.geteuid() != 0:
+        raise CommandError(f"{action} requires root; run with sudo")
+
+
+def validate_server(value: str) -> str:
+    parsed = parse.urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise CommandError("server must be an absolute HTTP or HTTPS URL")
+    if parsed.username or parsed.password:
+        raise CommandError("server URL must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise CommandError("server URL must not contain a query or fragment")
+    if any(character.isspace() for character in value):
+        raise CommandError("server URL must not contain whitespace")
+    if any(character in value for character in ('"', "'", "\\")):
+        raise CommandError("server URL contains unsupported quoting characters")
+    return value.rstrip("/")
+
+
+def read_secret(path: Path) -> str:
+    try:
+        secret = path.read_text(encoding="ascii").strip()
+    except OSError as exc:
+        raise CommandError(f"cannot read secret file: {path}") from exc
+    if not re.fullmatch(r"[A-Fa-f0-9]{64}", secret):
+        raise CommandError("secret must be exactly 64 hexadecimal characters")
+    return secret.lower()
+
+
+def atomic_write(path: Path, content: str, mode: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(name)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, mode)
+        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def systemd_state(unit: str) -> dict[str, str]:
+    result = run([
+        "systemctl", "show", unit, "--no-pager",
+        "--property=LoadState", "--property=ActiveState", "--property=SubState",
+        "--property=Result", "--property=UnitFileState", "--property=ExecMainStatus",
+    ])
+    values: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value.strip().strip('"')
+    if result.returncode != 0:
+        values["Error"] = (result.stderr or result.stdout).strip()[:240]
+    return values
+
+
+def read_env() -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value.strip().strip('"')
+    return values
+
+
+def command_status(json_output: bool) -> int:
+    require_root("status")
+    env = read_env()
+    payload = {
+        "schema": "rigos.status-agent-operator/v1",
+        "configured": ENV_FILE.is_file() and SECRET_FILE.is_file(),
+        "server": env.get("RIGOS_STATUS_URL"),
+        "sourceIdPresent": SOURCE_ID_FILE.is_file(),
+        "lastSendPresent": STATUS_FILE.is_file(),
+        "service": systemd_state(SERVICE),
+        "timer": systemd_state(TIMER),
+    }
+    if STATUS_FILE.is_file():
+        try:
+            value = json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+            if isinstance(value, dict):
+                payload["lastSend"] = {
+                    key: value.get(key)
+                    for key in ("updatedAt", "observedAt", "outcome", "detail")
+                }
+        except (OSError, json.JSONDecodeError):
+            payload["lastSend"] = {"outcome": "unreadable"}
+    if json_output:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(f"configured: {'yes' if payload['configured'] else 'no'}")
+        print(f"server: {payload['server'] or 'none'}")
+        print(f"source_id: {'present' if payload['sourceIdPresent'] else 'absent'}")
+        print(f"service: {payload['service'].get('ActiveState', 'unknown')}/{payload['service'].get('SubState', 'unknown')}")
+        print(f"timer: {payload['timer'].get('ActiveState', 'unknown')}/{payload['timer'].get('SubState', 'unknown')}")
+        if "lastSend" in payload:
+            print(f"last_send: {payload['lastSend'].get('outcome', 'unknown')}")
+    return 0
+
+
+def command_configure(server: str, secret_path: Path, no_start: bool) -> int:
+    require_root("configure")
+    server = validate_server(server)
+    secret = read_secret(secret_path)
+    if not os.path.ismount("/var/lib/rigos"):
+        raise CommandError("RIGOS persistent state is not mounted")
+    STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(STATE_DIR, 0o700)
+    atomic_write(SECRET_FILE, secret + "\n", 0o600)
+    env = "\n".join([
+        f"RIGOS_STATUS_URL={json.dumps(server)}",
+        f"RIGOS_STATUS_SECRET_FILE={SECRET_FILE}",
+        f"RIGOS_STATUS_SOURCE_ID_FILE={SOURCE_ID_FILE}",
+        f"RIGOS_STATUS_STATUS_FILE={STATUS_FILE}",
+        "RIGOS_STATUS_TIMEOUT=10",
+        "",
+    ])
+    atomic_write(ENV_FILE, env, 0o600)
+    run(["systemctl", "daemon-reload"], check=True)
+    run(["systemctl", "enable", TIMER], check=True)
+    if not no_start:
+        run(["systemctl", "restart", TIMER], check=True)
+        first_send = run(["systemctl", "start", SERVICE])
+        if first_send.returncode != 0:
+            print("status-agent: configuration committed; first collection failed", file=sys.stderr)
+    print("status-agent: configured")
+    print(f"server: {server}")
+    return 0
+
+
+def command_enable() -> int:
+    require_root("enable")
+    if not ENV_FILE.is_file() or not SECRET_FILE.is_file():
+        raise CommandError("status agent is not configured")
+    run(["systemctl", "enable", "--now", TIMER], check=True)
+    print("status-agent: enabled")
+    return 0
+
+
+def command_disable() -> int:
+    require_root("disable")
+    run(["systemctl", "disable", "--now", TIMER], check=True)
+    print("status-agent: disabled; configuration preserved")
+    return 0
+
+
+def command_collect() -> int:
+    require_root("collect")
+    return subprocess.run([str(AGENT), "--print"], check=False).returncode
+
+
+def command_send() -> int:
+    require_root("send")
+    return subprocess.run(["systemctl", "start", SERVICE], check=False).returncode
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rig-status-agent", description="RIGOS status-agent operator command")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("status")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("configure")
+    p.add_argument("--server", required=True)
+    p.add_argument("--secret-file", type=Path, required=True)
+    p.add_argument("--no-start", action="store_true")
+    sub.add_parser("enable")
+    sub.add_parser("disable")
+    sub.add_parser("collect")
+    sub.add_parser("send")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    try:
+        if args.command == "status":
+            return command_status(args.json)
+        if args.command == "configure":
+            return command_configure(args.server, args.secret_file, args.no_start)
+        if args.command == "enable":
+            return command_enable()
+        if args.command == "disable":
+            return command_disable()
+        if args.command == "collect":
+            return command_collect()
+        if args.command == "send":
+            return command_send()
+    except (CommandError, subprocess.CalledProcessError) as exc:
+        print(f"rig-status-agent: {exc}", file=sys.stderr)
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
