@@ -1,0 +1,83 @@
+RIGOS STATUS AGENT
+==================
+
+VERSION
+-------
+
+RIGOS image:        0.0.4-alpha.26
+Status agent:       2.0.0
+Observation schema: rigos.status-observation/v1
+
+AUTHORITY
+---------
+
+The agent is an observer, serializer and signer. It is not a RIGOS runtime
+authority and cannot change configuration, mining state, recovery access,
+huge-page policy or system health.
+
+The image contains no status-server URL, ingest secret, source ID or signed
+observation. Publishing is disabled until an operator configures it.
+
+CONFIGURE
+---------
+
+Copy a 64-character hexadecimal ingest secret to a temporary root-only file,
+then run:
+
+    chmod 600 /root/rigos-status.secret
+
+    sudo rig-status-agent configure \
+        --server http://192.168.1.10:8787 \
+        --secret-file /root/rigos-status.secret
+
+    sudo rm -f /root/rigos-status.secret
+
+Inspect without exposing the secret:
+
+    sudo rig-status-agent status
+    sudo rig-status-agent status --json
+    sudo rig-status-agent send
+    sudo rig-status-agent collect
+
+Disable outbound publishing while preserving local configuration:
+
+    sudo rig-status-agent disable
+
+Re-enable it:
+
+    sudo rig-status-agent enable
+
+FAILURE LAW
+-----------
+
+A missing configuration leaves the timer disabled.
+
+Status-server transport failure exits with code 75. Server rejection exits with
+code 76. systemd treats both as successful observer runs, records the bounded
+result under /var/lib/rigos/status-agent/last-send.json and does not block boot,
+firstboot, state readiness or mining.
+
+Unexpected collector or integrity failures still fail the service. The agent
+excludes its own service from the failed-unit component to prevent recursive
+self-reporting.
+
+PRIVACY
+-------
+
+The public observation does not contain wallet, mining identity, worker name,
+pool address, pool status, hashrate, shares, hostname, IP address, password,
+API token, SSH private key, raw journal or private runtime configuration.
+
+PHYSICAL ACCEPTANCE
+-------------------
+
+Alpha.26 remains a preview until physical evidence proves:
+
+    unconfigured boot has zero status-agent failures
+    configuration writes root-only files
+    first signed observation is accepted
+    source ID survives reboot
+    server outage does not stop mining
+    HTTP rejection does not leak the secret
+    stale server data returns to UNKNOWN
+    privacy audit finds no forbidden fields
