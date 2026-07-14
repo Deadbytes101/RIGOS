@@ -134,7 +134,13 @@ def outcome_status(outcome: str | None, ready=("ready","ok","applied","active","
 def json_authority(path: str, fact_key: str, label: str) -> tuple[str,dict[str,Any]]:
     value=read_json(Path(path))
     if value is None: return "unknown", evidence(f"{label} evidence is unavailable")
-    outcome=value.get("outcome") or value.get("status") or value.get("state")
+    outcome=(
+        value.get("outcome")
+        or value.get("state_outcome")
+        or value.get("verification_outcome")
+        or value.get("status")
+        or value.get("state")
+    )
     status=outcome_status(str(outcome) if outcome is not None else None)
     facts={fact_key: clean_text(outcome,128) if outcome is not None else None}
     return status,evidence(f"{label}: {outcome or 'unknown'}",schema=value.get("schema"),outcome=str(outcome) if outcome else None,facts=facts)
@@ -175,6 +181,32 @@ def unexpected_failed_units(output: str) -> tuple[list[str],int]:
     return sorted(units),ignored
 
 
+
+def operator_health() -> tuple[dict[str,Any],tuple[str,dict[str,Any]]]:
+    code,_,_=run_command(["rig","health","--json"],8.0)
+    if code==0:
+        status="ok"
+        component_status="operational"
+        summary="rig health completed successfully"
+    elif code==1:
+        status="degraded"
+        component_status="degraded"
+        summary="rig health reported degraded"
+    elif code==2:
+        status="failed"
+        component_status="major_outage"
+        summary="rig health failed"
+    else:
+        status="unavailable"
+        component_status="unknown"
+        summary="rig health unavailable"
+    health={"status":status,"exitCode":code,"summary":summary}
+    authority=evidence(
+        "rig health exit contract",
+        facts={"commandExitCode":code},
+    )
+    return health,(component_status,authority)
+
 def collect_components(observed: str) -> tuple[dict[str,Any],list[dict[str,Any]]]:
     items=[]
     def add(cid: str, pair: tuple[str,dict[str,Any]]) -> None: items.append(component(cid,pair[0],observed,pair[1]))
@@ -207,10 +239,8 @@ def collect_components(observed: str) -> tuple[dict[str,Any],list[dict[str,Any]]
     else: add("root-filesystem-integrity",("unknown",evidence("Root filesystem mount evidence unavailable")))
     _,failed_out,_=run_command(["systemctl","--failed","--no-legend","--plain"])
     failed,ignored=unexpected_failed_units(failed_out); add("failed-unit-set",("operational" if not failed else "major_outage",evidence("No unexpected failed units" if not failed else "Unexpected failed units exist",facts={"failedUnits":len(failed)})))
-    health_code,health_out,health_err=run_command(["rig","health","--json"],8.0)
-    hs="ok" if health_code==0 else "degraded" if health_code==1 else "failed" if health_code==2 else "unavailable"
-    health={"status":hs,"exitCode":health_code,"summary":clean_text(health_out or health_err or "rig health unavailable")}
-    add("operator-health",("operational" if health_code==0 else "degraded" if health_code==1 else "major_outage" if health_code==2 else "unknown",evidence("rig health exit contract",facts={"commandExitCode":health_code})))
+    health,health_component=operator_health()
+    add("operator-health",health_component)
     _,journal,_=run_command(["journalctl","-k","-b","--no-pager","-o","cat"],8.0)
     severe=sum(len(re.findall(p,journal,re.I)) for p in (r"machine check",r"hardware error",r"soft lockup",r"kernel panic",r"I/O error",r"EXT4-fs error"))
     warning=sum(len(re.findall(p,journal,re.I)) for p in (r"thermal",r"throttl",r"watchdog",r"rcu.*stall"))

@@ -116,5 +116,80 @@ class AgentTests(unittest.TestCase):
             self.assertEqual(agent.main(["--server", "https://status.example"]), 76)
 
 
+    def test_authority_specific_outcome_fields_are_honored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            boot = Path(directory) / "boot.json"
+            boot.write_text(json.dumps({
+                "schema": "rigos.boot-device/v1",
+                "verification_outcome": "verified",
+            }), encoding="utf-8")
+
+            status, evidence = agent.json_authority(
+                str(boot),
+                "verificationOutcome",
+                "Boot",
+            )
+
+            self.assertEqual(status, "operational")
+            self.assertEqual(
+                evidence["facts"]["verificationOutcome"],
+                "verified",
+            )
+
+            recovery = Path(directory) / "recovery.json"
+            recovery.write_text(json.dumps({
+                "schema": "rigos.recovery-access/v1",
+                "state_outcome": "ready",
+            }), encoding="utf-8")
+
+            status, evidence = agent.json_authority(
+                str(recovery),
+                "stateOutcome",
+                "Recovery",
+            )
+
+            self.assertEqual(status, "operational")
+            self.assertEqual(
+                evidence["facts"]["stateOutcome"],
+                "ready",
+            )
+
+    def test_operator_health_never_forwards_command_output(self):
+        private_output = json.dumps({
+            "wallet": "secret-wallet",
+            "pool": "pool.example:443",
+            "hashrate": 123.4,
+            "identity": "private-node",
+            "accepted_shares": 9,
+        })
+
+        with mock.patch.object(
+            agent,
+            "run_command",
+            return_value=(0, private_output, ""),
+        ):
+            health, component = agent.operator_health()
+
+        encoded = json.dumps({
+            "health": health,
+            "component": component,
+        }).lower()
+
+        for forbidden in (
+            "secret-wallet",
+            "pool.example",
+            "hashrate",
+            "private-node",
+            "accepted_shares",
+        ):
+            self.assertNotIn(forbidden, encoded)
+
+        self.assertEqual(
+            health["summary"],
+            "rig health completed successfully",
+        )
+        self.assertEqual(component[0], "operational")
+
+
 if __name__ == "__main__":
     unittest.main()
