@@ -5,8 +5,11 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 version_env="$(mktemp)"
+grub_wrapper_dir="$(mktemp -d)"
+
 cleanup() {
     rm -f "$version_env"
+    rm -rf "$grub_wrapper_dir"
 }
 trap cleanup EXIT
 
@@ -18,6 +21,20 @@ fi
 
 # shellcheck disable=SC1090
 source "$version_env"
+
+real_grub_install="$(command -v grub-install)"
+
+[[ "$real_grub_install" == /* && -x "$real_grub_install" ]] || {
+    printf 'build-usb-image-entrypoint: real grub-install is unavailable\n' >&2
+    exit 1
+}
+
+install -m 0755 \
+    ./scripts/rigos-grub-install-wrapper.sh \
+    "$grub_wrapper_dir/grub-install"
+
+export RIGOS_REAL_GRUB_INSTALL="$real_grub_install"
+export PATH="$grub_wrapper_dir:$PATH"
 
 python3 ./scripts/check-alpha8-ssh-hotfix.py
 python3 ./scripts/verify-systemd-ordering.py
@@ -48,6 +65,7 @@ python3 ./scripts/test-runtime-token-publication.py
 export CARGO_TARGET_DIR=/work/rigos-performance-preflight-target
 cargo test --locked -p rigos-config --test miner_observer_authority -- --nocapture
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
+cargo test --locked -p rigos-config --test bios_grub_bootstrap -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 cargo test --locked -p rigos-config --test firstboot_tty -- --nocapture
 cargo test --locked -p rigos-config --test diagnostic_ssh -- --nocapture
