@@ -147,14 +147,47 @@ EOF
 
 loop="$(losetup --find --show --partscan "$image")"
 loop_name="$(basename "$loop")"
+created_partition_nodes=()
 for number in 1 2 3 4; do
   node="${loop}p${number}"
-  device_number="$(cat "/sys/class/block/${loop_name}p${number}/dev")"
-  [[ ! -e "$node" ]] || die "partition node already exists: $node"
-  mknod "$node" b "${device_number%:*}" "${device_number#*:}"
+  sysfs_device="/sys/class/block/${loop_name}p${number}/dev"
+
+  for _ in {1..50}; do
+    [[ -r "$sysfs_device" ]] && break
+    sleep 0.1
+  done
+  [[ -r "$sysfs_device" ]] || die "partition sysfs device is missing: $sysfs_device"
+
+  device_number="$(cat "$sysfs_device")"
+  device_major="${device_number%:*}"
+  device_minor="${device_number#*:}"
+
+  if [[ ! -e "$node" ]]; then
+    if mknod "$node" b "$device_major" "$device_minor"; then
+      created_partition_nodes+=("$node")
+    elif [[ ! -b "$node" ]]; then
+      die "partition node creation failed: $node"
+    fi
+  fi
+
+  [[ -b "$node" ]] || die "partition node is not a block device: $node"
+
+  expected_device="$(printf '%x:%x' "$device_major" "$device_minor")"
+  actual_device="$(stat -c '%t:%T' "$node")"
+  [[ "$actual_device" == "$expected_device" ]] ||     die "partition node device mismatch: $node expected=$expected_device actual=$actual_device"
 done
 p1="${loop}p1"; p2="${loop}p2"; p3="${loop}p3"; p4="${loop}p4"
-cleanup(){ set +e; mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"; mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"; mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"; mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"; losetup -d "$loop" 2>/dev/null; rm -f "${loop}p"{1,2,3,4}; }
+cleanup(){
+  set +e
+  mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"
+  mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"
+  mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"
+  mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"
+  losetup -d "$loop" 2>/dev/null
+  if ((${#created_partition_nodes[@]})); then
+    rm -f -- "${created_partition_nodes[@]}"
+  fi
+}
 trap cleanup EXIT
 mkfs.vfat -F 32 -n EFI_SYSTEM "$p1"
 mkfs.ext4 -q -F -L RIGOS_ROOT_A -U 065b5c7f-076a-50dd-92e4-a600a5c6682f -m 0 "$p2"
@@ -227,7 +260,12 @@ install -m 0644 "$work/grub.cfg" "$work/mnt/b/boot/grub/grub.cfg"
 sync
 umount "$work/mnt/state" "$work/mnt/b" "$work/mnt/a" "$work/mnt/efi"
 root_a_sha="$(sha256sum "$p2" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p3" | cut -d' ' -f1)"
-sync; losetup -d "$loop"; rm -f "${loop}p"{1,2,3,4}; trap - EXIT
+sync
+losetup -d "$loop"
+if ((${#created_partition_nodes[@]})); then
+  rm -f -- "${created_partition_nodes[@]}"
+fi
+trap - EXIT
 
 output="$repo/dist/usb"
 mkdir -p "$output"

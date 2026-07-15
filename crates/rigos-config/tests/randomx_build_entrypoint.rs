@@ -12,6 +12,7 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     let attributes = fs::read_to_string(repo_path(".gitattributes")).unwrap();
     let entrypoint =
         fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
+    let image_builder = fs::read_to_string(repo_path("scripts/build-usb-image.sh")).unwrap();
     let image_verifier =
         fs::read_to_string(repo_path("scripts/verify-randomx-performance-image.sh")).unwrap();
     let image_hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot")).unwrap();
@@ -30,6 +31,20 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(entrypoint.contains("rigos-randomx-msr"));
     assert!(entrypoint.contains("rigos-miner-gate"));
     assert!(entrypoint.contains("--test randomx_build_entrypoint"));
+
+    assert!(image_builder.contains("created_partition_nodes=()"));
+    assert!(image_builder.contains(r#"if [[ ! -e "$node" ]]; then"#));
+    assert!(
+        image_builder
+            .contains(r#"[[ -b "$node" ]] || die "partition node is not a block device: $node""#)
+    );
+    assert!(image_builder.contains(r#"stat -c '%t:%T' "$node""#));
+    assert!(image_builder.contains("partition node device mismatch"));
+    assert!(image_builder.contains(r#"rm -f -- "${created_partition_nodes[@]}""#));
+    assert!(
+        !image_builder
+            .contains(r#"[[ ! -e "$node" ]] || die "partition node already exists: $node""#)
+    );
 
     assert!(image_hook.contains("/usr/lib/rigos/rigos-randomx-msr"));
     assert!(image_hook.contains("rigos-randomx-msr.service rigos-miner.service"));
