@@ -10,6 +10,28 @@ fn repository_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn python_executable() -> String {
+    if let Ok(value) = std::env::var("RIGOS_TEST_PYTHON") {
+        let value = value.trim();
+        if !value.is_empty() {
+            return value.to_owned();
+        }
+    }
+
+    for candidate in ["python3", "python"] {
+        let available = Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+        if available {
+            return candidate.to_owned();
+        }
+    }
+
+    panic!("Python 3 interpreter not found; set RIGOS_TEST_PYTHON to its executable path");
+}
+
 #[test]
 fn alpha26_status_agent_is_built_in_but_opt_in() {
     let root = repository_root();
@@ -47,7 +69,9 @@ fn alpha26_has_a_real_time_synchronization_authority() {
     let packages = fs::read_to_string(root.join("build/usb/package-lists/rigos.list.chroot"))
         .expect("read package list");
     assert!(
-        packages.lines().any(|line| line.trim() == "systemd-timesyncd"),
+        packages
+            .lines()
+            .any(|line| line.trim() == "systemd-timesyncd"),
         "systemd-timesyncd must be in the immutable image"
     );
 
@@ -84,20 +108,22 @@ fn status_agent_has_no_baked_secret_or_private_mining_fields() {
 #[test]
 fn status_agent_python_contract_passes() {
     let root = repository_root();
-    let compile = Command::new("python3")
+    let python = python_executable();
+
+    let compile = Command::new(&python)
         .arg("-m")
         .arg("py_compile")
         .arg(root.join("build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent"))
         .arg(root.join("build/usb/includes.chroot/usr/local/bin/rig-status-agent"))
         .current_dir(&root)
         .status()
-        .expect("python3 must compile status-agent entrypoints");
+        .expect("Python must compile status-agent entrypoints");
     assert!(compile.success());
 
-    let status = Command::new("python3")
+    let status = Command::new(&python)
         .arg(root.join("scripts/test-status-agent.py"))
         .current_dir(&root)
         .status()
-        .expect("python3 must run status-agent tests");
+        .expect("Python must run status-agent tests");
     assert!(status.success());
 }
