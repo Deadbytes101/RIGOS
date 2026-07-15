@@ -42,6 +42,20 @@ fn alpha26_status_agent_is_built_in_but_opt_in() {
 }
 
 #[test]
+fn alpha26_has_a_real_time_synchronization_authority() {
+    let root = repository_root();
+    let packages = fs::read_to_string(root.join("build/usb/package-lists/rigos.list.chroot"))
+        .expect("read package list");
+    assert!(
+        packages.lines().any(|line| line.trim() == "systemd-timesyncd"),
+        "systemd-timesyncd must be in the immutable image"
+    );
+
+    let hook = fs::read_to_string(root.join("build/usb/hooks/010-rigos.chroot")).unwrap();
+    assert!(hook.contains("systemd-timesyncd.service"));
+}
+
+#[test]
 fn status_agent_has_no_baked_secret_or_private_mining_fields() {
     let root = repository_root();
     let agent =
@@ -50,6 +64,8 @@ fn status_agent_has_no_baked_secret_or_private_mining_fields() {
     assert!(agent.contains("COMPONENT_IDS"));
     assert!(agent.contains("rigos.status-observation/v1"));
     assert!(agent.contains("unexpected_failed_units"));
+    assert!(agent.contains("root_filesystem_authority"));
+    assert!(agent.contains("kernel_fault_counts"));
     assert!(agent.contains("return 75"));
     assert!(agent.contains("return 76"));
 
