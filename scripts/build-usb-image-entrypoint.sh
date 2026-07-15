@@ -24,6 +24,7 @@ source "$version_env"
 
 real_grub_install="$(command -v grub-install)"
 real_blockdev="$(command -v blockdev)"
+real_cat="$(command -v cat)"
 
 [[ "$real_grub_install" == /* && -x "$real_grub_install" ]] || {
     printf 'build-usb-image-entrypoint: real grub-install is unavailable\n' >&2
@@ -35,6 +36,11 @@ real_blockdev="$(command -v blockdev)"
     exit 1
 }
 
+[[ "$real_cat" == /* && -x "$real_cat" ]] || {
+    printf 'build-usb-image-entrypoint: real cat is unavailable\n' >&2
+    exit 1
+}
+
 install -m 0755 \
     ./scripts/rigos-grub-install-wrapper.sh \
     "$grub_wrapper_dir/grub-install"
@@ -43,8 +49,13 @@ install -m 0755 \
     ./scripts/rigos-blockdev-wrapper.sh \
     "$grub_wrapper_dir/blockdev"
 
+install -m 0755 \
+    ./scripts/rigos-sysfs-cat-wrapper.sh \
+    "$grub_wrapper_dir/cat"
+
 export RIGOS_REAL_GRUB_INSTALL="$real_grub_install"
 export RIGOS_REAL_BLOCKDEV="$real_blockdev"
+export RIGOS_REAL_CAT="$real_cat"
 export PATH="$grub_wrapper_dir:$PATH"
 
 python3 ./scripts/check-alpha8-ssh-hotfix.py
@@ -78,6 +89,7 @@ cargo test --locked -p rigos-config --test miner_observer_authority -- --nocaptu
 cargo test --locked -p rigos-config --test randomx_build_entrypoint -- --nocapture
 cargo test --locked -p rigos-config --test bios_grub_bootstrap -- --nocapture
 cargo test --locked -p rigos-config --test partition_node_readiness -- --nocapture
+cargo test --locked -p rigos-config --test partition_sysfs_readiness -- --nocapture
 cargo test --locked -p rigos-config --test randomx_msr_authority -- --nocapture
 cargo test --locked -p rigos-config --test firstboot_tty -- --nocapture
 cargo test --locked -p rigos-config --test diagnostic_ssh -- --nocapture
