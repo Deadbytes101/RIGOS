@@ -1,0 +1,51 @@
+name: Alpha.26 status semantics
+
+on:
+  pull_request:
+    paths:
+      - "build/usb/hooks/010-rigos.chroot"
+      - "build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent"
+      - "build/usb/package-lists/rigos.list.chroot"
+      - "crates/rigos-config/tests/status_agent_image.rs"
+      - "scripts/test-status-agent.py"
+      - ".github/workflows/alpha26-status-semantics.yml"
+  push:
+    branches:
+      - alpha26-status-semantics
+    paths:
+      - "build/usb/hooks/010-rigos.chroot"
+      - "build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent"
+      - "build/usb/package-lists/rigos.list.chroot"
+      - "crates/rigos-config/tests/status_agent_image.rs"
+      - "scripts/test-status-agent.py"
+      - ".github/workflows/alpha26-status-semantics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Compile Python entrypoints
+        run: |
+          python3 -m py_compile \
+            build/usb/includes.chroot/usr/lib/rigos/rigos-status-agent \
+            build/usb/includes.chroot/usr/local/bin/rig-status-agent
+
+      - name: Run status-agent contracts
+        run: python3 scripts/test-status-agent.py
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run image contract test
+        run: cargo test -p rigos-config --test status_agent_image
