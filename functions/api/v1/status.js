@@ -3,7 +3,7 @@ import {
   methodNotAllowed,
   publicStatusResponse,
   readPublicStatus,
-} from "../../../_lib/status.js";
+} from "../../_lib/status.js";
 
 export async function onRequest(context) {
   if (context.request.method !== "GET" && context.request.method !== "HEAD") {
