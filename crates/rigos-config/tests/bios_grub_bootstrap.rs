@@ -19,8 +19,7 @@ fn bios_grub_bootstrap_and_artifact_names_are_locked() {
     let entrypoint =
         fs::read_to_string(repo_path("scripts/build-usb-image-entrypoint.sh")).unwrap();
     let image_builder = fs::read_to_string(repo_path("scripts/build-usb-image.sh")).unwrap();
-    let wrapper =
-        fs::read_to_string(repo_path("scripts/rigos-grub-install-wrapper.sh")).unwrap();
+    let wrapper = fs::read_to_string(repo_path("scripts/rigos-grub-install-wrapper.sh")).unwrap();
 
     assert!(entrypoint.contains("real_grub_install=\"$(command -v grub-install)\""));
     assert!(entrypoint.contains("./scripts/rigos-grub-install-wrapper.sh"));
@@ -28,20 +27,19 @@ fn bios_grub_bootstrap_and_artifact_names_are_locked() {
     assert!(entrypoint.contains("export PATH=\"$grub_wrapper_dir:$PATH\""));
     assert!(entrypoint.contains("--test bios_grub_bootstrap"));
 
-    assert!(wrapper.contains(
-        "bios_modules='part_msdos ext2 search search_fs_uuid normal configfile'"
-    ));
+    assert!(
+        wrapper.contains("bios_modules='part_msdos ext2 search search_fs_uuid normal configfile'")
+    );
     assert!(wrapper.contains("\"--modules=$bios_modules\""));
     assert!(wrapper.contains("if [[ \"$target\" == \"i386-pc\" ]]; then"));
     assert!(wrapper.contains("caller supplied a conflicting BIOS module list"));
     assert!(wrapper.contains("RIGOS BIOS GRUB embedded modules:"));
 
-    assert!(image_builder.contains(
-        r#"image_name="rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.img""#
-    ));
-    assert!(image_builder.contains(
-        r#"recovery_name="rigos-recovery-amd64-${RIGOS_IMAGE_VERSION}.iso""#
-    ));
+    assert!(image_builder.contains(r#"image_name="rigos-usb-amd64-${RIGOS_IMAGE_VERSION}.img""#));
+    assert!(
+        image_builder
+            .contains(r#"recovery_name="rigos-recovery-amd64-${RIGOS_IMAGE_VERSION}.iso""#)
+    );
 }
 
 #[cfg(unix)]
