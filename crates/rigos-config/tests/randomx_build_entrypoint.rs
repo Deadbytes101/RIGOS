@@ -32,19 +32,17 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(entrypoint.contains("rigos-miner-gate"));
     assert!(entrypoint.contains("--test randomx_build_entrypoint"));
 
-    assert!(image_builder.contains("created_partition_nodes=()"));
-    assert!(image_builder.contains(r#"if [[ ! -e "$node" ]]; then"#));
-    assert!(
-        image_builder
-            .contains(r#"[[ -b "$node" ]] || die "partition node is not a block device: $node""#)
-    );
+    assert!(image_builder.contains(r#"partition_node_dir="""#));
+    assert!(image_builder.contains(r#"mktemp -d "$work/partition-nodes.XXXXXX""#));
+    assert!(image_builder.contains(r#"node="$partition_node_dir/${loop_name}p${number}""#));
+    assert!(image_builder.contains(r#"mknod "#));
     assert!(image_builder.contains(r#"stat -c '%t:%T' "$node""#));
-    assert!(image_builder.contains("partition node device mismatch"));
-    assert!(image_builder.contains(r#"rm -f -- "${created_partition_nodes[@]}""#));
-    assert!(
-        !image_builder
-            .contains(r#"[[ ! -e "$node" ]] || die "partition node already exists: $node""#)
-    );
+    assert!(image_builder.contains(r#"blockdev --getsize64 "$node""#));
+    assert!(image_builder.contains(r#"rm -rf -- "$partition_node_dir""#));
+    assert!(image_builder.contains("private partition node mismatch"));
+    assert!(image_builder.contains("trap cleanup EXIT"));
+    assert!(!image_builder.contains(r#"node="${loop}p${number}""#));
+    assert!(!image_builder.contains("created_partition_nodes"));
 
     assert!(image_builder.contains(r#"bios_root_loop="""#));
     assert!(image_builder.contains(r#"bios_efi_loop="""#));
@@ -62,6 +60,19 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(image_builder.contains(r#"losetup -d "$bios_efi_loop""#));
     assert!(image_builder.contains("runtime loop path leaked into BIOS GRUB load configuration"));
     assert!(!image_builder.contains(r#"mount "$p1" "$work/mnt/efi"; mount "$p2" "$work/mnt/a""#));
+
+    let parent_loop_create = image_builder
+        .find("losetup --find --show --partscan")
+        .unwrap();
+    let cleanup_trap = image_builder.find("trap cleanup EXIT").unwrap();
+    let private_dir_create = image_builder.find("partition-nodes.XXXXXX").unwrap();
+    let private_node_create = image_builder.find("mknod").unwrap();
+    let partition_format = image_builder.find("mkfs.vfat -F 32 -n EFI_SYSTEM").unwrap();
+
+    assert!(parent_loop_create < cleanup_trap);
+    assert!(cleanup_trap < private_dir_create);
+    assert!(private_dir_create < private_node_create);
+    assert!(private_node_create < partition_format);
 
     let root_loop_create = image_builder.find(r#"bios_root_loop="$("#).unwrap();
     let efi_loop_create = image_builder.find(r#"bios_efi_loop="$("#).unwrap();
@@ -84,6 +95,11 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     let grub_copy = image_builder
         .find(r#"cp -a "$work/mnt/a/boot/grub/." "$work/mnt/b/boot/grub/""#)
         .unwrap();
+    let private_dir_remove = image_builder
+        .rfind(r#"rm -rf -- "$partition_node_dir""#)
+        .unwrap();
+    let parent_loop_detach = image_builder.rfind(r#"losetup -d "$loop""#).unwrap();
+    let cleanup_disable = image_builder.rfind("trap - EXIT").unwrap();
 
     assert!(root_loop_create < root_mount);
     assert!(efi_loop_create < efi_mount);
@@ -93,6 +109,9 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(bios_install < efi_install);
     assert!(efi_install < device_map_remove);
     assert!(device_map_remove < grub_copy);
+    assert!(grub_copy < private_dir_remove);
+    assert!(private_dir_remove < parent_loop_detach);
+    assert!(parent_loop_detach < cleanup_disable);
     assert!(!image_builder.contains("--recheck"));
 
     assert!(image_hook.contains("/usr/lib/rigos/rigos-randomx-msr"));

@@ -147,60 +147,110 @@ EOF
 
 loop="$(losetup --find --show --partscan "$image")"
 loop_name="$(basename "$loop")"
-created_partition_nodes=()
+partition_node_dir=""
+bios_root_loop=""
+bios_efi_loop=""
+bios_device_map=""
+
+cleanup(){
+  set +e
+
+  if [[ -n "$bios_device_map" ]]; then
+    rm -f -- "$bios_device_map"
+  fi
+
+  mountpoint -q "$work/mnt/state" &&
+    umount "$work/mnt/state"
+
+  mountpoint -q "$work/mnt/b" &&
+    umount "$work/mnt/b"
+
+  mountpoint -q "$work/mnt/a" &&
+    umount "$work/mnt/a"
+
+  mountpoint -q "$work/mnt/efi" &&
+    umount "$work/mnt/efi"
+
+  if [[ -n "$bios_efi_loop" ]]; then
+    losetup -d "$bios_efi_loop" 2>/dev/null
+  fi
+
+  if [[ -n "$bios_root_loop" ]]; then
+    losetup -d "$bios_root_loop" 2>/dev/null
+  fi
+
+  if [[ -n "$partition_node_dir" ]]; then
+    rm -rf -- "$partition_node_dir"
+  fi
+
+  if [[ -n "$loop" ]]; then
+    losetup -d "$loop" 2>/dev/null
+  fi
+}
+
+# Install cleanup immediately after the parent loop is attached.
+trap cleanup EXIT
+
+partition_node_dir="$(
+  mktemp -d "$work/partition-nodes.XXXXXX"
+)"
+
 for number in 1 2 3 4; do
-  node="${loop}p${number}"
+  node="$partition_node_dir/${loop_name}p${number}"
   sysfs_device="/sys/class/block/${loop_name}p${number}/dev"
 
-  for _ in {1..50}; do
+  for _ in {1..100}; do
     [[ -r "$sysfs_device" ]] && break
     sleep 0.1
   done
-  [[ -r "$sysfs_device" ]] || die "partition sysfs device is missing: $sysfs_device"
+
+  [[ -r "$sysfs_device" ]] ||
+    die "partition sysfs device is missing: $sysfs_device"
 
   device_number="$(cat "$sysfs_device")"
   device_major="${device_number%:*}"
   device_minor="${device_number#*:}"
 
-  if [[ ! -e "$node" ]]; then
-    if mknod "$node" b "$device_major" "$device_minor"; then
-      created_partition_nodes+=("$node")
-    elif [[ ! -b "$node" ]]; then
-      die "partition node creation failed: $node"
-    fi
-  fi
+  [[ "$device_major" =~ ^[0-9]+$ ]] ||
+    die "invalid partition device major: $device_number"
 
-  [[ -b "$node" ]] || die "partition node is not a block device: $node"
+  [[ "$device_minor" =~ ^[0-9]+$ ]] ||
+    die "invalid partition device minor: $device_number"
 
-  expected_device="$(printf '%x:%x' "$device_major" "$device_minor")"
-  actual_device="$(stat -c '%t:%T' "$node")"
-  [[ "$actual_device" == "$expected_device" ]] ||     die "partition node device mismatch: $node expected=$expected_device actual=$actual_device"
+  [[ ! -e "$node" ]] ||
+    die "private partition node already exists: $node"
+
+  mknod     "$node"     b     "$device_major"     "$device_minor"
+
+  [[ -b "$node" ]] ||
+    die "private partition node is not a block device: $node"
+
+  expected_device="$(
+    printf '%x:%x'       "$device_major"       "$device_minor"
+  )"
+
+  actual_device="$(
+    stat -c '%t:%T' "$node"
+  )"
+
+  [[ "$actual_device" == "$expected_device" ]] ||
+    die "private partition node mismatch: $node expected=$expected_device actual=$actual_device"
+
+  partition_size_bytes="$(
+    blockdev --getsize64 "$node"
+  )"
+
+  [[ "$partition_size_bytes" =~ ^[0-9]+$ ]] ||
+    die "invalid private partition size: $node"
+
+  ((partition_size_bytes > 0)) ||
+    die "empty private partition device: $node"
 done
-p1="${loop}p1"; p2="${loop}p2"; p3="${loop}p3"; p4="${loop}p4"
-bios_root_loop=""
-bios_efi_loop=""
-bios_device_map=""
-cleanup(){
-  set +e
-  if [[ -n "$bios_device_map" ]]; then
-    rm -f -- "$bios_device_map"
-  fi
-  mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"
-  mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"
-  mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"
-  mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"
-  if [[ -n "$bios_efi_loop" ]]; then
-    losetup -d "$bios_efi_loop" 2>/dev/null
-  fi
-  if [[ -n "$bios_root_loop" ]]; then
-    losetup -d "$bios_root_loop" 2>/dev/null
-  fi
-  losetup -d "$loop" 2>/dev/null
-  if ((${#created_partition_nodes[@]})); then
-    rm -f -- "${created_partition_nodes[@]}"
-  fi
-}
-trap cleanup EXIT
+
+p1="$partition_node_dir/${loop_name}p1"
+p2="$partition_node_dir/${loop_name}p2"
+p3="$partition_node_dir/${loop_name}p3"
+p4="$partition_node_dir/${loop_name}p4"
 mkfs.vfat -F 32 -n EFI_SYSTEM "$p1"
 mkfs.ext4 -q -F -L RIGOS_ROOT_A -U 065b5c7f-076a-50dd-92e4-a600a5c6682f -m 0 "$p2"
 mkfs.ext4 -q -F -L RIGOS_ROOT_B -U f6285e01-c386-528f-bf33-910c744dd8ba -m 0 "$p3"
@@ -367,11 +417,11 @@ bios_efi_loop=""
 losetup -d "$bios_root_loop"
 bios_root_loop=""
 
-losetup -d "$loop"
+rm -rf -- "$partition_node_dir"
+partition_node_dir=""
 
-if ((${#created_partition_nodes[@]})); then
-  rm -f -- "${created_partition_nodes[@]}"
-fi
+losetup -d "$loop"
+loop=""
 
 trap - EXIT
 
