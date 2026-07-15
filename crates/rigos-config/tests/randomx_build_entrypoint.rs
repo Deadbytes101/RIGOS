@@ -15,6 +15,8 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     let image_builder = fs::read_to_string(repo_path("scripts/build-usb-image.sh")).unwrap();
     let image_verifier =
         fs::read_to_string(repo_path("scripts/verify-randomx-performance-image.sh")).unwrap();
+    let appliance_verifier =
+        fs::read_to_string(repo_path("scripts/verify-usb-appliance.sh")).unwrap();
     let image_hook = fs::read_to_string(repo_path("build/usb/hooks/010-rigos.chroot")).unwrap();
 
     assert!(
@@ -31,6 +33,13 @@ fn performance_entrypoint_uses_exact_lf_git_version_authority() {
     assert!(entrypoint.contains("rigos-randomx-msr"));
     assert!(entrypoint.contains("rigos-miner-gate"));
     assert!(entrypoint.contains("--test randomx_build_entrypoint"));
+
+    assert!(appliance_verifier.contains("reject_match(){"));
+    assert!(appliance_verifier.contains("negative verification scan failed status="));
+    assert!(appliance_verifier.contains("grep -r -q -E"));
+    assert!(appliance_verifier.contains("grep -Fq --"));
+    assert!(appliance_verifier.contains("grep -r -n -i -E"));
+    assert!(!appliance_verifier.contains("if rg "));
 
     assert!(image_builder.contains(r#"partition_node_dir="""#));
     assert!(image_builder.contains(r#"mktemp -d "$work/partition-nodes.XXXXXX""#));

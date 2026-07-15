@@ -3,6 +3,22 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 die(){ printf 'verify-usb-appliance: %s\n' "$*" >&2; exit 1; }
+
+reject_match(){
+  local message="$1"
+  local status
+
+  shift
+
+  if "$@"; then
+    die "$message"
+  else
+    status=$?
+  fi
+
+  [[ "$status" -eq 1 ]] ||
+    die "negative verification scan failed status=$status: $message"
+}
 [[ $# -eq 2 ]] || die 'usage: verify-usb-appliance.sh <image> <manifest>'
 image="$(readlink -f "$1")"; manifest="$(readlink -f "$2")"
 [[ -f "$image" && -f "$manifest" ]] || die 'image or manifest is missing'
@@ -194,7 +210,11 @@ rigos_utility_path="$(PATH="$temporary/root/usr/local/sbin:$temporary/root/usr/b
 grep -Fq 'systemd-tmpfiles --create /usr/lib/tmpfiles.d/rigos.conf' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state runtime tmpfiles setup is missing'
 grep -Fq 'ExecStart=/usr/local/sbin/rigos-state-orchestrate' "$temporary/root/etc/systemd/system/rigos-state.service" || die 'state resume orchestrator is not wired'
 grep -Fqx 'd /run/rigos 0755 root root -' "$temporary/root/usr/lib/tmpfiles.d/rigos.conf" || die 'shared runtime directory contract is missing'
-if rg -q '^RuntimeDirectory=rigos$' "$temporary/root/etc/systemd/system"; then die 'a service owns the shared runtime directory'; fi
+reject_match \
+  'a service owns the shared runtime directory' \
+  grep -r -q -E \
+  '^RuntimeDirectory=rigos$' \
+  "$temporary/root/etc/systemd/system"
 if grep -Eq '^(ExecStartPre|Environment=PATH)=.*compat-bin' "$temporary/root/etc/systemd/system/rigos-state.service"; then die 'state unit executes compatibility code from the runtime directory'; fi
 [[ -f "$temporary/root/usr/lib/rigos/lsblk-compat" ]] || die 'state lsblk compatibility wrapper is missing'
 [[ -x "$temporary/root/usr/bin/python3" ]] || die 'Python runtime for state compatibility is missing'
@@ -304,7 +324,11 @@ grep -Fq '/usr/bin/setfont' "$temporary/root/usr/lib/rigos/rigos-admin-password"
 grep -Fq 'RIGOS_ADMIN_PASSWORD_SKIP_SETFONT' "$temporary/root/usr/lib/rigos/rigos-admin-password" || die 'admin password helper lacks a deterministic font-test bypass'
 grep -Fq 'RIGOS DEADBYTE UTILITY' "$temporary/root/usr/local/sbin/rigos-utility" || die 'RIGOS utility title is missing'
 [[ -x "$temporary/root/usr/lib/rigos/rigos-lifecycle-cycles" ]] || die 'booted lifecycle cycle test is missing'
-if rg -q -- '--output-fd' "$temporary/root/usr/local/sbin/rigos-firstboot"; then die 'first boot rewires the whiptail screen stream'; fi
+reject_match \
+  'first boot rewires the whiptail screen stream' \
+  grep -Fq -- \
+  '--output-fd' \
+  "$temporary/root/usr/local/sbin/rigos-firstboot"
 grep -Fq 'stderr=subprocess.PIPE' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot stderr capture is missing'
 grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-firstboot" || die 'first boot value stream mismatch'
 [[ "$(jq -r .modified "$temporary/root/usr/share/rigos/components/xmrig.json")" == false ]]
@@ -313,5 +337,9 @@ grep -Fq 'return result.stderr.strip()' "$temporary/root/usr/local/sbin/rigos-fi
 [[ "$(sha256sum "$temporary/root/usr/lib/rigos/xmrig" | cut -d' ' -f1)" == b20f39fc00d242e706b6c30367ad811c676e0575050a4ec2f30104b696944b49 ]]
 [[ -f "$temporary/root/usr/share/rigos/licenses/XMRig-GPL-3.0.txt" ]]
 [[ -f "$temporary/root/usr/share/rigos/THIRD_PARTY_NOTICES" ]]
-if rg -n -i 'rigos.{0,20}(wallet|donation endpoint)|donation.{0,20}disabled|complete mining stack.{0,20}zero fee' "$temporary/root/usr/share/rigos"; then die 'forbidden miner fee claim or endpoint'; fi
+reject_match \
+  'forbidden miner fee claim or endpoint' \
+  grep -r -n -i -E \
+  'rigos.{0,20}(wallet|donation endpoint)|donation.{0,20}disabled|complete mining stack.{0,20}zero fee' \
+  "$temporary/root/usr/share/rigos"
 printf 'RIGOS USB appliance verification passed: %s\n' "$image"
