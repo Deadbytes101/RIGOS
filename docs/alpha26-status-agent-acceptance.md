@@ -28,11 +28,33 @@ Expected:
     no new failed unit
     mining behavior unchanged
 
-GATE B — CONFIGURATION
+GATE B — COLLECTOR SEMANTICS
+----------------------------
+
+    sudo rig-status-agent collect > /tmp/rigos-status-observation.json
+    findmnt -n -o FSTYPE,OPTIONS /
+    journalctl -k -b --no-pager -o cat | \
+        grep -Ei 'machine check|hardware error|soft lockup|kernel panic|I/O error|EXT4-fs error|temperature above threshold|clock throttled|rcu.*stall' || true
+    timedatectl show \
+        --property=NTPSynchronized \
+        --property=NTP \
+        --property=SystemClockSynchronized
+    systemctl is-enabled systemd-timesyncd.service
+    systemctl is-active systemd-timesyncd.service
+
+Expected:
+
+    root-filesystem-integrity is operational for the expected live overlay
+    kernel-integrity is not degraded by normal governor/zone/watchdog setup logs
+    systemd-timesyncd is enabled and active
+    time-synchronization becomes operational after NTPSynchronized=yes
+    exactly 19 components remain present
+
+GATE C — CONFIGURATION
 ----------------------
 
     sudo rig-status-agent configure \
-        --server http://STATUS-SERVER:8787 \
+        --server https://rigos.site \
         --secret-file /root/rigos-status.secret
 
     sudo stat -c '%a %U %G %n' \
@@ -46,7 +68,7 @@ Expected:
     state directory: 700 root root
     timer enabled and active
 
-GATE C — SIGNED LIVE INGEST
+GATE D — SIGNED LIVE INGEST
 ---------------------------
 
     sudo rig-status-agent send
@@ -59,7 +81,7 @@ Expected:
     server source changes to SIGNED LIVE AGENT
     exactly 19 allowlisted components
 
-GATE D — STATUS SERVER OFFLINE
+GATE E — STATUS SERVER OFFLINE
 ------------------------------
 
 Stop the status server, wait for two timer runs, then inspect:
@@ -76,18 +98,19 @@ Expected:
     miner remains active
     no boot/miner dependency failure
 
-GATE E — REJECTION AND REPLAY
+GATE F — REJECTION AND REPLAY
 -----------------------------
 
 Use a wrong secret and a captured nonce in controlled tests.
 
 Expected:
 
-    HTTP 401 for bad signature or repeated nonce
+    HTTP 401 for bad signature
+    HTTP 409 for a repeated nonce
     no authenticated history written
     no secret in argv, stdout, stderr or journal
 
-GATE F — REBOOT PERSISTENCE
+GATE G — REBOOT PERSISTENCE
 ---------------------------
 
 Record source ID hash, reboot and compare:
@@ -102,7 +125,7 @@ Expected:
     timer resumes only when configured
     miner behavior remains unchanged
 
-GATE G — PRIVACY
+GATE H — PRIVACY
 ----------------
 
     sudo rig-status-agent collect > /tmp/rigos-status-observation.json

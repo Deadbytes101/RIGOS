@@ -5,7 +5,7 @@ VERSION
 -------
 
     RIGOS IMAGE        0.0.4-alpha.26
-    AGENT              2.0.0
+    AGENT              2.0.1
     OBSERVATION        rigos.status-observation/v1
     COMPONENTS         19 EXACT ALLOWLISTED AUTHORITIES
 
@@ -25,6 +25,26 @@ flowchart LR
     E --> F["PUBLIC STATUS\nfresh signed truth or UNKNOWN"]
 ```
 
+COLLECTOR SEMANTICS
+-------------------
+
+    root filesystem
+        read-only roots are operational
+        the expected Debian live overlay is operational when every lower layer
+        is under /run/live/rootfs
+        an unexpected writable root remains a major outage
+
+    kernel integrity
+        normal thermal-governor, thermal-zone and NMI-watchdog registration
+        messages are ignored
+        only bounded fault signatures are counted
+        raw journal lines are never published
+
+    time synchronization
+        systemd-timesyncd is installed and enabled in the image
+        NTPSynchronized=yes is operational
+        NTPSynchronized=no remains degraded until synchronization completes
+
 PERSISTENT FILES
 ----------------
 
@@ -42,7 +62,7 @@ CONFIGURE
     chmod 600 /root/rigos-status.secret
 
     sudo rig-status-agent configure \
-        --server http://192.168.1.10:8787 \
+        --server https://rigos.site \
         --secret-file /root/rigos-status.secret
 
     sudo rm -f /root/rigos-status.secret

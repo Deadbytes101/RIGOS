@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
-AGENT_VERSION = "2.0.0"
+AGENT_VERSION = "2.0.1"
 OBSERVATION_SCHEMA = "rigos.status-observation/v1"
 STATE_ROOT = Path("/var/lib/rigos")
 DEFAULT_SOURCE_ID_FILE = STATE_ROOT / "status-agent/source-id"
@@ -22,6 +22,18 @@ COMPONENT_IDS = (
     "failed-unit-set","operator-health","kernel-integrity","state-capacity",
     "time-synchronization","ssh-service","remote-access-observer",
 )
+KERNEL_SEVERE = tuple(re.compile(p,re.I) for p in (
+    r"\bmachine check(?: events? logged)?\b",r"\[hardware error\]",
+    r"\bedac\b.*\b(?:uncorrected|fatal)\b.*\berror\b",r"\b(?:soft|hard) lockup\b",
+    r"\bkernel panic\b",r"\bI/O error\b",r"\bEXT4-fs error\b",
+    r"\bXFS\b.*\b(?:corruption|metadata I/O error)\b",
+))
+KERNEL_WARNING = tuple(re.compile(p,re.I) for p in (
+    r"\b(?:cpu|core|package)\b.*\b(?:temperature above threshold|over temperature|clock throttled|thermal throttling)\b",
+    r"\bthermal\b.*\b(?:critical temperature reached|overheat(?:ed|ing)?|emergency shutdown)\b",
+    r"\bwatchdog\b.*\b(?:bug|lockup|stuck|timeout|did not stop)\b",
+    r"\brcu\b.*\b(?:detected stalls?|stall detected|self-detected stall)\b",
+))
 
 
 def utc_now() -> str:
@@ -134,13 +146,7 @@ def outcome_status(outcome: str | None, ready=("ready","ok","applied","active","
 def json_authority(path: str, fact_key: str, label: str) -> tuple[str,dict[str,Any]]:
     value=read_json(Path(path))
     if value is None: return "unknown", evidence(f"{label} evidence is unavailable")
-    outcome=(
-        value.get("outcome")
-        or value.get("state_outcome")
-        or value.get("verification_outcome")
-        or value.get("status")
-        or value.get("state")
-    )
+    outcome=(value.get("outcome") or value.get("state_outcome") or value.get("verification_outcome") or value.get("status") or value.get("state"))
     status=outcome_status(str(outcome) if outcome is not None else None)
     facts={fact_key: clean_text(outcome,128) if outcome is not None else None}
     return status,evidence(f"{label}: {outcome or 'unknown'}",schema=value.get("schema"),outcome=str(outcome) if outcome else None,facts=facts)
@@ -181,31 +187,53 @@ def unexpected_failed_units(output: str) -> tuple[list[str],int]:
     return sorted(units),ignored
 
 
-
 def operator_health() -> tuple[dict[str,Any],tuple[str,dict[str,Any]]]:
     code,_,_=run_command(["rig","health","--json"],8.0)
-    if code==0:
-        status="ok"
-        component_status="operational"
-        summary="rig health completed successfully"
-    elif code==1:
-        status="degraded"
-        component_status="degraded"
-        summary="rig health reported degraded"
-    elif code==2:
-        status="failed"
-        component_status="major_outage"
-        summary="rig health failed"
-    else:
-        status="unavailable"
-        component_status="unknown"
-        summary="rig health unavailable"
+    if code==0: status="ok"; component_status="operational"; summary="rig health completed successfully"
+    elif code==1: status="degraded"; component_status="degraded"; summary="rig health reported degraded"
+    elif code==2: status="failed"; component_status="major_outage"; summary="rig health failed"
+    else: status="unavailable"; component_status="unknown"; summary="rig health unavailable"
     health={"status":status,"exitCode":code,"summary":summary}
-    authority=evidence(
-        "rig health exit contract",
-        facts={"commandExitCode":code},
-    )
-    return health,(component_status,authority)
+    return health,(component_status,evidence("rig health exit contract",facts={"commandExitCode":code}))
+
+
+def root_filesystem_authority(fstype: str, options: str) -> tuple[str,dict[str,Any]]:
+    parts=[part.strip() for part in options.split(",") if part.strip()]
+    names={part.split("=",1)[0] for part in parts}; read_only="ro" in names and "rw" not in names
+    lowers=[part.split("=",1)[1] for part in parts if part.startswith("lowerdir=")]
+    live_lower=any(value and all(layer.startswith("/run/live/rootfs/") for layer in value.split(":")) for value in lowers)
+    facts={"rootReadOnly":read_only,"rootFileSystem":clean_text(fstype,128)}
+    if read_only:
+        facts.update({"rootMode":"read-only","immutableLowerLayer":True})
+        return "operational",evidence("Root filesystem is read-only",facts=facts)
+    if fstype=="overlay" and live_lower:
+        facts.update({"rootMode":"live-overlay","immutableLowerLayer":True})
+        return "operational",evidence("Live overlay root uses the expected immutable lower layer",facts=facts)
+    if fstype=="overlay":
+        facts.update({"rootMode":"unexpected-overlay","immutableLowerLayer":False})
+        return "major_outage",evidence("Root overlay does not use the expected live lower layer",facts=facts)
+    facts.update({"rootMode":"writable","immutableLowerLayer":False})
+    return "major_outage",evidence("Root filesystem is unexpectedly writable",facts=facts)
+
+
+def kernel_fault_counts(journal: str) -> tuple[int,int]:
+    severe=warning=0
+    for line in (raw.strip() for raw in journal.splitlines()):
+        if not line: continue
+        if any(pattern.search(line) for pattern in KERNEL_SEVERE): severe+=1; continue
+        if any(pattern.search(line) for pattern in KERNEL_WARNING): warning+=1
+    return severe,warning
+
+
+def time_synchronization_authority() -> tuple[str,dict[str,Any]]:
+    code,out,_=run_command(["timedatectl","show","--property=NTPSynchronized","--value"],4.0)
+    sync=out.strip().lower()=="yes" if code==0 else None
+    service=systemd_show("systemd-timesyncd.service"); active=service.get("ActiveState","unknown") if service else "unknown"
+    facts={"ntpSynchronized":sync,"timeServiceActiveState":active[:128]}
+    if sync is True: return "operational",evidence("System clock is synchronized",facts=facts)
+    if sync is False: return "degraded",evidence("System clock is not synchronized yet",facts=facts)
+    return "unknown",evidence("Time synchronization evidence is unavailable",facts=facts)
+
 
 def collect_components(observed: str) -> tuple[dict[str,Any],list[dict[str,Any]]]:
     items=[]
@@ -234,24 +262,20 @@ def collect_components(observed: str) -> tuple[dict[str,Any],list[dict[str,Any]]
     add("network-readiness",(nm if STATUS_SEVERITY[nm[0]]>=STATUS_SEVERITY[online[0]] else online))
     code,out,_=run_command(["findmnt","-n","-o","FSTYPE,OPTIONS","/"])
     if code==0 and out.strip():
-        parts=out.strip().split(None,1); fstype=parts[0]; opts=parts[1] if len(parts)>1 else ""
-        ro="ro" in opts.split(","); add("root-filesystem-integrity",("operational" if ro else "major_outage",evidence("Root filesystem is read-only" if ro else "Root filesystem is writable",facts={"rootReadOnly":ro,"rootFileSystem":fstype[:128]})))
+        parts=out.strip().split(None,1); add("root-filesystem-integrity",root_filesystem_authority(parts[0],parts[1] if len(parts)>1 else ""))
     else: add("root-filesystem-integrity",("unknown",evidence("Root filesystem mount evidence unavailable")))
     _,failed_out,_=run_command(["systemctl","--failed","--no-legend","--plain"])
-    failed,ignored=unexpected_failed_units(failed_out); add("failed-unit-set",("operational" if not failed else "major_outage",evidence("No unexpected failed units" if not failed else "Unexpected failed units exist",facts={"failedUnits":len(failed)})))
-    health,health_component=operator_health()
-    add("operator-health",health_component)
+    failed,ignored=unexpected_failed_units(failed_out)
+    add("failed-unit-set",("operational" if not failed else "major_outage",evidence("No unexpected failed units" if not failed else "Unexpected failed units exist",facts={"failedUnits":len(failed),"ignoredObserverFailures":ignored})))
+    health,health_component=operator_health(); add("operator-health",health_component)
     _,journal,_=run_command(["journalctl","-k","-b","--no-pager","-o","cat"],8.0)
-    severe=sum(len(re.findall(p,journal,re.I)) for p in (r"machine check",r"hardware error",r"soft lockup",r"kernel panic",r"I/O error",r"EXT4-fs error"))
-    warning=sum(len(re.findall(p,journal,re.I)) for p in (r"thermal",r"throttl",r"watchdog",r"rcu.*stall"))
-    ks="major_outage" if severe else "degraded" if warning else "operational"
+    severe,warning=kernel_fault_counts(journal); ks="major_outage" if severe else "degraded" if warning else "operational"
     add("kernel-integrity",(ks,evidence("Kernel fault scan completed",facts={"severeEvents":severe,"warningEvents":warning})))
     try:
         st=os.statvfs(STATE_ROOT); total=st.f_blocks*st.f_frsize; free=st.f_bavail*st.f_frsize; pct=(free/total*100) if total else 0
         cs="operational" if pct>=10 else "degraded" if pct>=5 else "major_outage"; add("state-capacity",(cs,evidence("Persistent-state capacity inspected",facts={"freePercent":round(pct,3)})))
     except OSError: add("state-capacity",("unknown",evidence("Persistent-state capacity unavailable")))
-    tc,to,_=run_command(["timedatectl","show","--property=NTPSynchronized","--value"],4.0); sync=to.strip().lower()=="yes" if tc==0 else None
-    add("time-synchronization",("operational" if sync is True else "degraded" if sync is False else "unknown",evidence("Time synchronization inspected",facts={"ntpSynchronized":sync})))
+    add("time-synchronization",time_synchronization_authority())
     add("ssh-service",unit_authority("ssh.service",False))
     add("remote-access-observer",unit_authority("rigos-remote-access-observe.service",False,True))
     if len(items)!=len(COMPONENT_IDS) or {i["id"] for i in items}!=set(COMPONENT_IDS): raise RuntimeError("Collector registry mismatch")
