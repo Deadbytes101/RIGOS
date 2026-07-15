@@ -177,12 +177,24 @@ for number in 1 2 3 4; do
   [[ "$actual_device" == "$expected_device" ]] ||     die "partition node device mismatch: $node expected=$expected_device actual=$actual_device"
 done
 p1="${loop}p1"; p2="${loop}p2"; p3="${loop}p3"; p4="${loop}p4"
+bios_root_loop=""
+bios_efi_loop=""
+bios_device_map=""
 cleanup(){
   set +e
+  if [[ -n "$bios_device_map" ]]; then
+    rm -f -- "$bios_device_map"
+  fi
   mountpoint -q "$work/mnt/state" && umount "$work/mnt/state"
   mountpoint -q "$work/mnt/b" && umount "$work/mnt/b"
   mountpoint -q "$work/mnt/a" && umount "$work/mnt/a"
   mountpoint -q "$work/mnt/efi" && umount "$work/mnt/efi"
+  if [[ -n "$bios_efi_loop" ]]; then
+    losetup -d "$bios_efi_loop" 2>/dev/null
+  fi
+  if [[ -n "$bios_root_loop" ]]; then
+    losetup -d "$bios_root_loop" 2>/dev/null
+  fi
   losetup -d "$loop" 2>/dev/null
   if ((${#created_partition_nodes[@]})); then
     rm -f -- "${created_partition_nodes[@]}"
@@ -193,8 +205,57 @@ mkfs.vfat -F 32 -n EFI_SYSTEM "$p1"
 mkfs.ext4 -q -F -L RIGOS_ROOT_A -U 065b5c7f-076a-50dd-92e4-a600a5c6682f -m 0 "$p2"
 mkfs.ext4 -q -F -L RIGOS_ROOT_B -U f6285e01-c386-528f-bf33-910c744dd8ba -m 0 "$p3"
 mkfs.ext4 -q -F -L RIGOS_STATE_SEED -U dc450e72-daa4-5b82-8d1b-0ae6b11607f9 -m 0 "$p4"
+sector_size="$(blockdev --getss "$loop")"
+efi_start_sector="$(cat "/sys/class/block/${loop_name}p1/start")"
+efi_size_sectors="$(cat "/sys/class/block/${loop_name}p1/size")"
+root_start_sector="$(cat "/sys/class/block/${loop_name}p2/start")"
+root_size_sectors="$(cat "/sys/class/block/${loop_name}p2/size")"
+
+for numeric_value in   "$sector_size"   "$efi_start_sector"   "$efi_size_sectors"   "$root_start_sector"   "$root_size_sectors"
+do
+  [[ "$numeric_value" =~ ^[0-9]+$ ]] ||
+    die "invalid partition geometry value: $numeric_value"
+  ((numeric_value > 0)) ||
+    die "non-positive partition geometry value: $numeric_value"
+done
+
+efi_offset_bytes="$((efi_start_sector * sector_size))"
+efi_size_bytes="$((efi_size_sectors * sector_size))"
+root_offset_bytes="$((root_start_sector * sector_size))"
+root_size_bytes="$((root_size_sectors * sector_size))"
+
+bios_root_loop="$(
+  losetup     --find     --show     --offset "$root_offset_bytes"     --sizelimit "$root_size_bytes"     "$image"
+)"
+
+bios_efi_loop="$(
+  losetup     --find     --show     --offset "$efi_offset_bytes"     --sizelimit "$efi_size_bytes"     "$image"
+)"
+
+[[ -b "$bios_root_loop" ]] ||
+  die "BIOS root offset loop is not a block device: $bios_root_loop"
+
+[[ -b "$bios_efi_loop" ]] ||
+  die "BIOS EFI offset loop is not a block device: $bios_efi_loop"
+
+[[ "$(blockdev --getsize64 "$bios_root_loop")" == "$root_size_bytes" ]] ||
+  die "BIOS root offset loop size mismatch"
+
+[[ "$(blockdev --getsize64 "$bios_efi_loop")" == "$efi_size_bytes" ]] ||
+  die "BIOS EFI offset loop size mismatch"
+
 mkdir -p "$work/mnt/efi" "$work/mnt/a" "$work/mnt/b" "$work/mnt/state"
-mount "$p1" "$work/mnt/efi"; mount "$p2" "$work/mnt/a"; mount "$p3" "$work/mnt/b"; mount "$p4" "$work/mnt/state"
+
+mount "$bios_efi_loop" "$work/mnt/efi"
+mount "$bios_root_loop" "$work/mnt/a"
+mount "$p3" "$work/mnt/b"
+mount "$p4" "$work/mnt/state"
+
+[[ "$(blkid -s LABEL -o value "$bios_efi_loop")" == "EFI_SYSTEM" ]] ||
+  die "BIOS EFI offset loop label mismatch"
+
+[[ "$(blkid -s UUID -o value "$bios_root_loop")" ==   "065b5c7f-076a-50dd-92e4-a600a5c6682f" ]] ||
+  die "BIOS root offset loop UUID mismatch"
 for slot in a b; do
   mkdir -p "$work/mnt/$slot/live" "$work/mnt/$slot/boot/grub"
   install -m 0644 "$root_payload" "$work/mnt/$slot/live/filesystem.squashfs"
@@ -202,8 +263,46 @@ for slot in a b; do
   install -m 0644 "$initrd" "$work/mnt/$slot/live/initrd.img"
   install -m 0644 "$layout" "$work/mnt/$slot/image-layout.json"
 done
+bios_device_map="$work/mnt/a/boot/grub/device.map"
+
+printf '(hd0) %s\n(hd1) %s\n(hd2) %s\n'   "$loop"   "$bios_root_loop"   "$bios_efi_loop"   >"$bios_device_map"
+
+expected_bios_device_map="$(
+  printf '(hd0) %s\n(hd1) %s\n(hd2) %s'     "$loop"     "$bios_root_loop"     "$bios_efi_loop"
+)"
+
+[[ "$(cat "$bios_device_map")" == "$expected_bios_device_map" ]] ||
+  die "BIOS device map verification failed: $bios_device_map"
+
 grub-install --target=i386-pc --boot-directory="$work/mnt/a/boot" --no-floppy "$loop"
 grub-install --target=x86_64-efi --efi-directory="$work/mnt/efi" --boot-directory="$work/mnt/a/boot" --removable --no-nvram
+
+bios_core="$work/mnt/a/boot/grub/i386-pc/core.img"
+bios_load_cfg="$work/mnt/a/boot/grub/i386-pc/load.cfg"
+efi_loader="$work/mnt/efi/EFI/BOOT/BOOTX64.EFI"
+
+[[ -s "$bios_core" ]] ||
+  die "BIOS GRUB core image is missing: $bios_core"
+
+[[ -s "$bios_load_cfg" ]] ||
+  die "BIOS GRUB load configuration is missing: $bios_load_cfg"
+
+[[ -s "$efi_loader" ]] ||
+  die "UEFI removable loader is missing: $efi_loader"
+
+grep -Fq 'search.fs_uuid' "$bios_load_cfg" ||
+  die "BIOS GRUB load configuration has no UUID search"
+
+grep -Fq '065b5c7f-076a-50dd-92e4-a600a5c6682f' "$bios_load_cfg" ||
+  die "BIOS GRUB load configuration has the wrong root UUID"
+
+if grep -Fq '/dev/loop' "$bios_load_cfg"; then
+  die "runtime loop path leaked into BIOS GRUB load configuration"
+fi
+
+rm -f -- "$bios_device_map"
+bios_device_map=""
+
 cp -a "$work/mnt/a/boot/grub/." "$work/mnt/b/boot/grub/"
 for slot in a b; do
   install -d -m 0755 "$work/mnt/$slot/boot/grub/themes/rigos"
@@ -261,10 +360,19 @@ sync
 umount "$work/mnt/state" "$work/mnt/b" "$work/mnt/a" "$work/mnt/efi"
 root_a_sha="$(sha256sum "$p2" | cut -d' ' -f1)"; root_b_sha="$(sha256sum "$p3" | cut -d' ' -f1)"
 sync
+
+losetup -d "$bios_efi_loop"
+bios_efi_loop=""
+
+losetup -d "$bios_root_loop"
+bios_root_loop=""
+
 losetup -d "$loop"
+
 if ((${#created_partition_nodes[@]})); then
   rm -f -- "${created_partition_nodes[@]}"
 fi
+
 trap - EXIT
 
 output="$repo/dist/usb"
