@@ -1,0 +1,86 @@
+name: Status service
+
+on:
+  pull_request:
+    paths:
+      - "functions/**"
+      - "migrations/**"
+      - "scripts/test-status-functions.mjs"
+      - "site/status.css"
+      - ".github/workflows/status-service.yml"
+  push:
+    branches:
+      - main
+      - site/alpha26-system-status
+    paths:
+      - "functions/**"
+      - "migrations/**"
+      - "scripts/test-status-functions.mjs"
+      - "site/status.css"
+      - ".github/workflows/status-service.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check function syntax
+        run: |
+          node --check functions/_lib/status.js
+          node --check functions/api/v1/observations.js
+          node --check functions/api/v1/status.js
+          node --check functions/status.js
+          node --check scripts/test-status-functions.mjs
+
+      - name: Run status service tests
+        run: |
+          node --experimental-default-type=module \
+            --test scripts/test-status-functions.mjs
+
+      - name: Verify migration objects
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          migration = Path("migrations/0001_status.sql").read_text(encoding="utf-8")
+          connection = sqlite3.connect(":memory:")
+          connection.executescript(migration)
+          rows = connection.execute(
+              """
+              SELECT type, name, tbl_name
+              FROM sqlite_master
+              WHERE name IN (
+                  'status_observations',
+                  'status_observations_received',
+                  'ingest_nonces',
+                  'ingest_nonces_expiry'
+              )
+              ORDER BY type, name
+              """
+          ).fetchall()
+
+          expected = [
+              ("index", "ingest_nonces_expiry", "ingest_nonces"),
+              ("index", "status_observations_received", "status_observations"),
+              ("table", "ingest_nonces", "ingest_nonces"),
+              ("table", "status_observations", "status_observations"),
+          ]
+
+          if rows != expected:
+              raise SystemExit(f"migration mismatch: {rows!r}")
+
+          print("D1 migration objects verified")
+          PY

@@ -1,0 +1,97 @@
+/* RIGOS SYSTEM STATUS
+   Server-rendered status surface. No browser JavaScript. */
+
+.status-shell {
+  width: min(calc(100% - 2rem), 1120px);
+}
+
+.status-summary {
+  margin-bottom: 2.4rem;
+}
+
+.status-node {
+  margin-top: 2.8rem;
+  padding-top: 0.2rem;
+}
+
+.status-node-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.status-node-heading h2 {
+  margin: 0;
+  border: 0;
+}
+
+.state {
+  display: inline-block;
+  min-width: 7.8rem;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid currentColor;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.state-live,
+.state-operational {
+  color: #8bd49c;
+}
+
+.state-stale,
+.state-unknown,
+.state-degraded {
+  color: #e7c66b;
+}
+
+.state-offline,
+.state-partial-outage,
+.state-major-outage {
+  color: #ef8c8c;
+}
+
+.status-empty {
+  margin: 2.4rem 0;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+}
+
+.status-empty h2 {
+  margin-top: 0;
+}
+
+.component-table th:first-child {
+  width: 15rem;
+}
+
+.component-table td:nth-child(2) {
+  width: 9rem;
+}
+
+@media (max-width: 760px) {
+  .status-shell {
+    width: min(calc(100% - 1rem), 1120px);
+  }
+
+  .status-node-heading {
+    display: block;
+    padding-bottom: 0.7rem;
+  }
+
+  .status-node-heading .state {
+    margin-top: 0.4rem;
+  }
+
+  .component-table th:first-child,
+  .component-table td:nth-child(2) {
+    width: auto;
+  }
+}

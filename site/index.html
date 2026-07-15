@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RIGOS — Local-first CPU Mining Appliance</title>
-  <meta name="description" content="RIGOS is a local-first Debian USB appliance for persistent, observable CPU mining. Read its architecture, project history, physical evidence and known limits.">
+  <meta name="description" content="RIGOS is a local-first Debian USB appliance for persistent, observable CPU mining. Read its architecture, project history, physical evidence, known limits and direct system status.">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#111214">
   <meta name="generator" content="handwritten static HTML">
@@ -13,11 +13,11 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="RIGOS">
   <meta property="og:title" content="RIGOS — Local-first CPU Mining Appliance">
-  <meta property="og:description" content="Engineering history, architecture, physical evidence and known limits of the RIGOS Alpha.25 USB appliance.">
+  <meta property="og:description" content="Engineering history, architecture, physical evidence, known limits and direct signed system status for RIGOS.">
   <meta property="og:url" content="https://rigos.site/">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="RIGOS — Local-first CPU Mining Appliance">
-  <meta name="twitter:description" content="Engineering history, architecture, physical evidence and known limits of RIGOS Alpha.25.">
+  <meta name="twitter:description" content="Engineering record and direct system status for RIGOS.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,6 +28,7 @@
     <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
     <nav class="nav" aria-label="Site navigation">
       <a href="index.html" aria-current="page">Overview</a>
+      <a href="/status">System status</a>
       <a href="history.html">History</a>
       <a href="architecture.html">Architecture</a>
       <a href="evidence.html">Evidence</a>
@@ -43,9 +44,16 @@
   <dl class="status" aria-label="Current RIGOS status">
     <dt>Release</dt><dd>0.0.4-alpha.25</dd>
     <dt>Class</dt><dd>Functional physical Alpha preview</dd>
-    <dt>Development</dt><dd>Paused at a frozen milestone</dd>
+    <dt>Development</dt><dd>Alpha.26 status-observer work in progress</dd>
     <dt>Production ready</dt><dd>No</dd>
+    <dt>Direct status</dt><dd><a href="/status">Open signed RIGOS system status</a></dd>
   </dl>
+
+  <section>
+    <h2>Direct system status</h2>
+    <p>RIGOS can publish a signed, read-only observation of its own operating-system state. The status surface reports boot, persistent state, configuration, runtime, huge pages, network, kernel, capacity, time and access evidence without exposing mining identity or control.</p>
+    <div class="callout"><strong>Not HiveOS:</strong> no hosted mining account, wallet, worker name, pool, hashrate, shares, activation, subscription or remote command is part of this status channel. <a href="/status">Read the live system status.</a></div>
+  </section>
 
   <section>
     <h2>Purpose</h2>
@@ -84,6 +92,7 @@ rig, rigosctl and bounded health observation</pre>
   <section>
     <h2>Contents</h2>
     <ul class="archive-index">
+      <li><a href="/status">Direct system status</a><p>Fresh signed operating-system evidence emitted by RIGOS itself, with no mining identity or remote-control surface.</p></li>
       <li><a href="history.html">Project history</a><p>USB appliance work, persistent state, firstboot defects, Alpha.22 repairs, later hardening and the Alpha.25 milestone.</p></li>
       <li><a href="architecture.html">Architecture</a><p>Boot modes, systemd ordering, state authority, revision activation, runtime generation and operator surfaces.</p></li>
       <li><a href="evidence.html">Physical evidence</a><p>Sanitized real-hardware status, huge-page readiness, accepted shares and the exact limits of the recorded samples.</p></li>
@@ -115,12 +124,13 @@ rig, rigosctl and bounded health observation</pre>
       <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/SECURITY-MODEL.md">Security model</a></li>
       <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/PHYSICAL-EVIDENCE-ALPHA25.md">Physical evidence</a></li>
       <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/KNOWN-LIMITS.md">Known limits</a></li>
+      <li><a href="https://github.com/Deadbytes101/RIGOS/blob/main/docs/STATUS-SERVICE.md">Direct status service</a></li>
     </ul>
   </section>
 </main>
 <footer class="site-footer">
   <div class="shell">
-    <p>RIGOS Alpha.25. Static HTML and CSS.</p>
+    <p>RIGOS Alpha.25 record with experimental direct system status.</p>
     <p><a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
 </footer>
