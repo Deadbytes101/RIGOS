@@ -15,6 +15,7 @@ network-manager
 openssh-server
 python3
 systemd-sysv
+systemd-timesyncd
 sudo
 util-linux
 udev
