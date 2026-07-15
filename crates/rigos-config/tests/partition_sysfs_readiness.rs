@@ -73,7 +73,7 @@ mode="${RIGOS_SYSFS_TEST_MODE:-retry}"
 attempt=0
 
 if [[ -f "$counter" ]]; then
-    attempt="$(cat "$counter")"
+    IFS= read -r attempt <"$counter"
 fi
 
 attempt="$((attempt + 1))"
