@@ -143,14 +143,7 @@ fn sysfs_cat_wrapper_retries_read_failures_and_invalid_values_only_for_partition
 
     write_fake_cat(&real);
 
-    let retry = run_wrapper(
-        &wrapper,
-        &real,
-        &counter,
-        "retry",
-        "5",
-        &[sysfs_device],
-    );
+    let retry = run_wrapper(&wrapper, &real, &counter, "retry", "5", &[sysfs_device]);
 
     assert!(
         retry.status.success(),
@@ -176,10 +169,7 @@ fn sysfs_cat_wrapper_retries_read_failures_and_invalid_values_only_for_partition
     );
 
     assert!(invalid_then_ready.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&invalid_then_ready.stdout),
-        "7:2\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&invalid_then_ready.stdout), "7:2\n");
     assert_eq!(fs::read_to_string(&counter).unwrap(), "3\n");
 
     fs::remove_file(&counter).unwrap();
@@ -202,14 +192,7 @@ fn sysfs_cat_wrapper_retries_read_failures_and_invalid_values_only_for_partition
 
     fs::remove_file(&counter).unwrap();
 
-    let failure = run_wrapper(
-        &wrapper,
-        &real,
-        &counter,
-        "fail",
-        "2",
-        &[sysfs_device],
-    );
+    let failure = run_wrapper(&wrapper, &real, &counter, "fail", "2", &[sysfs_device]);
 
     assert!(!failure.status.success());
     assert!(
