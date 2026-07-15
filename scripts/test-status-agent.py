@@ -101,12 +101,9 @@ class AgentTests(unittest.TestCase):
 
     def test_transport_and_protocol_failures_are_bounded_exit_codes(self):
         observation = {"observedAt": "2026-07-15T00:00:00Z"}
-        common = [
-            mock.patch.object(agent, "build_observation", return_value=observation),
-            mock.patch.object(agent, "read_secret", return_value="a" * 64),
-            mock.patch.object(agent, "write_status"),
-        ]
-        with common[0], common[1], common[2], \
+        with mock.patch.object(agent, "build_observation", return_value=observation), \
+             mock.patch.object(agent, "read_secret", return_value="a" * 64), \
+             mock.patch.object(agent, "write_status"), \
              mock.patch.object(agent, "send_observation", side_effect=agent.TransportError("offline")):
             self.assertEqual(agent.main(["--server", "https://status.example"]), 75)
         with mock.patch.object(agent, "build_observation", return_value=observation), \
@@ -114,7 +111,6 @@ class AgentTests(unittest.TestCase):
              mock.patch.object(agent, "write_status"), \
              mock.patch.object(agent, "send_observation", side_effect=agent.ProtocolError("rejected")):
             self.assertEqual(agent.main(["--server", "https://status.example"]), 76)
-
 
     def test_authority_specific_outcome_fields_are_honored(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,10 +127,7 @@ class AgentTests(unittest.TestCase):
             )
 
             self.assertEqual(status, "operational")
-            self.assertEqual(
-                evidence["facts"]["verificationOutcome"],
-                "verified",
-            )
+            self.assertEqual(evidence["facts"]["verificationOutcome"], "verified")
 
             recovery = Path(directory) / "recovery.json"
             recovery.write_text(json.dumps({
@@ -149,10 +142,7 @@ class AgentTests(unittest.TestCase):
             )
 
             self.assertEqual(status, "operational")
-            self.assertEqual(
-                evidence["facts"]["stateOutcome"],
-                "ready",
-            )
+            self.assertEqual(evidence["facts"]["stateOutcome"], "ready")
 
     def test_operator_health_never_forwards_command_output(self):
         private_output = json.dumps({
@@ -170,11 +160,7 @@ class AgentTests(unittest.TestCase):
         ):
             health, component = agent.operator_health()
 
-        encoded = json.dumps({
-            "health": health,
-            "component": component,
-        }).lower()
-
+        encoded = json.dumps({"health": health, "component": component}).lower()
         for forbidden in (
             "secret-wallet",
             "pool.example",
@@ -184,11 +170,65 @@ class AgentTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, encoded)
 
-        self.assertEqual(
-            health["summary"],
-            "rig health completed successfully",
-        )
+        self.assertEqual(health["summary"], "rig health completed successfully")
         self.assertEqual(component[0], "operational")
+
+    def test_live_overlay_root_is_operational(self):
+        status, authority = agent.root_filesystem_authority(
+            "overlay",
+            "rw,relatime,lowerdir=/run/live/rootfs/filesystem.squashfs,"
+            "upperdir=/run/live/overlay/rw,workdir=/run/live/overlay/work",
+        )
+        self.assertEqual(status, "operational")
+        self.assertEqual(authority["facts"]["rootMode"], "live-overlay")
+        self.assertTrue(authority["facts"]["immutableLowerLayer"])
+        self.assertFalse(authority["facts"]["rootReadOnly"])
+
+    def test_read_only_root_is_operational(self):
+        status, authority = agent.root_filesystem_authority("squashfs", "ro,relatime")
+        self.assertEqual(status, "operational")
+        self.assertEqual(authority["facts"]["rootMode"], "read-only")
+
+    def test_unexpected_writable_roots_are_major_outage(self):
+        status, authority = agent.root_filesystem_authority("ext4", "rw,relatime")
+        self.assertEqual(status, "major_outage")
+        self.assertEqual(authority["facts"]["rootMode"], "writable")
+
+        status, authority = agent.root_filesystem_authority(
+            "overlay",
+            "rw,lowerdir=/tmp/untrusted,upperdir=/tmp/upper,workdir=/tmp/work",
+        )
+        self.assertEqual(status, "major_outage")
+        self.assertEqual(authority["facts"]["rootMode"], "unexpected-overlay")
+
+    def test_normal_kernel_boot_messages_do_not_degrade_status(self):
+        normal = "\n".join((
+            "NMI watchdog: Enabled. Permanently consumes one hw-PMU counter.",
+            "thermal_sys: Registered thermal governor 'fair_share'",
+            "thermal_sys: Registered thermal governor 'bang_bang'",
+            "thermal thermal_zone0: registered",
+            "HEST: Hardware Error Source Table (HEST) is initialized",
+            "rcu: Preemptible hierarchical RCU implementation.",
+            "clocksource: timekeeping watchdog on CPU0: Marking clocksource stable.",
+        ))
+        self.assertEqual(agent.kernel_fault_counts(normal), (0, 0))
+
+    def test_real_kernel_fault_messages_are_counted_once_per_line(self):
+        faulty = "\n".join((
+            "mce: [Hardware Error]: Machine check events logged",
+            "watchdog: BUG: soft lockup - CPU#0 stuck for 22s!",
+            "CPU0: Core temperature above threshold, cpu clock throttled",
+            "rcu: INFO: rcu_preempt detected stalls on CPUs/tasks",
+        ))
+        self.assertEqual(agent.kernel_fault_counts(faulty), (2, 2))
+
+    def test_time_sync_contract_uses_timedatectl_and_service_state(self):
+        with mock.patch.object(agent, "run_command", return_value=(0, "yes\n", "")), \
+             mock.patch.object(agent, "systemd_show", return_value={"ActiveState": "active"}):
+            status, authority = agent.time_synchronization_authority()
+        self.assertEqual(status, "operational")
+        self.assertTrue(authority["facts"]["ntpSynchronized"])
+        self.assertEqual(authority["facts"]["timeServiceActiveState"], "active")
 
 
 if __name__ == "__main__":
