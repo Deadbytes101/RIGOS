@@ -211,7 +211,7 @@
   flex: 1 1 0;
   background: var(--muted);
   cursor: help;
-  transition: opacity 80ms linear, transform 80ms linear;
+  transition: opacity 80ms linear;
 }
 
 .snapshot.state-operational,
@@ -233,7 +233,6 @@
 
 .snapshot:hover {
   opacity: 0.72;
-  transform: translateY(-2px);
   outline: 1px solid var(--fg);
   outline-offset: 1px;
 }
@@ -258,7 +257,6 @@
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transform: none;
 }
 
 .snapshot[title]::after {
