@@ -152,6 +152,16 @@ test("status CSS keeps state colors scoped and uses square corners", () => {
   assert.match(css, /:focus-visible/);
 });
 
+test("status SVG dimensions are hard-locked against broad injected rules", () => {
+  const css = readSite("status.css");
+  const block = css.match(/svg\.status-icon\s*\{([\s\S]*?)\}/)?.[1] || "";
+  assert.match(block, /width:\s*1\.25rem\s*!important/);
+  assert.match(block, /height:\s*1\.25rem\s*!important/);
+  assert.match(block, /max-width:\s*1\.25rem\s*!important/);
+  assert.match(block, /max-height:\s*1\.25rem\s*!important/);
+  assert.match(block, /flex:\s*0\s+0\s+1\.25rem\s*!important/);
+});
+
 test("public status HEAD responses never contain a JSON body, including errors", async () => {
   const response = await publicStatusRequest({
     request: new Request("https://rigos.site/api/v1/status", { method: "HEAD" }),
