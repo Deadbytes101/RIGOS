@@ -281,8 +281,8 @@ test("two independently signed rigs appear in the public projection", async () =
 test("a secret cannot sign for a different registered rig", async () => {
   const db = new MockDatabase();
   await assert.rejects(
-    () => acceptObservation(
-      signedRequest(observation(SOURCE_B, true), SECRET_A, "4".repeat(32)),
+    async () => acceptObservation(
+      await signedRequest(observation(SOURCE_B, true), SECRET_A, "4".repeat(32)),
       environment(db),
       NOW,
     ),
