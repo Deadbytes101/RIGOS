@@ -66,7 +66,9 @@ function escapeHtml(value) {
 }
 
 function statusLabel(value) {
-  return String(value || "unknown").replaceAll("_", " ").toUpperCase();
+  return String(value || "unknown")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function statusClass(value) {
@@ -145,14 +147,64 @@ function componentDisplayName(id) {
     .join(" ");
 }
 
+function statusIcon(state) {
+  const klass = statusClass(state);
+  const common = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+
+  if (["operational", "live"].includes(state)) {
+    return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>`;
+  }
+
+  if (["offline", "partial_outage", "major_outage"].includes(state)) {
+    return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg>`;
+  }
+
+  return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 17h.01"></path></svg>`;
+}
+
+function currentSnapshotStrip(status, count = 48) {
+  const segments = Array.from(
+    { length: count },
+    () => `<span class="snapshot ${statusClass(status)}"></span>`,
+  ).join("");
+
+  return `
+    <div class="snapshot-wrap" aria-label="Current status sample only; this is not historical uptime">
+      <div class="snapshots" aria-hidden="true">${segments}</div>
+      <div class="snapshot-periods"><span>Current sample</span><span>Now</span></div>
+    </div>`;
+}
+
+function componentHealthStrip(components) {
+  const segments = components.map((component) => `
+    <span
+      class="snapshot ${statusClass(component.status)}"
+      title="${escapeHtml(componentDisplayName(component.id))}: ${escapeHtml(statusLabel(component.status))}"
+    ></span>`).join("");
+
+  const operational = components.filter((component) => component.status === "operational").length;
+
+  return `
+    <div class="snapshot-wrap node-snapshot-wrap" aria-label="Current state of ${components.length} signed system checks">
+      <div class="snapshots node-snapshots">${segments}</div>
+      <div class="snapshot-periods"><span>${components.length} signed checks</span><span>${operational}/${components.length} operational</span></div>
+    </div>`;
+}
+
 function componentRow(component) {
   return `
-    <li class="status-service">
-      <div class="status-service-copy">
-        <strong>${escapeHtml(componentDisplayName(component.id))}</strong>
-        <span>${escapeHtml(component.evidence?.summary || "No public evidence summary")}</span>
+    <li class="status-service ${statusClass(component.status)}">
+      <div class="service-row-container">
+        <div class="service-name">
+          ${statusIcon(component.status)}
+          <div class="service-copy">
+            <strong>${escapeHtml(componentDisplayName(component.id))}</strong>
+            <span>${escapeHtml(component.evidence?.summary || "No public evidence summary")}</span>
+          </div>
+        </div>
+        <span class="status-state ${statusClass(component.status)}">${escapeHtml(statusLabel(component.status))}</span>
       </div>
-      <span class="status-state ${statusClass(component.status)}">${escapeHtml(statusLabel(component.status))}</span>
+      ${currentSnapshotStrip(component.status)}
     </li>`;
 }
 
@@ -182,22 +234,32 @@ function nodeSection(node) {
 
   return `
   <section class="status-node" aria-labelledby="node-${escapeHtml(node.nodeId)}">
-    <div class="status-node-heading">
-      <h2 id="node-${escapeHtml(node.nodeId)}">RIGOS node ${escapeHtml(node.nodeId)}</h2>
-      <span class="status-state ${statusClass(node.systemState)}">${escapeHtml(statusLabel(node.systemState))}</span>
+    <h2 id="node-${escapeHtml(node.nodeId)}">Observed RIGOS system</h2>
+
+    <div class="status-block node-block ${statusClass(node.systemState)}">
+      <div class="service-row-container node-heading-row">
+        <div class="service-name">
+          ${statusIcon(node.systemState)}
+          <div class="service-copy">
+            <strong>RIGOS node ${escapeHtml(node.nodeId)}</strong>
+            <span>${escapeHtml(statusLabel(node.connection))} connection · last received ${escapeHtml(humanAge(node.ageSeconds))} ago</span>
+          </div>
+        </div>
+        <span class="status-state ${statusClass(node.systemState)}">${escapeHtml(statusLabel(node.systemState))}</span>
+      </div>
+
+      ${componentHealthStrip(components)}
+
+      <dl class="status node-status" aria-label="Observed RIGOS node details">
+        <dt>Last received</dt><dd>${escapeHtml(node.receivedAt || "unknown")}</dd>
+        <dt>Observed</dt><dd>${escapeHtml(node.observedAt || "unknown")}</dd>
+        <dt>Release</dt><dd>${escapeHtml(release.version || "unknown")}</dd>
+        <dt>Build</dt><dd>${escapeHtml(build)}</dd>
+        <dt>Architecture</dt><dd>${escapeHtml(release.architecture || "unknown")}</dd>
+        <dt>System checks</dt><dd>${operational}/${components.length} operational</dd>
+        <dt>Rig health</dt><dd>${escapeHtml(health.summary || "No health summary")}</dd>
+      </dl>
     </div>
-
-    <p class="note">${escapeHtml(statusLabel(node.connection))} connection. Last signed observation received ${escapeHtml(humanAge(node.ageSeconds))} ago.</p>
-
-    <dl class="status node-status" aria-label="Observed RIGOS node details">
-      <dt>Last received</dt><dd>${escapeHtml(node.receivedAt || "unknown")}</dd>
-      <dt>Observed</dt><dd>${escapeHtml(node.observedAt || "unknown")}</dd>
-      <dt>Release</dt><dd>${escapeHtml(release.version || "unknown")}</dd>
-      <dt>Build</dt><dd>${escapeHtml(build)}</dd>
-      <dt>Architecture</dt><dd>${escapeHtml(release.architecture || "unknown")}</dd>
-      <dt>System checks</dt><dd>${operational}/${components.length} operational</dd>
-      <dt>Rig health</dt><dd>${escapeHtml(health.summary || "No health summary")}</dd>
-    </dl>
 
     ${COMPONENT_GROUPS.map((group) => componentGroup(group, components)).join("")}
   </section>`;
@@ -205,9 +267,9 @@ function nodeSection(node) {
 
 function emptySection(notice) {
   return `
-    <section>
+    <section class="status-node">
       <h2>Observed RIGOS systems</h2>
-      <div class="callout">
+      <div class="status-block empty-state">
         <strong>${notice ? "Status service unavailable" : "Waiting for the first observation"}</strong>
         <p>${escapeHtml(notice || "The public endpoint is ready, but no signed RIGOS appliance observation has been accepted yet.")}</p>
       </div>
@@ -241,10 +303,10 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
 </head>
 <body>
 <a class="skip-link" href="#content">Skip to content</a>
-<header class="site-header">
-  <div class="shell">
+<header class="site-header status-site-header">
+  <div class="shell status-page-shell">
     <a class="brand" href="/">RIGOS</a>
-    <p class="subtitle">Engineering record and direct signed system status.</p>
+    <p class="subtitle">Direct signed system status.</p>
     <nav class="nav" aria-label="Site navigation">
       <a href="/">Overview</a>
       <a href="/status" aria-current="page">System status</a>
@@ -257,36 +319,37 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
   </div>
 </header>
 
-<main id="content" class="shell status-shell">
-  <h1>RIGOS system status</h1>
-  <p class="lead">Public, read-only operating-system evidence received directly from RIGOS appliances. Anyone may view this page; it provides no remote-control surface.</p>
-
-  <div class="callout status-banner ${statusClass(overall)}">
-    <strong>${escapeHtml(copy.title)}</strong>
-    <p>${escapeHtml(copy.detail)}</p>
+<main id="content" class="shell status-page-shell status-shell">
+  <div class="status-banner ${statusClass(overall)}">
+    <div class="top-level-status">
+      ${statusIcon(overall)}
+      <div>
+        <strong>${escapeHtml(copy.title)}</strong>
+        <span>${escapeHtml(copy.detail)}</span>
+      </div>
+    </div>
   </div>
 
-  <dl class="status status-summary" aria-label="Public status summary">
-    <dt>Observed nodes</dt><dd>${nodes.length}</dd>
-    <dt>Live</dt><dd>${counts.live}</dd>
-    <dt>Stale</dt><dd>${counts.stale}</dd>
-    <dt>Offline</dt><dd>${counts.offline}</dd>
-    <dt>Generated</dt><dd>${escapeHtml(generatedAt)}</dd>
-    <dt>Refresh</dt><dd>30 seconds</dd>
-  </dl>
+  <div class="status-overview" aria-label="Public status summary">
+    <span><strong>${nodes.length}</strong> observed</span>
+    <span><strong>${counts.live}</strong> live</span>
+    <span><strong>${counts.stale}</strong> stale</span>
+    <span><strong>${counts.offline}</strong> offline</span>
+    <span class="status-generated">Generated ${escapeHtml(generatedAt)}</span>
+  </div>
 
   ${systems}
 
-  <section>
+  <section class="status-boundary">
     <h2>Public status boundary</h2>
-    <p>This board is open to everyone and requires no account. It reports signed machine observations only.</p>
+    <p>This page is public and read-only. It accepts signed machine observations only and exposes no remote-control surface.</p>
     <div class="callout"><strong>Not published:</strong> wallet, pool, worker name, hashrate, shares, hostname, IP address, password, token, private key or remote command.</div>
-    <p class="note">Current observations only. Historical uptime percentages and 90-day graphs are omitted until RIGOS stores real history.</p>
+    <p class="note">The segmented bars show the latest accepted state only. They are not 90-day uptime history.</p>
   </section>
 </main>
 
 <footer class="site-footer">
-  <div class="shell">
+  <div class="shell status-page-shell">
     <p>RIGOS direct public system status. Server-rendered and read-only.</p>
     <p><a href="/api/v1/status">Public JSON status</a> · <a href="https://github.com/Deadbytes101/RIGOS">Source repository</a></p>
   </div>
