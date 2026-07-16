@@ -16,7 +16,6 @@
 
 .status-banner {
   border: 1px solid var(--rule);
-  border-radius: 10px;
   background: var(--panel);
 }
 
@@ -134,7 +133,6 @@
   margin: 0;
   padding: 0;
   border: 1px solid var(--rule);
-  border-radius: 10px;
   background: var(--panel);
   list-style: none;
 }
@@ -211,19 +209,19 @@
   height: 0.78rem;
   flex: 1 1 0;
   background: var(--muted);
-}
-
-.snapshot:first-child {
-  border-radius: 3px 0 0 3px;
-}
-
-.snapshot:last-child {
-  border-radius: 0 3px 3px 0;
+  transition: opacity 80ms linear, transform 80ms linear;
 }
 
 .snapshot.state-operational,
 .snapshot.state-live {
   background: var(--link);
+}
+
+.snapshot.state-operational:hover {
+  opacity: 0.68;
+  transform: translateY(-2px);
+  outline: 1px solid var(--fg);
+  outline-offset: 1px;
 }
 
 .snapshot.state-stale,
