@@ -56,6 +56,8 @@ const STATUS_WEIGHT = Object.freeze({
   major_outage: 5,
 });
 
+const ASSET_REVISION = "20260716-3";
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -155,7 +157,7 @@ function componentDisplayName(id) {
 
 function statusIcon(state) {
   const klass = statusClass(state);
-  const common = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  const common = 'width="20" height="20" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"';
 
   if (["operational", "live"].includes(state)) {
     return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>`;
@@ -335,8 +337,8 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
   <meta name="theme-color" content="#111214">
   <link rel="canonical" href="https://rigos.site/status">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/status.css">
+  <link rel="stylesheet" href="/style.css?v=${ASSET_REVISION}">
+  <link rel="stylesheet" href="/status.css?v=${ASSET_REVISION}">
 </head>
 <body>
 <a class="skip-link" href="#content">Skip to content</a>
@@ -401,7 +403,7 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      "content-security-policy": "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "content-security-policy": "default-src 'none'; script-src 'none'; script-src-elem 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",

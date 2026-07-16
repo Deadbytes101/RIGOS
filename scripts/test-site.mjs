@@ -143,6 +143,21 @@ test("status strips use bounded DOM and keyboard-readable tooltips", async () =>
   assert.doesNotMatch(html, /\stitle="[^"]*(Operational|Offline|Stale)/);
 });
 
+test("status icons have intrinsic dimensions and status assets are cache-busted", async () => {
+  const response = renderStatusPage({
+    generatedAt: "2026-07-16T11:23:01Z",
+    nodeCount: 1,
+    totalNodeCount: 1,
+    truncated: false,
+    nodes: [sampleNode("live")],
+  });
+  const html = await response.text();
+  assert.match(html, /class="status-icon state-[^"]+" width="20" height="20"/);
+  assert.match(html, /href="\/style\.css\?v=20260716-3"/);
+  assert.match(html, /href="\/status\.css\?v=20260716-3"/);
+  assert.match(html, /script-src 'none'/);
+});
+
 test("status CSS keeps state colors scoped and uses square corners", () => {
   const css = readSite("status.css");
   assert.doesNotMatch(css, /border-radius\s*:/);
