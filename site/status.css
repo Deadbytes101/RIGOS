@@ -232,8 +232,6 @@
 }
 
 .snapshot:hover {
-  position: relative;
-  z-index: 2;
   opacity: 0.72;
   transform: translateY(-2px);
   outline: 1px solid var(--fg);
