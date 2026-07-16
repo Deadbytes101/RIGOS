@@ -48,20 +48,28 @@
   flex: 0 0 1.25rem;
 }
 
-.state-operational,
-.state-live {
+.status-icon.state-operational,
+.status-icon.state-live,
+.status-state.state-operational,
+.status-state.state-live {
   color: var(--link);
 }
 
-.state-stale,
-.state-degraded,
-.state-unknown {
+.status-icon.state-stale,
+.status-icon.state-degraded,
+.status-icon.state-unknown,
+.status-state.state-stale,
+.status-state.state-degraded,
+.status-state.state-unknown {
   color: #e7c66b;
 }
 
-.state-offline,
-.state-partial-outage,
-.state-major-outage {
+.status-icon.state-offline,
+.status-icon.state-partial-outage,
+.status-icon.state-major-outage,
+.status-state.state-offline,
+.status-state.state-partial-outage,
+.status-state.state-major-outage {
   color: #ef8c8c;
 }
 
@@ -204,40 +212,69 @@
   gap: 2px;
 }
 
-.snapshot {
+.snapshot,
+.snapshot-current {
   display: block;
-  min-width: 2px;
   height: 0.78rem;
+  border: 0;
+  cursor: help;
+  outline: 0;
+}
+
+.snapshot {
+  min-width: 2px;
   flex: 1 1 0;
   background: var(--muted);
-  cursor: help;
-  transition: opacity 80ms linear;
+}
+
+.snapshot-current {
+  width: 100%;
+  background-color: var(--muted);
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc((100% / 48) - 2px),
+    var(--panel) calc((100% / 48) - 2px),
+    var(--panel) calc(100% / 48)
+  );
 }
 
 .snapshot.state-operational,
-.snapshot.state-live {
-  background: var(--link);
+.snapshot.state-live,
+.snapshot-current.state-operational,
+.snapshot-current.state-live {
+  background-color: var(--link);
 }
 
 .snapshot.state-stale,
 .snapshot.state-degraded,
-.snapshot.state-unknown {
-  background: #e7c66b;
+.snapshot.state-unknown,
+.snapshot-current.state-stale,
+.snapshot-current.state-degraded,
+.snapshot-current.state-unknown {
+  background-color: #e7c66b;
 }
 
 .snapshot.state-offline,
 .snapshot.state-partial-outage,
-.snapshot.state-major-outage {
-  background: #ef8c8c;
+.snapshot.state-major-outage,
+.snapshot-current.state-offline,
+.snapshot-current.state-partial-outage,
+.snapshot-current.state-major-outage {
+  background-color: #ef8c8c;
 }
 
-.snapshot:hover {
+.snapshot:hover,
+.snapshot:focus-visible,
+.snapshot-current:hover,
+.snapshot-current:focus-visible {
   opacity: 0.72;
   outline: 1px solid var(--fg);
   outline-offset: 1px;
 }
 
-.snapshot::after {
+.snapshot::after,
+.snapshot-current::after {
   position: absolute;
   left: 0.9rem;
   right: 0.9rem;
@@ -249,6 +286,7 @@
   border: 1px solid var(--rule);
   background: var(--panel);
   color: var(--fg);
+  content: attr(data-tooltip);
   font-size: 0.64rem;
   font-weight: 400;
   line-height: 1.35;
@@ -259,40 +297,10 @@
   pointer-events: none;
 }
 
-.snapshot[title]::after {
-  content: attr(title);
-}
-
-.snapshot.state-operational:not([title])::after,
-.snapshot.state-live:not([title])::after {
-  content: "Operational — latest signed observation passed. Current sample, not uptime history.";
-}
-
-.snapshot.state-stale:not([title])::after {
-  content: "Stale — the latest signed observation is older than the live window.";
-}
-
-.snapshot.state-degraded:not([title])::after {
-  content: "Degraded — the signed observation reports a check that needs attention.";
-}
-
-.snapshot.state-unknown:not([title])::after {
-  content: "Unknown — no authoritative state is available for this current sample.";
-}
-
-.snapshot.state-offline:not([title])::after {
-  content: "Offline — no fresh signed observation has been received within the offline window.";
-}
-
-.snapshot.state-partial-outage:not([title])::after {
-  content: "Partial outage — at least one signed system check is unavailable.";
-}
-
-.snapshot.state-major-outage:not([title])::after {
-  content: "Major outage — the node is offline or reports a critical system failure.";
-}
-
-.snapshot:hover::after {
+.snapshot:hover::after,
+.snapshot:focus-visible::after,
+.snapshot-current:hover::after,
+.snapshot-current:focus-visible::after {
   opacity: 1;
 }
 
@@ -312,7 +320,7 @@
 }
 
 .node-status {
-  grid-template-columns: 9rem 1fr;
+  grid-template-columns: 12rem 1fr;
   margin: 0.2rem 0 0;
   padding: 0 0.9rem 0.75rem;
   border-top: 0;
@@ -387,7 +395,8 @@
     gap: 1px;
   }
 
-  .snapshot::after {
+  .snapshot::after,
+  .snapshot-current::after {
     left: 0.35rem;
     right: 0.35rem;
     font-size: 0.58rem;
@@ -418,24 +427,19 @@
 }
 
 @media print {
-  .status-state,
-  .state-operational,
-  .state-live,
-  .state-stale,
-  .state-degraded,
-  .state-unknown,
-  .state-offline,
-  .state-partial-outage,
-  .state-major-outage {
-    color: #000000;
+  .status-icon,
+  .status-state {
+    color: #000000 !important;
   }
 
-  .snapshot {
+  .snapshot,
+  .snapshot-current {
     border: 1px solid #000000;
     background: #ffffff !important;
   }
 
-  .snapshot::after {
+  .snapshot::after,
+  .snapshot-current::after {
     display: none;
   }
 }
