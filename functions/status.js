@@ -57,7 +57,7 @@ const STATUS_WEIGHT = Object.freeze({
 });
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -70,7 +70,7 @@ function statusLabel(value) {
 }
 
 function statusClass(value) {
-  return `state-${String(value || "unknown").replaceAll("_", "-")}`;
+  return `status-${String(value || "unknown").replaceAll("_", "-")}`;
 }
 
 function humanAge(seconds) {
@@ -85,18 +85,21 @@ function humanAge(seconds) {
 function summaryCounts(nodes) {
   const counts = { live: 0, stale: 0, offline: 0 };
   for (const node of nodes) {
-    if (Object.hasOwn(counts, node.connection)) counts[node.connection] += 1;
+    if (Object.hasOwn(counts, node.connection)) {
+      counts[node.connection] += 1;
+    }
   }
   return counts;
 }
 
 function overallState(nodes, notice) {
   if (notice || nodes.length === 0) return "unknown";
+
   return nodes.reduce((worst, node) => {
     const candidate = node.systemState || node.connection || "unknown";
-    return (STATUS_WEIGHT[candidate] ?? 1) > (STATUS_WEIGHT[worst] ?? 1)
-      ? candidate
-      : worst;
+    const candidateWeight = STATUS_WEIGHT[candidate] ?? 1;
+    const currentWeight = STATUS_WEIGHT[worst] ?? 1;
+    return candidateWeight > currentWeight ? candidate : worst;
   }, "operational");
 }
 
@@ -106,7 +109,7 @@ function overallCopy(state) {
     case "live":
       return {
         title: "All systems operational",
-        detail: "RIGOS is reporting healthy signed operating-system evidence.",
+        detail: "The latest signed RIGOS observation reports normal operation.",
       };
     case "stale":
       return {
@@ -137,95 +140,98 @@ function overallCopy(state) {
   }
 }
 
-function metricCard(label, value, tone, detail) {
-  return `
-    <article class="status-metric ${statusClass(tone)}">
-      <span class="status-metric-label">${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <span class="status-metric-detail">${escapeHtml(detail)}</span>
-    </article>`;
+function componentDisplayName(id) {
+  return String(id)
+    .split("-")
+    .map((part) => part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part)
+    .join(" ");
 }
 
-function componentRow(component) {
+function statusIcon(state) {
+  const label = statusLabel(state);
+  return `<span class="service-status-icon ${statusClass(state)}" aria-label="${escapeHtml(label)}"></span>`;
+}
+
+function serviceRow(name, status, detail, meta = "") {
   return `
-    <li class="component-row">
-      <div class="component-copy">
-        <strong>${escapeHtml(component.id)}</strong>
-        <span>${escapeHtml(component.evidence?.summary || "No public evidence summary")}</span>
+    <div class="service-row">
+      <div class="service-row-container">
+        <span class="service-name">
+          ${statusIcon(status)}
+          <span class="service-name-copy">
+            <strong>${escapeHtml(name)}</strong>
+            <small>${escapeHtml(detail)}</small>
+          </span>
+        </span>
+        <span class="service-status-label ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span>
       </div>
-      <span class="state-pill ${statusClass(component.status)}">${escapeHtml(statusLabel(component.status))}</span>
-    </li>`;
+      ${meta ? `<div class="service-meta">${meta}</div>` : ""}
+    </div>`;
 }
 
-function componentGroups(components) {
+function componentBlock(group, components) {
   const byId = new Map(components.map((component) => [component.id, component]));
-  return COMPONENT_GROUPS.map((group) => {
-    const rows = group.ids
-      .map((id) => byId.get(id))
-      .filter(Boolean)
-      .map(componentRow)
-      .join("");
+  const rows = group.ids
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((component) => serviceRow(
+      componentDisplayName(component.id),
+      component.status,
+      component.evidence?.summary || "No public evidence summary",
+    ))
+    .join("");
 
-    return `
-      <section class="component-group">
-        <h4>${escapeHtml(group.title)}</h4>
-        <ul>${rows}</ul>
-      </section>`;
-  }).join("");
+  if (!rows) return "";
+
+  return `
+    <div class="block-container">
+      <div class="block-name">${escapeHtml(group.title)}</div>
+      <div class="section block">${rows}</div>
+    </div>`;
 }
 
-function nodeSection(node) {
+function nodeBlock(node) {
   const release = node.release || {};
   const health = node.health || {};
   const components = Array.isArray(node.components) ? node.components : [];
   const operational = components.filter((component) => component.status === "operational").length;
   const build = release.buildCommit ? release.buildCommit.slice(0, 12) : "unavailable";
+  const meta = `
+    <dl class="node-meta">
+      <div><dt>Last received</dt><dd>${escapeHtml(node.receivedAt || "unknown")} (${escapeHtml(humanAge(node.ageSeconds))} ago)</dd></div>
+      <div><dt>Release</dt><dd>${escapeHtml(release.version || "unknown")}</dd></div>
+      <div><dt>Build</dt><dd>${escapeHtml(build)}</dd></div>
+      <div><dt>Architecture</dt><dd>${escapeHtml(release.architecture || "unknown")}</dd></div>
+      <div><dt>System checks</dt><dd>${operational}/${components.length} operational</dd></div>
+      <div><dt>Health</dt><dd>${escapeHtml(health.summary || "No health summary")}</dd></div>
+    </dl>`;
 
   return `
-  <article class="status-node" aria-labelledby="node-${escapeHtml(node.nodeId)}">
-    <header class="status-node-header">
-      <div>
-        <span class="eyebrow">Observed RIGOS appliance</span>
-        <h3 id="node-${escapeHtml(node.nodeId)}">RIGOS NODE ${escapeHtml(node.nodeId)}</h3>
+    <div class="block-container">
+      <div class="block-name">Observed RIGOS systems</div>
+      <div class="section block">
+        ${serviceRow(
+          `RIGOS NODE ${node.nodeId}`,
+          node.systemState,
+          `${statusLabel(node.connection)} connection · signed operating-system evidence`,
+          meta,
+        )}
       </div>
-      <div class="node-state-stack">
-        <span class="state-pill ${statusClass(node.connection)}">${escapeHtml(statusLabel(node.connection))}</span>
-        <span class="state-pill ${statusClass(node.systemState)}">${escapeHtml(statusLabel(node.systemState))}</span>
-      </div>
-    </header>
-
-    <div class="node-facts" role="list" aria-label="Node facts">
-      <div role="listitem"><span>Last received</span><strong>${escapeHtml(node.receivedAt || "unknown")}</strong><small>${escapeHtml(humanAge(node.ageSeconds))} ago</small></div>
-      <div role="listitem"><span>Release</span><strong>${escapeHtml(release.version || "unknown")}</strong><small>${escapeHtml(release.channel || "unknown")} channel</small></div>
-      <div role="listitem"><span>Build</span><strong>${escapeHtml(build)}</strong><small>${escapeHtml(release.architecture || "unknown")}</small></div>
-      <div role="listitem"><span>System checks</span><strong>${operational}/${components.length}</strong><small>operational</small></div>
     </div>
-
-    <div class="node-health-line">
-      <div>
-        <span class="eyebrow">Operator health</span>
-        <strong>${escapeHtml(health.summary || "No health summary")}</strong>
-      </div>
-      <span class="state-pill ${statusClass(node.componentState)}">${escapeHtml(statusLabel(node.componentState))}</span>
-    </div>
-
-    <details class="component-details">
-      <summary>
-        <span>View ${components.length} signed system checks</span>
-        <span class="details-hint">Public evidence</span>
-      </summary>
-      <div class="component-groups">${componentGroups(components)}</div>
-    </details>
-  </article>`;
+    ${COMPONENT_GROUPS.map((group) => componentBlock(group, components)).join("")}`;
 }
 
-function emptyState(notice) {
+function emptyBlock(notice) {
   return `
-    <section class="status-empty">
-      <span class="eyebrow">Public status board</span>
-      <h2>${notice ? "Status service unavailable" : "Waiting for the first RIGOS observation"}</h2>
-      <p>${escapeHtml(notice || "The public endpoint is ready, but no signed appliance observation has been accepted yet.")}</p>
-    </section>`;
+    <div class="block-container">
+      <div class="block-name">Observed RIGOS systems</div>
+      <div class="section block">
+        <div class="empty-state">
+          <strong>${notice ? "Status service unavailable" : "Waiting for the first observation"}</strong>
+          <p>${escapeHtml(notice || "The public endpoint is ready, but no signed RIGOS appliance observation has been accepted yet.")}</p>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
@@ -234,106 +240,75 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
   const generatedAt = publicStatus?.generatedAt || new Date().toISOString();
   const overall = overallState(nodes, notice);
   const copy = overallCopy(overall);
-  const nodeBody = nodes.length > 0 && !notice
-    ? nodes.map(nodeSection).join("")
-    : emptyState(notice);
+  const systems = nodes.length > 0 && !notice
+    ? nodes.map(nodeBlock).join("")
+    : emptyBlock(notice);
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="refresh" content="30">
-  <title>RIGOS Public System Status</title>
-  <meta name="description" content="Open public system status from signed RIGOS operating-system observations. Read-only and privacy bounded.">
+  <title>RIGOS Status</title>
+  <meta name="description" content="Public, read-only system status from signed RIGOS operating-system observations.">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
-  <meta name="theme-color" content="#0b0d10">
+  <meta name="theme-color" content="#0f1115">
   <link rel="canonical" href="https://rigos.site/status">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/status.css">
 </head>
-<body class="status-page">
-<a class="skip-link" href="#content">Skip to status</a>
-<header class="status-topbar">
-  <div class="status-container status-nav">
-    <a class="status-brand" href="/" aria-label="RIGOS home">RIGOS</a>
-    <nav aria-label="Status navigation">
-      <a href="/status" aria-current="page">Public status</a>
-      <a href="/api/v1/status">Status JSON</a>
-      <a href="/history.html">History</a>
-      <a href="https://github.com/Deadbytes101/RIGOS">Source</a>
-    </nav>
-  </div>
-</header>
+<body>
+  <a class="skip-link" href="#content">Skip to status</a>
 
-<main id="content" class="status-container status-main">
-  <section class="status-hero">
-    <div>
-      <span class="eyebrow">RIGOS public system status</span>
-      <h1>Operating-system truth, published directly.</h1>
-      <p>Anyone can view this board. It receives signed, read-only health evidence from RIGOS appliances and exposes no remote-control surface.</p>
-    </div>
-    <aside class="public-board-card" aria-label="Public access">
-      <span class="public-dot" aria-hidden="true"></span>
-      <div>
-        <strong>Open public status</strong>
-        <span>No account or authentication required</span>
+  <div class="wrapper">
+    <header class="section header">
+      <a class="header-logo" href="/" aria-label="RIGOS home">
+        <span class="header-logo-mark" aria-hidden="true"></span>
+        <span>RIGOS STATUS</span>
+      </a>
+      <div class="header-links">
+        <a href="/api/v1/status">Status JSON</a>
+        <a href="/">Go to RIGOS <span aria-hidden="true">↗</span></a>
       </div>
-    </aside>
-  </section>
-
-  <section class="overall-banner ${statusClass(overall)}" aria-labelledby="overall-heading">
-    <span class="overall-symbol" aria-hidden="true"></span>
-    <div>
-      <span class="eyebrow">Current RIGOS state</span>
-      <h2 id="overall-heading">${escapeHtml(copy.title)}</h2>
-      <p>${escapeHtml(copy.detail)}</p>
-    </div>
-    <span class="state-pill ${statusClass(overall)}">${escapeHtml(statusLabel(overall))}</span>
-  </section>
-
-  <section class="status-metrics" aria-label="Status summary">
-    ${metricCard("Observed nodes", nodes.length, nodes.length ? "live" : "unknown", "signed sources")}
-    ${metricCard("Live", counts.live, "live", "received within 90s")}
-    ${metricCard("Stale", counts.stale, "stale", "older than 90s")}
-    ${metricCard("Offline", counts.offline, "offline", "older than 300s")}
-  </section>
-
-  <section class="status-meta-strip" aria-label="Status board metadata">
-    <div><span>Generated</span><strong>${escapeHtml(generatedAt)}</strong></div>
-    <div><span>Automatic refresh</span><strong>30 seconds</strong></div>
-    <div><span>Public schema</span><strong>rigos.public-status/v1</strong></div>
-  </section>
-
-  <section class="status-section" aria-labelledby="nodes-heading">
-    <header class="section-heading">
-      <div>
-        <span class="eyebrow">System fleet</span>
-        <h2 id="nodes-heading">Observed RIGOS systems</h2>
-      </div>
-      <span class="section-count">${nodes.length} ${nodes.length === 1 ? "node" : "nodes"}</span>
     </header>
-    ${nodeBody}
-  </section>
 
-  <aside class="privacy-boundary">
-    <div>
-      <span class="eyebrow">Privacy boundary</span>
-      <h2>Public by design, private by default.</h2>
-    </div>
-    <p>Wallet, pool, worker name, hashrate, shares, hostname, IP address, password, token, private key and remote command are not accepted or published.</p>
-  </aside>
+    <main id="content">
+      <section class="section current-status status-banner ${statusClass(overall)}">
+        <div class="top-level-status">
+          ${statusIcon(overall)}
+          <div>
+            <div class="status-title">${escapeHtml(copy.title)}</div>
+            <div class="status-description">${escapeHtml(copy.detail)}</div>
+          </div>
+        </div>
+      </section>
 
-  <p class="status-release-note">RIGOS remains an experimental Alpha appliance. This board reports bounded machine evidence; it does not claim production readiness or broad hardware compatibility.</p>
-</main>
+      <div class="status-overview">
+        <span><strong>${nodes.length}</strong> observed</span>
+        <span><strong>${counts.live}</strong> live</span>
+        <span><strong>${counts.stale}</strong> stale</span>
+        <span><strong>${counts.offline}</strong> offline</span>
+        <span class="status-generated">Generated ${escapeHtml(generatedAt)}</span>
+      </div>
 
-<footer class="status-footer">
-  <div class="status-container">
-    <span>RIGOS public system status</span>
-    <span>Signed observations · Read-only · Zero browser JavaScript</span>
+      <section class="section services" aria-label="RIGOS system services">
+        ${systems}
+      </section>
+
+      <section class="section public-note">
+        <strong>Public and read-only.</strong>
+        <p>Anyone can view this status page. It accepts signed operating-system evidence only. Wallet, pool, worker name, hashrate, shares, hostname, IP address, password, token, private key and remote commands are not accepted or published.</p>
+      </section>
+
+      <p class="history-note">Current observations only. Historical uptime percentages and 90-day graphs are not displayed until RIGOS stores real history.</p>
+    </main>
+
+    <footer class="section footer">
+      <span>RIGOS public system status</span>
+      <span>Automatic refresh: 30 seconds</span>
+    </footer>
   </div>
-</footer>
 </body>
 </html>`;
 
@@ -370,5 +345,6 @@ export async function onRequest(context) {
   if (context.request.method === "HEAD") {
     return new Response(null, { status: response.status, headers: response.headers });
   }
+
   return response;
 }
