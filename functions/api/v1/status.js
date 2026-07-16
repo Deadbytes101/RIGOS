@@ -10,13 +10,15 @@ export async function onRequest(context) {
     return methodNotAllowed(["GET", "HEAD"]);
   }
 
+  let response;
   try {
-    const response = publicStatusResponse(await readPublicStatus(context.env));
-    if (context.request.method === "HEAD") {
-      return new Response(null, { status: response.status, headers: response.headers });
-    }
-    return response;
+    response = publicStatusResponse(await readPublicStatus(context.env));
   } catch (error) {
-    return errorResponse(error);
+    response = errorResponse(error);
   }
+
+  if (context.request.method === "HEAD") {
+    return new Response(null, { status: response.status, headers: response.headers });
+  }
+  return response;
 }
