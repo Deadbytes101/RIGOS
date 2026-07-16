@@ -35,6 +35,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --experimental-default-type=module --check functions/_lib/status-v2.js
+          node --experimental-default-type=module --check functions/_lib/status-read.js
           node --experimental-default-type=module --check functions/status.js
           node --experimental-default-type=module --check functions/api/v1/status.js
           node --experimental-default-type=module --check functions/api/v1/observations.js
