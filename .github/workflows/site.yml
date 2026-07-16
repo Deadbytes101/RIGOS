@@ -1,6 +1,7 @@
 name: site
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "functions/**"
@@ -10,8 +11,6 @@ on:
       - "docs/STATUS-SERVICE.md"
       - ".github/workflows/site.yml"
   push:
-    branches:
-      - main
     paths:
       - "functions/**"
       - "site/**"
