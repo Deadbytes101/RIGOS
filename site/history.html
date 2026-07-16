@@ -28,6 +28,7 @@
     <p class="subtitle">Engineering record for the Alpha.25 USB appliance.</p>
     <nav class="nav" aria-label="Site navigation">
       <a href="index.html">Overview</a>
+      <a href="/status">System status</a>
       <a href="history.html" aria-current="page">History</a>
       <a href="architecture.html">Architecture</a>
       <a href="evidence.html">Evidence</a>
@@ -58,7 +59,6 @@
 
   <section>
     <h2>The firstboot defect</h2>
-    <p>The defect demonstrates a low-level systems rule: a service condition does not help when the service has already been removed from the transaction that would evaluate it.</p>
 <pre>incorrect model:
   service enters transaction
       -&gt; kernel command-line condition is evaluated

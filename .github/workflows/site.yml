@@ -1,0 +1,48 @@
+name: site
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "functions/**"
+      - "site/**"
+      - "scripts/test-status-functions.mjs"
+      - "scripts/test-status-read.mjs"
+      - "scripts/test-site.mjs"
+      - "docs/STATUS-SERVICE.md"
+      - ".github/workflows/site.yml"
+  push:
+    paths:
+      - "functions/**"
+      - "site/**"
+      - "scripts/test-status-functions.mjs"
+      - "scripts/test-status-read.mjs"
+      - "scripts/test-site.mjs"
+      - "docs/STATUS-SERVICE.md"
+      - ".github/workflows/site.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JavaScript syntax
+        run: |
+          node --experimental-default-type=module --check functions/_lib/status-v2.js
+          node --experimental-default-type=module --check functions/_lib/status-read.js
+          node --experimental-default-type=module --check functions/status.js
+          node --experimental-default-type=module --check functions/api/v1/status.js
+          node --experimental-default-type=module --check functions/api/v1/observations.js
+      - name: Run status and site tests
+        run: |
+          node --experimental-default-type=module --test \
+            scripts/test-status-functions.mjs \
+            scripts/test-status-read.mjs \
+            scripts/test-site.mjs
