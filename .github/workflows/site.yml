@@ -7,6 +7,7 @@ on:
       - "functions/**"
       - "site/**"
       - "scripts/test-status-functions.mjs"
+      - "scripts/test-status-read.mjs"
       - "scripts/test-site.mjs"
       - "docs/STATUS-SERVICE.md"
       - ".github/workflows/site.yml"
@@ -15,6 +16,7 @@ on:
       - "functions/**"
       - "site/**"
       - "scripts/test-status-functions.mjs"
+      - "scripts/test-status-read.mjs"
       - "scripts/test-site.mjs"
       - "docs/STATUS-SERVICE.md"
       - ".github/workflows/site.yml"
@@ -42,4 +44,5 @@ jobs:
         run: |
           node --experimental-default-type=module --test \
             scripts/test-status-functions.mjs \
+            scripts/test-status-read.mjs \
             scripts/test-site.mjs
