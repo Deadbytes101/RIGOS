@@ -3,9 +3,9 @@ import {
   PUBLIC_NODE_LIMIT,
   PUBLIC_SCHEMA,
   StatusError,
-  validateAndSanitizeObservation,
   worstComponentStatus,
 } from "./status-v2.js";
+import { validateLegacyRandomxObservation } from "./status-multi.js";
 
 function requireDatabase(env) {
   if (!env?.RIGOS_STATUS_DB) {
@@ -20,7 +20,7 @@ function parseStoredObservation(row) {
     if (!raw || raw.schema !== OBSERVATION_SCHEMA) return null;
     const observedUnix = Math.floor(Date.parse(raw.observedAt) / 1000);
     if (!Number.isFinite(observedUnix)) return null;
-    const sanitized = validateAndSanitizeObservation(raw, observedUnix).observation;
+    const sanitized = validateLegacyRandomxObservation(raw, observedUnix).observation;
     if (sanitized.sourceId !== String(row.source_id)) return null;
     return sanitized;
   } catch {
