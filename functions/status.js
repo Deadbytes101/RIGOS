@@ -53,7 +53,7 @@ const STATUS_WEIGHT = Object.freeze({
   degraded: 2,
   partial_outage: 3,
   offline: 4,
-  major_outage: 4,
+  major_outage: 5,
 });
 
 function escapeHtml(value) {
@@ -96,7 +96,9 @@ function overallState(nodes, notice) {
   if (notice || nodes.length === 0) return "unknown";
 
   return nodes.reduce((worst, node) => {
-    const candidate = node.systemState || node.connection || "unknown";
+    const candidate = node.connection === "live"
+      ? (node.systemState || "unknown")
+      : (node.connection || "unknown");
     return (STATUS_WEIGHT[candidate] ?? 1) > (STATUS_WEIGHT[worst] ?? 1)
       ? candidate
       : worst;
@@ -109,28 +111,32 @@ function overallCopy(state) {
     case "live":
       return {
         title: "All systems operational",
-        detail: "The latest signed RIGOS observation reports normal operation.",
+        detail: "The latest signed RIGOS observations report normal operation.",
       };
     case "stale":
       return {
         title: "Status updates are stale",
-        detail: "The most recent signed observation is older than the live window.",
+        detail: "At least one signed observation is older than the live window.",
+      };
+    case "offline":
+      return {
+        title: "Status updates unavailable",
+        detail: "At least one node has not sent a fresh signed observation within the offline window.",
       };
     case "degraded":
       return {
         title: "Some systems are degraded",
-        detail: "RIGOS is reachable, but one or more checks need attention.",
+        detail: "A live RIGOS observation reports one or more checks that need attention.",
       };
     case "partial_outage":
       return {
         title: "Partial system outage",
-        detail: "At least one reported RIGOS component is unavailable.",
+        detail: "A live RIGOS observation reports at least one unavailable component.",
       };
-    case "offline":
     case "major_outage":
       return {
         title: "Major system outage",
-        detail: "A RIGOS node is offline or has reported a critical failure.",
+        detail: "A live RIGOS observation reports a critical system failure.",
       };
     default:
       return {
@@ -154,36 +160,64 @@ function statusIcon(state) {
   if (["operational", "live"].includes(state)) {
     return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>`;
   }
-
   if (["offline", "partial_outage", "major_outage"].includes(state)) {
     return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg>`;
   }
-
   return `<svg class="status-icon ${klass}" ${common}><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 17h.01"></path></svg>`;
 }
 
-function currentSnapshotStrip(status, count = 48) {
-  const segments = Array.from(
-    { length: count },
-    () => `<span class="snapshot ${statusClass(status)}"></span>`,
-  ).join("");
+function stateExplanation(status) {
+  switch (status) {
+    case "operational":
+    case "live":
+      return "Operational — the latest signed observation passed this check. Current sample, not uptime history.";
+    case "stale":
+      return "Stale — the latest signed observation is older than the live window.";
+    case "degraded":
+      return "Degraded — the latest signed observation reports a check that needs attention.";
+    case "offline":
+      return "Offline — no fresh signed observation was received within the offline window.";
+    case "partial_outage":
+      return "Partial outage — the latest live observation reports an unavailable component.";
+    case "major_outage":
+      return "Major outage — the latest live observation reports a critical system failure.";
+    default:
+      return "Unknown — no authoritative state is available for this current sample.";
+  }
+}
 
+function currentSnapshotStrip(status, connection = "live") {
+  const tooltip = connection === "live"
+    ? stateExplanation(status)
+    : `Last accepted signed sample: ${statusLabel(status)}. Node connection is ${statusLabel(connection)}; this is not live uptime.`;
+  const periodLabel = connection === "live" ? "Latest sample" : "Last accepted sample";
   return `
     <div class="snapshot-wrap" aria-label="Current status sample only; this is not historical uptime">
-      <div class="snapshots" aria-hidden="true">${segments}</div>
-      <div class="snapshot-periods"><span>Current sample</span><span>Now</span></div>
+      <span
+        class="snapshot-current ${statusClass(status)}"
+        tabindex="0"
+        role="img"
+        aria-label="${escapeHtml(tooltip)}"
+        data-tooltip="${escapeHtml(tooltip)}"
+      ></span>
+      <div class="snapshot-periods"><span>${escapeHtml(periodLabel)}</span><span>Now</span></div>
     </div>`;
 }
 
 function componentHealthStrip(components) {
-  const segments = components.map((component) => `
-    <span
-      class="snapshot ${statusClass(component.status)}"
-      title="${escapeHtml(componentDisplayName(component.id))}: ${escapeHtml(statusLabel(component.status))}"
-    ></span>`).join("");
+  const segments = components.map((component) => {
+    const label = `${componentDisplayName(component.id)}: ${statusLabel(component.status)}`;
+    return `
+      <span
+        class="snapshot ${statusClass(component.status)}"
+        tabindex="0"
+        role="img"
+        aria-label="${escapeHtml(label)}"
+        data-tooltip="${escapeHtml(label)}"
+      ></span>`;
+  }).join("");
 
   const operational = components.filter((component) => component.status === "operational").length;
-
   return `
     <div class="snapshot-wrap node-snapshot-wrap" aria-label="Current state of ${components.length} signed system checks">
       <div class="snapshots node-snapshots">${segments}</div>
@@ -191,9 +225,9 @@ function componentHealthStrip(components) {
     </div>`;
 }
 
-function componentRow(component) {
+function componentRow(component, connection) {
   return `
-    <li class="status-service ${statusClass(component.status)}">
+    <li class="status-service">
       <div class="service-row-container">
         <div class="service-name">
           ${statusIcon(component.status)}
@@ -204,20 +238,18 @@ function componentRow(component) {
         </div>
         <span class="status-state ${statusClass(component.status)}">${escapeHtml(statusLabel(component.status))}</span>
       </div>
-      ${currentSnapshotStrip(component.status)}
+      ${currentSnapshotStrip(component.status, connection)}
     </li>`;
 }
 
-function componentGroup(group, components) {
+function componentGroup(group, components, connection) {
   const byId = new Map(components.map((component) => [component.id, component]));
   const rows = group.ids
     .map((id) => byId.get(id))
     .filter(Boolean)
-    .map(componentRow)
+    .map((component) => componentRow(component, connection))
     .join("");
-
   if (!rows) return "";
-
   return `
     <section class="status-group">
       <h3>${escapeHtml(group.title)}</h3>
@@ -231,26 +263,29 @@ function nodeSection(node) {
   const components = Array.isArray(node.components) ? node.components : [];
   const operational = components.filter((component) => component.status === "operational").length;
   const build = release.buildCommit ? release.buildCommit.slice(0, 12) : "unavailable";
+  const displayState = node.connection === "live" ? node.systemState : node.connection;
 
   return `
   <section class="status-node" aria-labelledby="node-${escapeHtml(node.nodeId)}">
     <h2 id="node-${escapeHtml(node.nodeId)}">Observed RIGOS system</h2>
 
-    <div class="status-block node-block ${statusClass(node.systemState)}">
+    <div class="status-block node-block">
       <div class="service-row-container node-heading-row">
         <div class="service-name">
-          ${statusIcon(node.systemState)}
+          ${statusIcon(displayState)}
           <div class="service-copy">
             <strong>RIGOS node ${escapeHtml(node.nodeId)}</strong>
             <span>${escapeHtml(statusLabel(node.connection))} connection · last received ${escapeHtml(humanAge(node.ageSeconds))} ago</span>
           </div>
         </div>
-        <span class="status-state ${statusClass(node.systemState)}">${escapeHtml(statusLabel(node.systemState))}</span>
+        <span class="status-state ${statusClass(displayState)}">${escapeHtml(statusLabel(displayState))}</span>
       </div>
 
       ${componentHealthStrip(components)}
 
       <dl class="status node-status" aria-label="Observed RIGOS node details">
+        <dt>Connection</dt><dd>${escapeHtml(statusLabel(node.connection))}</dd>
+        <dt>Last observed system state</dt><dd>${escapeHtml(statusLabel(node.systemState))}</dd>
         <dt>Last received</dt><dd>${escapeHtml(node.receivedAt || "unknown")}</dd>
         <dt>Observed</dt><dd>${escapeHtml(node.observedAt || "unknown")}</dd>
         <dt>Release</dt><dd>${escapeHtml(release.version || "unknown")}</dd>
@@ -261,7 +296,7 @@ function nodeSection(node) {
       </dl>
     </div>
 
-    ${COMPONENT_GROUPS.map((group) => componentGroup(group, components)).join("")}
+    ${COMPONENT_GROUPS.map((group) => componentGroup(group, components, node.connection)).join("")}
   </section>`;
 }
 
@@ -280,6 +315,8 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
   const nodes = Array.isArray(publicStatus?.nodes) ? publicStatus.nodes : [];
   const counts = summaryCounts(nodes);
   const generatedAt = publicStatus?.generatedAt || new Date().toISOString();
+  const totalNodeCount = Number(publicStatus?.totalNodeCount ?? nodes.length);
+  const truncated = publicStatus?.truncated === true;
   const overall = overallState(nodes, notice);
   const copy = overallCopy(overall);
   const systems = nodes.length > 0 && !notice
@@ -331,12 +368,14 @@ function renderStatusPage(publicStatus, statusCode = 200, notice = null) {
   </div>
 
   <div class="status-overview" aria-label="Public status summary">
-    <span><strong>${nodes.length}</strong> observed</span>
+    <span><strong>${nodes.length}</strong> shown</span>
+    <span><strong>${totalNodeCount}</strong> observed</span>
     <span><strong>${counts.live}</strong> live</span>
     <span><strong>${counts.stale}</strong> stale</span>
     <span><strong>${counts.offline}</strong> offline</span>
     <span class="status-generated">Generated ${escapeHtml(generatedAt)}</span>
   </div>
+  ${truncated ? `<p class="note">Showing the newest ${nodes.length} of ${totalNodeCount} observed nodes.</p>` : ""}
 
   ${systems}
 
@@ -381,15 +420,20 @@ export async function onRequest(context) {
   } catch (error) {
     console.error("rigos-status-page:", error);
     response = renderStatusPage(
-      { generatedAt: new Date().toISOString(), nodes: [] },
+      { generatedAt: new Date().toISOString(), nodes: [], totalNodeCount: 0, truncated: false },
       503,
-      error?.message || "The status database is unavailable.",
+      "The status service is temporarily unavailable.",
     );
   }
 
   if (context.request.method === "HEAD") {
     return new Response(null, { status: response.status, headers: response.headers });
   }
-
   return response;
 }
+
+export {
+  overallCopy,
+  overallState,
+  renderStatusPage,
+};
