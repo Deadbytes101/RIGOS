@@ -103,9 +103,10 @@
 }
 
 .status-service {
+  --status-strip-color: var(--muted);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
+  gap: 0.55rem 1rem;
   align-items: start;
   max-width: none;
   padding: 0.75rem 0;
@@ -114,6 +115,38 @@
 
 .status-service + .status-service {
   margin-top: 0;
+}
+
+.status-service::after {
+  content: "";
+  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
+  height: 0.48rem;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--status-strip-color) 0 0.34rem,
+      transparent 0.34rem 0.45rem
+    );
+  opacity: 0.92;
+}
+
+.status-service:has(.status-state.state-operational),
+.status-service:has(.status-state.state-live) {
+  --status-strip-color: var(--link);
+}
+
+.status-service:has(.status-state.state-stale),
+.status-service:has(.status-state.state-degraded),
+.status-service:has(.status-state.state-unknown) {
+  --status-strip-color: #e7c66b;
+}
+
+.status-service:has(.status-state.state-offline),
+.status-service:has(.status-state.state-partial-outage),
+.status-service:has(.status-state.state-major-outage) {
+  --status-strip-color: #ef8c8c;
 }
 
 .status-service-copy {
@@ -162,6 +195,10 @@
   .status-service .status-state {
     text-align: left;
   }
+
+  .status-service::after {
+    grid-column: 1;
+  }
 }
 
 @media print {
@@ -175,5 +212,9 @@
   .state-partial-outage,
   .state-major-outage {
     color: #000000;
+  }
+
+  .status-service::after {
+    background: repeating-linear-gradient(90deg, #000 0 0.34rem, transparent 0.34rem 0.45rem);
   }
 }
