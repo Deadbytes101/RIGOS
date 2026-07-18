@@ -1,0 +1,70 @@
+name: Render RIGOS brand assets
+
+on:
+  push:
+    branches:
+      - art/rigos-raw-branding-v1
+    paths:
+      - tools/branding/generate_rigos_assets.py
+      - .github/workflows/rigos-brand-assets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rig-os-brand-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deterministic raster dependency
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+
+      - name: Build PNG assets and patch README
+        run: python tools/branding/generate_rigos_assets.py --repo-root .
+
+      - name: Verify transparent PNG outputs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          files = sorted(Path("assets/branding").rglob("*.png"))
+          if not files:
+              raise SystemExit("no PNG assets generated")
+
+          for path in files:
+              with Image.open(path) as image:
+                  if image.mode != "RGBA":
+                      raise SystemExit(f"{path}: expected RGBA, got {image.mode}")
+                  lo, hi = image.getchannel("A").getextrema()
+                  if lo != 0 or hi != 255:
+                      raise SystemExit(f"{path}: alpha channel is not transparent/opaque RGBA")
+
+          print(f"verified {len(files)} transparent PNG files")
+          PY
+
+      - name: Commit rendered files
+        run: |
+          git config user.name "rigos-brand-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add README.md docs/BRANDING.md assets/branding
+          if git diff --cached --quiet; then
+            echo "branding output already current"
+            exit 0
+          fi
+          git commit -m "art: render raw RIGOS logo and favicon set"
+          git push
